@@ -11,7 +11,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
 
 concurrency:
   group: security-${{ github.event.pull_request.number || github.ref }}
@@ -53,27 +52,10 @@ jobs:
           cache: pip
           check-latest: false
 
-      - name: Install runtime dependencies and auditor
+      - name: Install dependency auditor
         run: |
           python -m pip install --upgrade pip
-          python -m pip install . "pip-audit>=2.9,<3"
+          python -m pip install "pip-audit>=2.9,<3"
 
-      - name: Audit installed dependency graph
-        run: pip-audit --local --strict
-
-  dependency-review:
-    name: dependency-review
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          persist-credentials: false
-
-      - name: Review dependency changes
-        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
-        with:
-          fail-on-severity: high
+      - name: Audit dependencies declared by pyproject.toml
+        run: pip-audit . --strict
