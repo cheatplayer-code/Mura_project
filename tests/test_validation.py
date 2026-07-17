@@ -80,9 +80,7 @@ def test_cleaner_rejects_uncertain_fragment_from_wrong_segment() -> None:
 def test_cleaner_preserves_uncertain_text_verbatim() -> None:
     raw = transcript(("seg_001", "она была ичи и любила читать"))
     result = CleanerResult(
-        readable_segments=[
-            ReadableSegment(segment_id="seg_001", text="Она была и любила читать.")
-        ],
+        readable_segments=[ReadableSegment(segment_id="seg_001", text="Она была и любила читать.")],
         uncertain_fragments=[
             UncertainFragment(
                 source_segment_ids=["seg_001"],
