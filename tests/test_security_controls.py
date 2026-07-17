@@ -34,7 +34,9 @@ def test_bearer_token_accepts_valid_value() -> None:
     "authorization",
     [None, "", "Basic abc", "Bearer", "Bearer wrong"],
 )
-def test_bearer_token_rejects_missing_or_invalid_value(authorization: str | None) -> None:
+def test_bearer_token_rejects_missing_or_invalid_value(
+    authorization: str | None,
+) -> None:
     with pytest.raises(HTTPException) as error:
         verify_bearer_token(authorization, expected_token=ASR_TOKEN)
     assert error.value.status_code == 401
