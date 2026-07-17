@@ -36,9 +36,7 @@ jobs:
           check-latest: false
 
       - name: Install project and development tools
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+        run: python -m pip install --disable-pip-version-check -q -e ".[dev]"
 
       - name: Validate workflow security policy
         run: python scripts/ci/check_workflow_policy.py
@@ -47,7 +45,7 @@ jobs:
         run: ruff check .
 
       - name: Check formatting
-        run: ruff format --check .
+        run: ruff format --check --diff .
 
       - name: Type check
         run: mypy src/mura apps services scripts
