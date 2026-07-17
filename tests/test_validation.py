@@ -110,7 +110,8 @@ def test_cleaner_does_not_allow_guess_for_uncertain_fragment() -> None:
 
 
 def test_cleaner_rejects_same_span_as_correction_and_uncertainty() -> None:
-    raw = transcript(("seg_001", "она отправила через wвatsап"))
+    malformed_whatsapp = "w\u0432ats\u0430\u043f"
+    raw = transcript(("seg_001", f"она отправила через {malformed_whatsapp}"))
     result = CleanerResult(
         readable_segments=[
             ReadableSegment(segment_id="seg_001", text="Она отправила через WhatsApp.")
@@ -118,7 +119,7 @@ def test_cleaner_rejects_same_span_as_correction_and_uncertainty() -> None:
         detected_corrections=[
             DetectedCorrection(
                 kind=CorrectionKind.ASR_NORMALIZATION,
-                original_value="wвatsап",
+                original_value=malformed_whatsapp,
                 corrected_value="WhatsApp",
                 source_segment_ids=["seg_001"],
                 explanation="unambiguous product name",
@@ -128,7 +129,7 @@ def test_cleaner_rejects_same_span_as_correction_and_uncertainty() -> None:
         uncertain_fragments=[
             UncertainFragment(
                 source_segment_ids=["seg_001"],
-                raw_text="wвatsап",
+                raw_text=malformed_whatsapp,
                 reason="unclear token",
             )
         ],
