@@ -1,6 +1,16 @@
 from __future__ import annotations
 
-from mura.domain.models import CleanerResult, ExtractionResult, TranscriptEnvelope
+import re
+import unicodedata
+from collections.abc import Iterable
+
+from mura.domain.models import (
+    CleanerResult,
+    CorrectionKind,
+    ExtractionResult,
+    PersonMention,
+    TranscriptEnvelope,
+)
 
 
 class ContractValidationError(ValueError):
@@ -19,6 +29,70 @@ def _ensure_known_segments(
         )
 
 
+def _normalize_evidence(value: str) -> str:
+    value = unicodedata.normalize("NFKC", value).casefold()
+    value = re.sub(r"[^\w]+", " ", value, flags=re.UNICODE)
+    return " ".join(value.replace("_", " ").split())
+
+
+def _contains_evidence(haystack: str, needle: str) -> bool:
+    normalized_haystack = _normalize_evidence(haystack)
+    normalized_needle = _normalize_evidence(needle)
+    if not normalized_needle:
+        return False
+    return f" {normalized_needle} " in f" {normalized_haystack} "
+
+
+def _joined_segment_text(segment_ids: Iterable[str], segment_text_by_id: dict[str, str]) -> str:
+    return " ".join(segment_text_by_id[segment_id] for segment_id in segment_ids)
+
+
+def _ensure_evidence_text(
+    *,
+    evidence_text: str,
+    source_ids: list[str],
+    segment_text_by_id: dict[str, str],
+    object_name: str,
+) -> None:
+    source_text = _joined_segment_text(source_ids, segment_text_by_id)
+    if not _contains_evidence(source_text, evidence_text):
+        raise ContractValidationError(
+            f"{object_name} evidence text is not present in its cited segments"
+        )
+
+
+def _ensure_unique_ids(values: list[str], object_name: str) -> None:
+    if len(values) != len(set(values)):
+        raise ContractValidationError(f"extractor returned duplicate {object_name} IDs")
+
+
+def _explicit_people_in_segments(
+    source_ids: list[str],
+    segment_text_by_id: dict[str, str],
+    people: list[PersonMention],
+) -> set[str]:
+    source_text = _joined_segment_text(source_ids, segment_text_by_id)
+    explicit_people: set[str] = set()
+    for person in people:
+        if any(
+            _contains_evidence(source_text, surface) for surface in [person.name, *person.aliases]
+        ):
+            explicit_people.add(person.mention_id)
+    return explicit_people
+
+
+def _ensure_person_evidence_overlap(
+    *,
+    source_ids: list[str],
+    person: PersonMention,
+    object_name: str,
+) -> None:
+    if not set(source_ids).intersection(person.source_segment_ids):
+        raise ContractValidationError(
+            f"{object_name} has no evidence overlap with {person.mention_id}"
+        )
+
+
 def validate_cleaner_result(transcript: TranscriptEnvelope, result: CleanerResult) -> None:
     raw_ids = [segment.segment_id for segment in transcript.segments]
     cleaned_ids = [segment.segment_id for segment in result.readable_segments]
@@ -33,22 +107,82 @@ def validate_cleaner_result(transcript: TranscriptEnvelope, result: CleanerResul
         )
 
     valid_ids = set(raw_ids)
+    raw_text_by_id = {segment.segment_id: segment.text for segment in transcript.segments}
+    readable_text_by_id = {segment.segment_id: segment.text for segment in result.readable_segments}
+
+    joined_readable = " ".join(readable_text_by_id[segment_id] for segment_id in raw_ids)
+    if _normalize_evidence(joined_readable) != _normalize_evidence(result.full_readable_text):
+        raise ContractValidationError(
+            "full_readable_text does not match the ordered readable segments"
+        )
+
+    normalized_correction_sources: list[str] = []
     for correction in result.detected_corrections:
-        _ensure_known_segments(correction.source_segment_ids, valid_ids, "detected correction")
+        object_name = f"detected correction {correction.original_value!r}"
+        _ensure_known_segments(correction.source_segment_ids, valid_ids, object_name)
+        _ensure_evidence_text(
+            evidence_text=correction.original_value,
+            source_ids=correction.source_segment_ids,
+            segment_text_by_id=raw_text_by_id,
+            object_name=object_name,
+        )
+        _ensure_evidence_text(
+            evidence_text=correction.corrected_value,
+            source_ids=correction.source_segment_ids,
+            segment_text_by_id=readable_text_by_id,
+            object_name=f"{object_name} corrected value",
+        )
+        if correction.kind is CorrectionKind.SPEAKER_SELF_CORRECTION:
+            _ensure_evidence_text(
+                evidence_text=correction.original_value,
+                source_ids=correction.source_segment_ids,
+                segment_text_by_id=readable_text_by_id,
+                object_name=f"{object_name} original self-correction value",
+            )
+        normalized_correction_sources.append(_normalize_evidence(correction.original_value))
+
     for fragment in result.uncertain_fragments:
-        _ensure_known_segments(fragment.source_segment_ids, valid_ids, "uncertain fragment")
+        object_name = f"uncertain fragment {fragment.raw_text!r}"
+        _ensure_known_segments(fragment.source_segment_ids, valid_ids, object_name)
+        _ensure_evidence_text(
+            evidence_text=fragment.raw_text,
+            source_ids=fragment.source_segment_ids,
+            segment_text_by_id=raw_text_by_id,
+            object_name=object_name,
+        )
+        normalized_fragment = _normalize_evidence(fragment.raw_text)
+        if normalized_fragment in normalized_correction_sources:
+            raise ContractValidationError(
+                f"{object_name} cannot also be returned as a detected correction"
+            )
+
+        _ensure_evidence_text(
+            evidence_text=fragment.raw_text,
+            source_ids=fragment.source_segment_ids,
+            segment_text_by_id=readable_text_by_id,
+            object_name=f"{object_name} readable preservation",
+        )
 
 
 def validate_extraction_result(transcript: TranscriptEnvelope, result: ExtractionResult) -> None:
     valid_segments = {segment.segment_id for segment in transcript.segments}
+    segment_text_by_id = {segment.segment_id: segment.text for segment in transcript.segments}
+
     mention_ids = [person.mention_id for person in result.people_mentions]
+    relationship_ids = [item.relationship_id for item in result.relationship_claims]
     event_ids = [event.event_id for event in result.events]
+    description_ids = [item.description_id for item in result.descriptions]
+    story_ids = [story.story_id for story in result.stories]
+    question_ids = [item.question_id for item in result.unresolved_questions]
 
-    if len(mention_ids) != len(set(mention_ids)):
-        raise ContractValidationError("extractor returned duplicate mention IDs")
-    if len(event_ids) != len(set(event_ids)):
-        raise ContractValidationError("extractor returned duplicate event IDs")
+    _ensure_unique_ids(mention_ids, "mention")
+    _ensure_unique_ids(relationship_ids, "relationship")
+    _ensure_unique_ids(event_ids, "event")
+    _ensure_unique_ids(description_ids, "description")
+    _ensure_unique_ids(story_ids, "story")
+    _ensure_unique_ids(question_ids, "question")
 
+    mention_by_id = {person.mention_id: person for person in result.people_mentions}
     mention_set = set(mention_ids)
     event_set = set(event_ids)
 
@@ -56,9 +190,8 @@ def validate_extraction_result(transcript: TranscriptEnvelope, result: Extractio
         _ensure_known_segments(person.source_segment_ids, valid_segments, person.mention_id)
 
     for relationship in result.relationship_claims:
-        _ensure_known_segments(
-            relationship.source_segment_ids, valid_segments, relationship.relationship_id
-        )
+        object_name = f"relationship {relationship.relationship_id}"
+        _ensure_known_segments(relationship.source_segment_ids, valid_segments, object_name)
         if relationship.subject_mention_id not in mention_set:
             raise ContractValidationError(
                 f"{relationship.relationship_id} has unknown subject mention"
@@ -67,9 +200,29 @@ def validate_extraction_result(transcript: TranscriptEnvelope, result: Extractio
             raise ContractValidationError(
                 f"{relationship.relationship_id} has unknown object mention"
             )
-        if relationship.subject_mention_id == relationship.object_mention_id:
+
+        subject = mention_by_id[relationship.subject_mention_id]
+        object_person = mention_by_id[relationship.object_mention_id]
+        _ensure_person_evidence_overlap(
+            source_ids=relationship.source_segment_ids,
+            person=subject,
+            object_name=object_name,
+        )
+        _ensure_person_evidence_overlap(
+            source_ids=relationship.source_segment_ids,
+            person=object_person,
+            object_name=object_name,
+        )
+
+        explicit_people = _explicit_people_in_segments(
+            relationship.source_segment_ids,
+            segment_text_by_id,
+            result.people_mentions,
+        )
+        endpoints = {subject.mention_id, object_person.mention_id}
+        if len(explicit_people) >= 2 and not endpoints.issubset(explicit_people):
             raise ContractValidationError(
-                f"{relationship.relationship_id} creates a self relationship"
+                f"{relationship.relationship_id} endpoints do not match explicitly named people"
             )
 
     for event in result.events:
@@ -81,12 +234,27 @@ def validate_extraction_result(transcript: TranscriptEnvelope, result: Extractio
             )
 
     for description in result.descriptions:
-        _ensure_known_segments(
-            description.source_segment_ids, valid_segments, description.description_id
-        )
+        object_name = f"description {description.description_id}"
+        _ensure_known_segments(description.source_segment_ids, valid_segments, object_name)
         if description.person_mention_id not in mention_set:
             raise ContractValidationError(
                 f"{description.description_id} references an unknown person"
+            )
+
+        target = mention_by_id[description.person_mention_id]
+        _ensure_person_evidence_overlap(
+            source_ids=description.source_segment_ids,
+            person=target,
+            object_name=object_name,
+        )
+        explicit_people = _explicit_people_in_segments(
+            description.source_segment_ids,
+            segment_text_by_id,
+            result.people_mentions,
+        )
+        if explicit_people and target.mention_id not in explicit_people:
+            raise ContractValidationError(
+                f"{description.description_id} is assigned to a person not named in its evidence"
             )
 
     for story in result.stories:

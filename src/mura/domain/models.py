@@ -34,6 +34,35 @@ class ResolutionStatus(StrEnum):
     NEEDS_REVIEW = "needs_review"
 
 
+class CorrectionKind(StrEnum):
+    ASR_NORMALIZATION = "asr_normalization"
+    SPEAKER_SELF_CORRECTION = "speaker_self_correction"
+
+
+class PersonCategory(StrEnum):
+    FAMILY_MEMBER = "family_member"
+    FRIEND = "friend"
+    ROOMMATE = "roommate"
+    ACQUAINTANCE = "acquaintance"
+    OTHER_NON_FAMILY = "other_non_family"
+    UNKNOWN = "unknown"
+
+
+class RelationshipType(StrEnum):
+    PARENT_CHILD = "parent_child"
+    SPOUSE = "spouse"
+    SIBLING = "sibling"
+
+
+class RelationshipRole(StrEnum):
+    PARENT = "parent"
+    CHILD = "child"
+    SPOUSE = "spouse"
+    OLDER_SIBLING = "older_sibling"
+    YOUNGER_SIBLING = "younger_sibling"
+    SIBLING = "sibling"
+
+
 class RawSegment(StrictModel):
     segment_id: str
     start: float = Field(ge=0)
@@ -73,18 +102,25 @@ class ReadableSegment(StrictModel):
 
 
 class DetectedCorrection(StrictModel):
+    kind: CorrectionKind
     subject: str | None = None
-    original_value: str
-    corrected_value: str
+    original_value: str = Field(min_length=1)
+    corrected_value: str = Field(min_length=1)
     source_segment_ids: list[str] = Field(min_length=1)
     explanation: str
     confidence: float = Field(ge=0, le=1)
 
+    @model_validator(mode="after")
+    def validate_changed_value(self) -> DetectedCorrection:
+        if self.original_value.casefold() == self.corrected_value.casefold():
+            raise ValueError("a correction must change the value")
+        return self
+
 
 class UncertainFragment(StrictModel):
     source_segment_ids: list[str] = Field(min_length=1)
-    raw_text: str
-    possible_interpretation: str | None = None
+    raw_text: str = Field(min_length=1)
+    possible_interpretation: None = None
     reason: str
 
 
@@ -99,6 +135,7 @@ class PersonMention(StrictModel):
     mention_id: str
     name: str = Field(min_length=1)
     aliases: list[str] = Field(default_factory=list)
+    category: PersonCategory = PersonCategory.UNKNOWN
     relation_to_speaker: str | None = None
     source_segment_ids: list[str] = Field(min_length=1)
     assertion_mode: AssertionMode = AssertionMode.EXPLICIT
@@ -108,13 +145,37 @@ class PersonMention(StrictModel):
 
 class RelationshipClaim(StrictModel):
     relationship_id: str
+    relationship_type: RelationshipType
     subject_mention_id: str
-    relation: str
+    subject_role: RelationshipRole
     object_mention_id: str
+    object_role: RelationshipRole
     source_segment_ids: list[str] = Field(min_length=1)
     assertion_mode: AssertionMode = AssertionMode.EXPLICIT
     verification_status: VerificationStatus = VerificationStatus.UNREVIEWED
     confidence: float = Field(ge=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_relationship_roles(self) -> RelationshipClaim:
+        if self.subject_mention_id == self.object_mention_id:
+            raise ValueError("a relationship must connect two different mentions")
+
+        role_pair = (self.subject_role, self.object_role)
+        allowed_pairs = {
+            RelationshipType.PARENT_CHILD: {
+                (RelationshipRole.PARENT, RelationshipRole.CHILD),
+            },
+            RelationshipType.SPOUSE: {
+                (RelationshipRole.SPOUSE, RelationshipRole.SPOUSE),
+            },
+            RelationshipType.SIBLING: {
+                (RelationshipRole.OLDER_SIBLING, RelationshipRole.YOUNGER_SIBLING),
+                (RelationshipRole.SIBLING, RelationshipRole.SIBLING),
+            },
+        }
+        if role_pair not in allowed_pairs[self.relationship_type]:
+            raise ValueError(f"invalid role pair {role_pair!r} for {self.relationship_type.value}")
+        return self
 
 
 class EventDate(StrictModel):
@@ -189,6 +250,7 @@ class KnownPerson(StrictModel):
     person_id: str
     canonical_name: str
     aliases: list[str] = Field(default_factory=list)
+    category: PersonCategory = PersonCategory.UNKNOWN
     relation_to_speaker: str | None = None
 
 
