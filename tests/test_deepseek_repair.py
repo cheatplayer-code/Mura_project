@@ -4,7 +4,12 @@ from typing import Any
 
 from mura.deepseek.client import DeepSeekUsage
 from mura.deepseek.service import DeepSeekPipelineService
-from mura.domain.models import CleanerResult, RawSegment, ReadableSegment, TranscriptEnvelope
+from mura.domain.models import (
+    CleanerResult,
+    RawSegment,
+    ReadableSegment,
+    TranscriptEnvelope,
+)
 
 
 class FakeDeepSeekClient:
@@ -85,7 +90,9 @@ def test_extractor_repairs_self_relationship_once() -> None:
         chunker_version="v1",
     )
     cleaned = CleanerResult(
-        readable_segments=[ReadableSegment(segment_id="seg_001", text="Әкемнің аты Сапар.")],
+        readable_segments=[
+            ReadableSegment(segment_id="seg_001", text="Әкемнің аты Сапар.")
+        ],
         full_readable_text="Әкемнің аты Сапар.",
     )
     client = FakeDeepSeekClient()
