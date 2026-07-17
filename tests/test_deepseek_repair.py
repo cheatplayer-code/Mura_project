@@ -31,8 +31,7 @@ class FakeDeepSeekClient:
             finish_reason="stop",
             request_seconds=0.1,
         )
-
-        base = {
+        return {
             "recording_id": "rec_1",
             "speaker_id": "speaker_1",
             "speaker_name": "Күләш",
@@ -46,33 +45,26 @@ class FakeDeepSeekClient:
                     "confidence": 1.0,
                 }
             ],
+            "relationship_claims": [
+                {
+                    "relationship_id": "relationship_005",
+                    "relationship_type": "parent_child",
+                    "subject_mention_id": "mention_001",
+                    "subject_role": "parent",
+                    "object_mention_id": "mention_001",
+                    "object_role": "child",
+                    "source_segment_ids": ["seg_001"],
+                    "confidence": 1.0,
+                }
+            ],
             "events": [],
             "descriptions": [],
             "stories": [],
             "unresolved_questions": [],
-        }
-
-        if self.calls == 1:
-            return {
-                **base,
-                "relationship_claims": [
-                    {
-                        "relationship_id": "relationship_005",
-                        "relationship_type": "parent_child",
-                        "subject_mention_id": "mention_001",
-                        "subject_role": "parent",
-                        "object_mention_id": "mention_001",
-                        "object_role": "child",
-                        "source_segment_ids": ["seg_001"],
-                        "confidence": 1.0,
-                    }
-                ],
-            }, usage
-
-        return {**base, "relationship_claims": []}, usage
+        }, usage
 
 
-def test_extractor_repairs_self_relationship_once() -> None:
+def test_extractor_quarantines_self_relationship_without_second_llm_call() -> None:
     transcript = TranscriptEnvelope(
         recording_id="rec_1",
         duration_seconds=12,
@@ -103,7 +95,10 @@ def test_extractor_repairs_self_relationship_once() -> None:
         speaker_name="Күләш",
     )
 
-    assert client.calls == 2
+    assert client.calls == 1
+    assert [person.name for person in result.people_mentions] == ["Сапар"]
     assert result.relationship_claims == []
-    assert usage["repair_attempted"] is True
-    assert "different mentions" in usage["initial_validation_error"]
+    assert usage["repair_attempted"] is False
+    assert usage["quarantined_items"] == 1
+    assert usage["extraction_issues"][0]["object_id"] == "relationship_005"
+    assert "different mentions" in usage["extraction_issues"][0]["detail"]
