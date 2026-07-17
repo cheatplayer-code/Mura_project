@@ -57,9 +57,7 @@ class DeepSeekClient:
         self._raise_for_status(response)
         body = response.json()
         return [
-            item["id"]
-            for item in body.get("data", [])
-            if isinstance(item, dict) and item.get("id")
+            item["id"] for item in body.get("data", []) if isinstance(item, dict) and item.get("id")
         ]
 
     def request_json(
