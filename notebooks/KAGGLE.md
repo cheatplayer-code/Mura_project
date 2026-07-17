@@ -4,18 +4,50 @@ Use a fresh Kaggle notebook with Internet enabled and a T4 GPU.
 
 ## 1. Add secrets
 
-- `KAGGLE_ASR_API_KEY`: long random bearer token
+- `KAGGLE_ASR_API_KEY`: long random bearer token (minimum 32 characters)
 - `HF_TOKEN`: optional for the public GigaAM model
 - `CORE_BACKEND_URL`: optional core API URL
 - `WORKER_REGISTRATION_TOKEN`: required only with `CORE_BACKEND_URL`
 
 ## 2. Clone and install
 
+Always leave the repository directory before deleting or recloning it.
+
 ```python
-!git clone https://github.com/cheatplayer-code/Mura_project.git
-%cd Mura_project
-!git checkout feature/memory-pipeline
-!pip install -q -e ".[kaggle]"
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+work_dir = Path("/kaggle/working")
+repo_dir = work_dir / "Mura_project"
+os.chdir(work_dir)
+
+if repo_dir.exists():
+    shutil.rmtree(repo_dir)
+
+subprocess.run(
+    [
+        "git",
+        "clone",
+        "--depth",
+        "1",
+        "--branch",
+        "main",
+        "https://github.com/cheatplayer-code/Mura_project.git",
+        str(repo_dir),
+    ],
+    cwd=work_dir,
+    check=True,
+)
+
+os.chdir(repo_dir)
+subprocess.run(
+    [sys.executable, "-m", "pip", "install", "-q", "-e", ".[kaggle]"],
+    cwd=repo_dir,
+    check=True,
+)
 ```
 
 Kaggle secrets are not ordinary environment variables. Load them before starting the worker:
