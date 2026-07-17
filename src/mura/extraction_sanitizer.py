@@ -182,7 +182,9 @@ def sanitize_extraction_output(
             )
 
     raw_languages = raw.get("languages", [])
-    if isinstance(raw_languages, list) and all(isinstance(item, str) for item in raw_languages):
+    if isinstance(raw_languages, list) and all(
+        isinstance(item, str) for item in raw_languages
+    ):
         languages = list(dict.fromkeys(raw_languages))
     else:
         languages = []
@@ -290,7 +292,9 @@ def sanitize_extraction_output(
         items=events,
         object_type="event",
         id_field="event_id",
-        build_candidate=lambda item: _base_result(**common, people=valid_people, events=[item]),
+        build_candidate=lambda item: _base_result(
+            **common, people=valid_people, events=[item]
+        ),
         transcript=transcript,
         issues=issues,
     )
