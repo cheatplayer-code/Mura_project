@@ -17,17 +17,24 @@ Rules:
    add one uncertain_fragments item. possible_interpretation must always be null.
 7. Never return the same raw span as both a detected correction and an uncertain fragment.
 8. detected_corrections has exactly two allowed kinds:
-   - speaker_self_correction: the speaker explicitly replaced one value with another; preserve
-     both versions in the readable text.
-   - asr_normalization: an unambiguous ASR spelling/encoding error; original_value must be an
+   - speaker_self_correction: use only when an explicit correction cue such as "жоқ",
+     "дұрыс айтсам", "нет", or "точнее" shows that the speaker replaced one factual value
+     with another. original_value must be an exact raw substring. The readable segment may show
+     only the speaker's final corrected form because the raw segment and correction object retain
+     the withdrawn wording.
+   - asr_normalization: an unambiguous ASR spelling or encoding error; original_value must be an
      exact raw substring and corrected_value must appear in the readable segment.
-9. Do not report ordinary spelling, grammar, or stylistic edits as factual corrections.
-10. Return exactly one readable segment for every input segment, in the same order and with
+9. Adjacent near-spelling variants without an explicit correction cue, for example
+   "бекжат бекзат", are not speaker_self_correction. If the intended spelling is unambiguous,
+   use asr_normalization for the smallest erroneous span; otherwise keep the raw span and mark
+   it uncertain.
+10. Do not report ordinary spelling, grammar, or stylistic edits as factual corrections.
+11. Return exactly one readable segment for every input segment, in the same order and with
     the same segment_id.
-11. full_readable_text must equal the readable segments joined in order.
-12. Every correction and uncertain fragment must cite the segment that literally contains the
+12. full_readable_text must equal the readable segments joined in order.
+13. Every correction and uncertain fragment must cite the segment that literally contains the
     reported raw text.
-13. Return JSON only, without Markdown or explanation.
+14. Return JSON only, without Markdown or explanation.
 
 Example for uncertainty:
 {
@@ -40,6 +47,22 @@ Example for uncertainty:
     "reason": "The ASR token is unclear."
   }],
   "full_readable_text": "Она была ичи и любила читать."
+}
+
+Example for an adjacent ASR spelling variant:
+{
+  "readable_segments": [{"segment_id": "seg_001", "text": "Кенжеміз Бекзат."}],
+  "detected_corrections": [{
+    "kind": "asr_normalization",
+    "subject": "Бекзат",
+    "original_value": "бекжат",
+    "corrected_value": "Бекзат",
+    "source_segment_ids": ["seg_001"],
+    "explanation": "Adjacent near-spelling variant without an explicit speaker correction cue.",
+    "confidence": 1.0
+  }],
+  "uncertain_fragments": [],
+  "full_readable_text": "Кенжеміз Бекзат."
 }
 """.strip()
 
@@ -57,11 +80,16 @@ Rules:
 3. An unclear raw token must remain verbatim in the readable segment, must appear once in
    uncertain_fragments, and possible_interpretation must be null.
 4. Never return the same raw span as both a correction and an uncertain fragment.
-5. A speaker self-correction preserves both the original and corrected values in readable text.
-6. An ASR normalization must cite a raw original_value and a corrected_value that appears in
+5. Use speaker_self_correction only when the raw speech contains an explicit correction cue.
+   The correction object must retain the exact original raw wording and the readable text may
+   render only the speaker's final corrected form.
+6. Adjacent near-spelling variants without a correction cue are not speaker_self_correction.
+   Convert an unambiguous case to asr_normalization using the smallest erroneous raw span;
+   otherwise preserve it and mark it uncertain.
+7. An ASR normalization must cite a raw original_value and a corrected_value that appears in
    readable text.
-7. full_readable_text must equal all readable segment texts joined in order.
-8. Return JSON only, without Markdown or explanation.
+8. full_readable_text must equal all readable segment texts joined in order.
+9. Return JSON only, without Markdown or explanation.
 """.strip()
 
 
