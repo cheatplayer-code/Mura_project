@@ -7,6 +7,7 @@ from pydantic import BaseModel, ValidationError
 
 from mura.deepseek.client import DeepSeekClient, DeepSeekError, DeepSeekUsage
 from mura.deepseek.prompts import (
+    CLEANER_REPAIR_SYSTEM_PROMPT,
     CLEANER_SYSTEM_PROMPT,
     EXTRACTION_REPAIR_SYSTEM_PROMPT,
     EXTRACTOR_SYSTEM_PROMPT,
@@ -43,9 +44,47 @@ class DeepSeekPipelineService:
             payload=payload,
             max_tokens=12_000,
         )
-        result = self._validate_model(CleanerResult, raw, "cleaner")
-        validate_cleaner_result(transcript, result)
-        return result, self._usage_dict(usage)
+        initial_usage = self._usage_dict(usage)
+        try:
+            result = self._validate_model(CleanerResult, raw, "cleaner")
+            validate_cleaner_result(transcript, result)
+        except (DeepSeekError, ContractValidationError) as exc:
+            result, repair_usage = self._repair_cleaner(
+                transcript=transcript,
+                invalid_output=raw,
+                validation_error=str(exc),
+            )
+            return result, {
+                **repair_usage,
+                "repair_attempted": True,
+                "initial_validation_error": str(exc),
+                "initial_usage": initial_usage,
+            }
+        return result, {**initial_usage, "repair_attempted": False}
+
+    def _repair_cleaner(
+        self,
+        *,
+        transcript: TranscriptEnvelope,
+        invalid_output: dict[str, Any],
+        validation_error: str,
+    ) -> tuple[CleanerResult, dict[str, Any]]:
+        repair_payload = {
+            "validation_error": validation_error,
+            "output_schema": CleanerResult.model_json_schema(),
+            "invalid_output": invalid_output,
+            "allowed_segment_ids": [segment.segment_id for segment in transcript.segments],
+            "raw_segments": [segment.model_dump() for segment in transcript.segments],
+        }
+        repaired_raw, repair_usage = self.client.request_json(
+            system_prompt=CLEANER_REPAIR_SYSTEM_PROMPT,
+            payload=repair_payload,
+            max_tokens=12_000,
+            attempts=2,
+        )
+        repaired = self._validate_model(CleanerResult, repaired_raw, "cleaner repair")
+        validate_cleaner_result(transcript, repaired)
+        return repaired, self._usage_dict(repair_usage)
 
     def extract(
         self,
