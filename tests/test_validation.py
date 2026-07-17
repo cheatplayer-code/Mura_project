@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
+
 from mura.domain.models import (
     CleanerResult,
     CorrectionKind,
@@ -21,7 +23,6 @@ from mura.validation import (
     validate_cleaner_result,
     validate_extraction_result,
 )
-from pydantic import ValidationError
 
 
 def transcript(*segments: tuple[str, str]) -> TranscriptEnvelope:
