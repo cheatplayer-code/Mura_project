@@ -90,9 +90,7 @@ def test_extractor_repairs_self_relationship_once() -> None:
         chunker_version="v1",
     )
     cleaned = CleanerResult(
-        readable_segments=[
-            ReadableSegment(segment_id="seg_001", text="Әкемнің аты Сапар.")
-        ],
+        readable_segments=[ReadableSegment(segment_id="seg_001", text="Әкемнің аты Сапар.")],
         full_readable_text="Әкемнің аты Сапар.",
     )
     client = FakeDeepSeekClient()
