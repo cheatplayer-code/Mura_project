@@ -9,16 +9,11 @@ from mura.deepseek.client import DeepSeekClient, DeepSeekError, DeepSeekUsage
 from mura.deepseek.prompts import (
     CLEANER_REPAIR_SYSTEM_PROMPT,
     CLEANER_SYSTEM_PROMPT,
-    EXTRACTION_REPAIR_SYSTEM_PROMPT,
     EXTRACTOR_SYSTEM_PROMPT,
 )
 from mura.domain.models import CleanerResult, ExtractionResult, TranscriptEnvelope
-from mura.evidence import complete_relationship_evidence
-from mura.validation import (
-    ContractValidationError,
-    validate_cleaner_result,
-    validate_extraction_result,
-)
+from mura.extraction_sanitizer import sanitize_extraction_output
+from mura.validation import ContractValidationError, validate_cleaner_result
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -116,66 +111,18 @@ class DeepSeekPipelineService:
             payload=payload,
             max_tokens=16_000,
         )
-        initial_usage = self._usage_dict(usage)
-        initial_evidence_closure_relationships = 0
-
-        try:
-            result = self._validate_model(ExtractionResult, raw, "extractor")
-            result, initial_evidence_closure_relationships = complete_relationship_evidence(
-                result, transcript
-            )
-            validate_extraction_result(transcript, result)
-        except (DeepSeekError, ContractValidationError) as exc:
-            result, repair_usage = self._repair_extraction(
-                transcript=transcript,
-                cleaned=cleaned,
-                invalid_output=raw,
-                validation_error=str(exc),
-            )
-            return result, {
-                **repair_usage,
-                "repair_attempted": True,
-                "initial_validation_error": str(exc),
-                "initial_evidence_closure_relationships": (initial_evidence_closure_relationships),
-                "initial_usage": initial_usage,
-            }
-
+        result, extraction_issues, evidence_closure_count = sanitize_extraction_output(
+            raw=raw,
+            transcript=transcript,
+            speaker_id=speaker_id,
+            speaker_name=speaker_name,
+        )
         return result, {
-            **initial_usage,
+            **self._usage_dict(usage),
             "repair_attempted": False,
-            "evidence_closure_relationships": initial_evidence_closure_relationships,
-        }
-
-    def _repair_extraction(
-        self,
-        *,
-        transcript: TranscriptEnvelope,
-        cleaned: CleanerResult,
-        invalid_output: dict[str, Any],
-        validation_error: str,
-    ) -> tuple[ExtractionResult, dict[str, Any]]:
-        repair_payload = {
-            "validation_error": validation_error,
-            "output_schema": ExtractionResult.model_json_schema(),
-            "invalid_output": invalid_output,
-            "allowed_segment_ids": [segment.segment_id for segment in transcript.segments],
-            "raw_segments": [segment.model_dump() for segment in transcript.segments],
-            "readable_segments": [segment.model_dump() for segment in cleaned.readable_segments],
-        }
-        repaired_raw, repair_usage = self.client.request_json(
-            system_prompt=EXTRACTION_REPAIR_SYSTEM_PROMPT,
-            payload=repair_payload,
-            max_tokens=16_000,
-            attempts=2,
-        )
-        repaired = self._validate_model(ExtractionResult, repaired_raw, "extractor repair")
-        repaired, evidence_closure_relationships = complete_relationship_evidence(
-            repaired, transcript
-        )
-        validate_extraction_result(transcript, repaired)
-        return repaired, {
-            **self._usage_dict(repair_usage),
-            "evidence_closure_relationships": evidence_closure_relationships,
+            "evidence_closure_relationships": evidence_closure_count,
+            "quarantined_items": len(extraction_issues),
+            "extraction_issues": extraction_issues,
         }
 
     @staticmethod
