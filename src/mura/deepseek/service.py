@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import Any
+from typing import Any, TypeVar
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from mura.deepseek.client import DeepSeekClient, DeepSeekError, DeepSeekUsage
 from mura.deepseek.prompts import CLEANER_SYSTEM_PROMPT, EXTRACTOR_SYSTEM_PROMPT
 from mura.domain.models import CleanerResult, ExtractionResult, TranscriptEnvelope
 from mura.validation import validate_cleaner_result, validate_extraction_result
+
+ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 class DeepSeekPipelineService:
@@ -71,7 +73,9 @@ class DeepSeekPipelineService:
         return result, self._usage_dict(usage)
 
     @staticmethod
-    def _validate_model(model_type: type, raw: dict[str, Any], stage: str):
+    def _validate_model(
+        model_type: type[ModelT], raw: dict[str, Any], stage: str
+    ) -> ModelT:
         try:
             return model_type.model_validate(raw)
         except ValidationError as exc:
