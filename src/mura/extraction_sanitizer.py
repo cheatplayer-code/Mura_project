@@ -40,9 +40,7 @@ def _object_id(raw: object, field_name: str) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-def _list_value(
-    raw: dict[str, Any], key: str, issues: list[ExtractionIssue]
-) -> list[object]:
+def _list_value(raw: dict[str, Any], key: str, issues: list[ExtractionIssue]) -> list[object]:
     value = raw.get(key, [])
     if isinstance(value, list):
         return value
@@ -183,9 +181,7 @@ def sanitize_extraction_output(
             )
 
     raw_languages = raw.get("languages", [])
-    if isinstance(raw_languages, list) and all(
-        isinstance(item, str) for item in raw_languages
-    ):
+    if isinstance(raw_languages, list) and all(isinstance(item, str) for item in raw_languages):
         languages = list(dict.fromkeys(raw_languages))
     else:
         languages = []
@@ -268,9 +264,7 @@ def sanitize_extraction_output(
         stories=stories,
         questions=questions,
     )
-    preliminary, evidence_closure_count = complete_relationship_evidence(
-        preliminary, transcript
-    )
+    preliminary, evidence_closure_count = complete_relationship_evidence(preliminary, transcript)
     relationships = preliminary.relationship_claims
 
     common = {
@@ -293,9 +287,7 @@ def sanitize_extraction_output(
         items=events,
         object_type="event",
         id_field="event_id",
-        build_candidate=lambda item: _base_result(
-            **common, people=valid_people, events=[item]
-        ),
+        build_candidate=lambda item: _base_result(**common, people=valid_people, events=[item]),
         transcript=transcript,
         issues=issues,
     )
@@ -323,9 +315,7 @@ def sanitize_extraction_output(
         items=questions,
         object_type="question",
         id_field="question_id",
-        build_candidate=lambda item: _base_result(
-            **common, people=valid_people, questions=[item]
-        ),
+        build_candidate=lambda item: _base_result(**common, people=valid_people, questions=[item]),
         transcript=transcript,
         issues=issues,
     )
