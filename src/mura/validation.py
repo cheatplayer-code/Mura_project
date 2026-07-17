@@ -6,7 +6,6 @@ from collections.abc import Iterable
 
 from mura.domain.models import (
     CleanerResult,
-    CorrectionKind,
     ExtractionResult,
     PersonMention,
     TranscriptEnvelope,
@@ -132,13 +131,8 @@ def validate_cleaner_result(transcript: TranscriptEnvelope, result: CleanerResul
             segment_text_by_id=readable_text_by_id,
             object_name=f"{object_name} corrected value",
         )
-        if correction.kind is CorrectionKind.SPEAKER_SELF_CORRECTION:
-            _ensure_evidence_text(
-                evidence_text=correction.original_value,
-                source_ids=correction.source_segment_ids,
-                segment_text_by_id=readable_text_by_id,
-                object_name=f"{object_name} original self-correction value",
-            )
+        # The immutable raw segment and the DetectedCorrection object preserve the withdrawn
+        # wording. The readable transcript may render only the speaker's final corrected form.
         normalized_correction_sources.append(_normalize_evidence(correction.original_value))
 
     for fragment in result.uncertain_fragments:
