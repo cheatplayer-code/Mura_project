@@ -4,14 +4,16 @@ from datetime import UTC, datetime
 from threading import Lock
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, HttpUrl, field_validator
 
 from mura.config import CoreSettings
-from mura.deepseek import DeepSeekClient, DeepSeekPipelineService
+from mura.deepseek import DeepSeekClient, DeepSeekError, DeepSeekPipelineService
 from mura.domain.models import PipelineRequest, PipelineResult
 from mura.pipeline import MuraPipeline
 from mura.security import verify_bearer_token
+from mura.validation import ContractValidationError
 
 app = FastAPI(
     title="Mura Core API",
@@ -64,6 +66,31 @@ def get_pipeline(
                 )
                 _pipeline = MuraPipeline(DeepSeekPipelineService(client))
     return _pipeline
+
+
+@app.exception_handler(DeepSeekError)
+async def handle_deepseek_error(_request: Request, exc: DeepSeekError) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        content={
+            "error": "deepseek_pipeline_failed",
+            "detail": str(exc),
+        },
+    )
+
+
+@app.exception_handler(ContractValidationError)
+async def handle_contract_validation_error(
+    _request: Request,
+    exc: ContractValidationError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        content={
+            "error": "pipeline_output_invalid",
+            "detail": str(exc),
+        },
+    )
 
 
 @app.get("/health")
