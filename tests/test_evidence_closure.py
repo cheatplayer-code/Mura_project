@@ -84,9 +84,7 @@ def _extraction(object_mention_id: str = "mention_nurgali") -> ExtractionResult:
 
 def test_relationship_evidence_closure_adds_missing_endpoint_identity() -> None:
     transcript = _transcript()
-    completed, changed_count = complete_relationship_evidence(
-        _extraction(), transcript
-    )
+    completed, changed_count = complete_relationship_evidence(_extraction(), transcript)
 
     assert changed_count == 1
     assert completed.relationship_claims[0].source_segment_ids == [
