@@ -15,11 +15,12 @@ def _ordered_unique_segment_ids(
     ]
 
     seen = set(ordered)
-    ordered.extend(
-        segment_id
-        for segment_id in segment_ids
-        if segment_id not in seen and not seen.add(segment_id)
-    )
+    for segment_id in segment_ids:
+        if segment_id in seen:
+            continue
+        ordered.append(segment_id)
+        seen.add(segment_id)
+
     return ordered
 
 
