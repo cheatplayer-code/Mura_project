@@ -66,7 +66,20 @@ jobs:
           retention-days: 1
 
       - name: Type check
-        run: mypy src/mura apps services scripts
+        id: typing
+        shell: bash
+        run: |
+          set -o pipefail
+          mypy src/mura apps services scripts 2>&1 | tee mypy-report.txt
+
+      - name: Upload mypy diagnostics
+        if: failure() && steps.typing.outcome == 'failure'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mypy-report
+          path: mypy-report.txt
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Test with coverage
         run: >-
