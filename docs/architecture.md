@@ -13,8 +13,10 @@ Mobile/web client
             -> FFmpeg -> Silero VAD -> smart chunks -> GigaAM large_ctc
        <- source-linked raw transcript
        -> DeepSeek cleaner
+       -> evidence validation and optional cleaner repair
        -> DeepSeek extractor
-       -> Pydantic and graph-reference validators
+       -> Pydantic, graph-reference, and semantic validators
+       -> optional extraction repair
        -> mention resolver / review queue
        -> future database and family graph
 ```
@@ -44,11 +46,43 @@ Security and stability rules:
 
 The last condition protects genuine human repetition.
 
-### Core processing
+### Conservative transcript cleaning
 
-The cleaner may add punctuation and mark uncertainty. It may not translate, invent, or silently alter names and numbers.
+The cleaner may add punctuation and capitalization, but it may not translate or silently rewrite facts. An unclear ASR token stays verbatim in the readable transcript and is separately marked as uncertain with no guessed interpretation.
+
+Corrections are typed:
+
+- `speaker_self_correction` preserves both versions spoken by the narrator;
+- `asr_normalization` is reserved for an unambiguous spelling or encoding error.
+
+Every correction or uncertain fragment must cite a segment that literally contains the reported raw text. The validator also checks that uncertain text was not deleted and that the same span was not classified as both corrected and uncertain. A failed cleaner contract gets one targeted repair attempt.
+
+### Canonical family semantics
+
+Relationship labels are not free-form text. Each relationship has a canonical type and role pair:
+
+- `parent_child`: `(parent, child)`;
+- `spouse`: `(spouse, spouse)`;
+- ordered `sibling`: `(older_sibling, younger_sibling)`;
+- unordered `sibling`: `(sibling, sibling)`.
+
+This makes direction explicit and prevents grammatical phrasing from reversing the family graph.
+
+People are also classified as `family_member`, `friend`, `roommate`, `acquaintance`, `other_non_family`, or `unknown`. Only family members belong in the шежіре tree; non-family people can still appear in stories and events.
+
+### Semantic integrity checks
 
 Every extracted person, relationship, event, description, story, and unresolved question must reference existing transcript segments. All generated objects start as `unreviewed`; every new story is forced to `private` by the application schema.
+
+In addition to reference checks, the semantic validator verifies that:
+
+- relationship endpoints overlap their cited person evidence;
+- canonical relationship roles are valid for the selected type;
+- descriptions are not assigned to a different explicitly named person;
+- correction and uncertainty evidence occurs in the cited raw segment;
+- IDs are unique within every extraction collection.
+
+Invalid output is never silently accepted. The extractor receives one targeted repair attempt; if repair still fails, the API returns a structured upstream error.
 
 ### Mention resolution
 
@@ -59,8 +93,12 @@ A mention is an occurrence in one recording. A person is a durable graph node. T
 - `RawSegment` text is never overwritten.
 - Segment IDs are unique inside a recording.
 - Cleaned output covers exactly the same segment IDs as raw output.
+- Unclear text remains visible and source-linked.
 - All extraction references resolve.
 - A relationship cannot connect a mention to itself.
+- Relationship role pairs are canonical and directionally explicit.
+- A person description cannot be attached to another explicitly named person.
+- Non-family people are excluded from the family-tree layer.
 - LLM confidence is not equivalent to user confirmation.
 - Publication is always an explicit user action.
 
