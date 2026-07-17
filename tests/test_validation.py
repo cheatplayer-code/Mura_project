@@ -27,7 +27,12 @@ from mura.validation import (
 
 def transcript(*segments: tuple[str, str]) -> TranscriptEnvelope:
     raw_segments = [
-        RawSegment(segment_id=segment_id, start=index * 10, end=(index + 1) * 10, text=text)
+        RawSegment(
+            segment_id=segment_id,
+            start=index * 10,
+            end=(index + 1) * 10,
+            text=text,
+        )
         for index, (segment_id, text) in enumerate(segments)
     ]
     return TranscriptEnvelope(
@@ -221,7 +226,9 @@ def test_nurgali_is_younger_sibling_of_sapar() -> None:
     assert relationship.object_role is RelationshipRole.YOUNGER_SIBLING
 
 
-def _basketball_extraction(description_person_id: str) -> tuple[TranscriptEnvelope, ExtractionResult]:
+def _basketball_extraction(
+    description_person_id: str,
+) -> tuple[TranscriptEnvelope, ExtractionResult]:
     raw = transcript(("seg_020", "Диас баскетбол ойнағанды жақсы көреді"))
     result = ExtractionResult(
         recording_id="rec_1",
