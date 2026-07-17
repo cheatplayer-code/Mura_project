@@ -5,12 +5,13 @@ from threading import Lock
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
-from pydantic import BaseModel, ConfigDict, HttpUrl
+from pydantic import BaseModel, ConfigDict, HttpUrl, field_validator
 
 from mura.config import CoreSettings
 from mura.deepseek import DeepSeekClient, DeepSeekPipelineService
 from mura.domain.models import PipelineRequest, PipelineResult
 from mura.pipeline import MuraPipeline
+from mura.security import verify_bearer_token
 
 app = FastAPI(
     title="Mura Core API",
@@ -29,6 +30,13 @@ class WorkerRegistration(BaseModel):
 
     url: HttpUrl
     status: str = "ready"
+
+    @field_validator("url")
+    @classmethod
+    def require_https(cls, value: HttpUrl) -> HttpUrl:
+        if value.scheme != "https":
+            raise ValueError("worker URL must use HTTPS")
+        return value
 
 
 def get_settings() -> CoreSettings:
@@ -72,12 +80,13 @@ def process_transcript(
 @app.post("/v1/workers/register")
 def register_worker(
     registration: WorkerRegistration,
+    settings: Annotated[CoreSettings, Depends(get_settings)],
     authorization: Annotated[str | None, Header()] = None,
-    settings: Annotated[CoreSettings, Depends(get_settings)] = None,
 ) -> dict[str, object]:
-    expected = f"Bearer {settings.worker_registration_token}"
-    if authorization != expected:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid token")
+    verify_bearer_token(
+        authorization,
+        expected_token=settings.worker_registration_token,
+    )
 
     with _worker_lock:
         _worker_state["url"] = str(registration.url).rstrip("/")
@@ -88,6 +97,13 @@ def register_worker(
 
 
 @app.get("/v1/workers/current")
-def current_worker() -> dict[str, object]:
+def current_worker(
+    settings: Annotated[CoreSettings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, object]:
+    verify_bearer_token(
+        authorization,
+        expected_token=settings.worker_registration_token,
+    )
     with _worker_lock:
         return dict(_worker_state)
