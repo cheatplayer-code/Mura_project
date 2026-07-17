@@ -10,9 +10,7 @@ class CoreSettings(BaseSettings):
     deepseek_api_key: str = Field(alias="DEEPSEEK_API_KEY", min_length=8)
     deepseek_base_url: str = Field(default="https://api.deepseek.com", alias="DEEPSEEK_BASE_URL")
     deepseek_model: str = Field(default="deepseek-v4-flash", alias="DEEPSEEK_MODEL")
-    deepseek_fallback_model: str = Field(
-        default="deepseek-v4-pro", alias="DEEPSEEK_FALLBACK_MODEL"
-    )
+    deepseek_fallback_model: str = Field(default="deepseek-v4-pro", alias="DEEPSEEK_FALLBACK_MODEL")
     worker_registration_token: str = Field(
         alias="WORKER_REGISTRATION_TOKEN",
         min_length=32,
