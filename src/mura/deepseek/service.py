@@ -121,8 +121,8 @@ class DeepSeekPipelineService:
 
         try:
             result = self._validate_model(ExtractionResult, raw, "extractor")
-            result, initial_evidence_closure_relationships = (
-                complete_relationship_evidence(result, transcript)
+            result, initial_evidence_closure_relationships = complete_relationship_evidence(
+                result, transcript
             )
             validate_extraction_result(transcript, result)
         except (DeepSeekError, ContractValidationError) as exc:
@@ -136,9 +136,7 @@ class DeepSeekPipelineService:
                 **repair_usage,
                 "repair_attempted": True,
                 "initial_validation_error": str(exc),
-                "initial_evidence_closure_relationships": (
-                    initial_evidence_closure_relationships
-                ),
+                "initial_evidence_closure_relationships": (initial_evidence_closure_relationships),
                 "initial_usage": initial_usage,
             }
 
