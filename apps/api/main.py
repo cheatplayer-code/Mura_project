@@ -41,7 +41,7 @@ class WorkerRegistration(BaseModel):
 
 def get_settings() -> CoreSettings:
     try:
-        return CoreSettings()
+        return CoreSettings()  # type: ignore[call-arg]
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
