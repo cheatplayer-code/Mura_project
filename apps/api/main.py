@@ -49,7 +49,9 @@ def get_settings() -> CoreSettings:
         ) from exc
 
 
-def get_pipeline(settings: Annotated[CoreSettings, Depends(get_settings)]) -> MuraPipeline:
+def get_pipeline(
+    settings: Annotated[CoreSettings, Depends(get_settings)],
+) -> MuraPipeline:
     global _pipeline
     if _pipeline is None:
         with _pipeline_lock:
