@@ -73,9 +73,7 @@ class DeepSeekPipelineService:
             "validation_error": validation_error,
             "output_schema": CleanerResult.model_json_schema(),
             "invalid_output": invalid_output,
-            "allowed_segment_ids": [
-                segment.segment_id for segment in transcript.segments
-            ],
+            "allowed_segment_ids": [segment.segment_id for segment in transcript.segments],
             "raw_segments": [segment.model_dump() for segment in transcript.segments],
         }
         repaired_raw, repair_usage = self.client.request_json(
@@ -103,9 +101,7 @@ class DeepSeekPipelineService:
             "known_people": known_people or [],
             "output_schema": ExtractionResult.model_json_schema(),
             "raw_segments": [segment.model_dump() for segment in transcript.segments],
-            "readable_segments": [
-                segment.model_dump() for segment in cleaned.readable_segments
-            ],
+            "readable_segments": [segment.model_dump() for segment in cleaned.readable_segments],
             "detected_corrections": [
                 correction.model_dump() for correction in cleaned.detected_corrections
             ],
@@ -152,13 +148,9 @@ class DeepSeekPipelineService:
             "validation_error": validation_error,
             "output_schema": ExtractionResult.model_json_schema(),
             "invalid_output": invalid_output,
-            "allowed_segment_ids": [
-                segment.segment_id for segment in transcript.segments
-            ],
+            "allowed_segment_ids": [segment.segment_id for segment in transcript.segments],
             "raw_segments": [segment.model_dump() for segment in transcript.segments],
-            "readable_segments": [
-                segment.model_dump() for segment in cleaned.readable_segments
-            ],
+            "readable_segments": [segment.model_dump() for segment in cleaned.readable_segments],
         }
         repaired_raw, repair_usage = self.client.request_json(
             system_prompt=EXTRACTION_REPAIR_SYSTEM_PROMPT,
@@ -166,22 +158,16 @@ class DeepSeekPipelineService:
             max_tokens=16_000,
             attempts=2,
         )
-        repaired = self._validate_model(
-            ExtractionResult, repaired_raw, "extractor repair"
-        )
+        repaired = self._validate_model(ExtractionResult, repaired_raw, "extractor repair")
         validate_extraction_result(transcript, repaired)
         return repaired, self._usage_dict(repair_usage)
 
     @staticmethod
-    def _validate_model(
-        model_type: type[ModelT], raw: dict[str, Any], stage: str
-    ) -> ModelT:
+    def _validate_model(model_type: type[ModelT], raw: dict[str, Any], stage: str) -> ModelT:
         try:
             return model_type.model_validate(raw)
         except ValidationError as exc:
-            raise DeepSeekError(
-                f"{stage} JSON failed Pydantic validation: {exc}"
-            ) from exc
+            raise DeepSeekError(f"{stage} JSON failed Pydantic validation: {exc}") from exc
 
     @staticmethod
     def _usage_dict(usage: DeepSeekUsage) -> dict[str, Any]:
