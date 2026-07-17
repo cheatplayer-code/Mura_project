@@ -17,7 +17,7 @@ FULL_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 FORBIDDEN_SNIPPETS = {
     "pull_request_target:": "pull_request_target executes untrusted PR code with base privileges",
     "permissions: write-all": "workflows may not request write-all permissions",
-    "continue-on-error: true": "security and quality checks may not be silently ignored",
+    "continue-on-error: true": "continue-on-error: true may not hide security or quality failures",
 }
 
 
