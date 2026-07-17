@@ -43,9 +43,13 @@ def load_action_pins(path: Path = PINS_PATH) -> dict[str, str]:
         sha = metadata.get("sha")
         tag = metadata.get("tag")
         if not isinstance(sha, str) or not FULL_SHA_PATTERN.fullmatch(sha):
-            raise ValueError(f"pin for {repository} must be a lowercase 40-character SHA")
+            raise ValueError(
+                f"pin for {repository} must be a lowercase 40-character SHA"
+            )
         if not isinstance(tag, str) or not tag.strip():
-            raise ValueError(f"pin for {repository} must include a readable release tag")
+            raise ValueError(
+                f"pin for {repository} must include a readable release tag"
+            )
         result[repository] = sha
     return result
 
@@ -74,9 +78,13 @@ def validate_workflow_policy(
                 errors.append(f"{location}: {explanation}")
 
         if "permissions:" not in lowered or "contents: read" not in lowered:
-            errors.append(f"{location}: declare least-privilege permissions with contents: read")
+            errors.append(
+                f"{location}: declare least-privilege permissions with contents: read"
+            )
         if "timeout-minutes:" not in lowered:
-            errors.append(f"{location}: every workflow must bound job runtime with timeout-minutes")
+            errors.append(
+                f"{location}: every workflow must bound job runtime with timeout-minutes"
+            )
 
         checkout_used = False
         for line_number, line in enumerate(text.splitlines(), start=1):
@@ -87,7 +95,9 @@ def validate_workflow_policy(
             if reference.startswith(("./", "../")):
                 continue
             if "@" not in reference:
-                errors.append(f"{location}:{line_number}: action reference has no immutable SHA")
+                errors.append(
+                    f"{location}:{line_number}: action reference has no immutable SHA"
+                )
                 continue
 
             _, _, ref = reference.partition("@")
