@@ -9,9 +9,7 @@ def _ordered_unique_segment_ids(
     """Return unique IDs in transcript order, preserving unknown IDs at the end."""
     requested = set(segment_ids)
     ordered = [
-        segment.segment_id
-        for segment in transcript.segments
-        if segment.segment_id in requested
+        segment.segment_id for segment in transcript.segments if segment.segment_id in requested
     ]
 
     seen = set(ordered)
@@ -50,9 +48,7 @@ def _complete_relationship(
         return relationship, False
 
     return relationship.model_copy(
-        update={
-            "source_segment_ids": _ordered_unique_segment_ids(source_ids, transcript)
-        }
+        update={"source_segment_ids": _ordered_unique_segment_ids(source_ids, transcript)}
     ), True
 
 
