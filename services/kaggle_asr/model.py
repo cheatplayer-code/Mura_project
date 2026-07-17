@@ -48,7 +48,12 @@ class GigaAMTranscriber:
         return self._model is not None and self._vad_model is not None
 
     def transcribe(
-        self, *, input_path: Path, work_dir: Path, recording_id: str
+        self,
+        *,
+        input_path: Path,
+        work_dir: Path,
+        recording_id: str,
+        max_audio_seconds: float | None = None,
     ) -> TranscriptEnvelope:
         import soundfile as sf
         import torch
@@ -63,6 +68,10 @@ class GigaAMTranscriber:
         chunks_dir.mkdir(parents=True, exist_ok=True)
         convert_to_wav(input_path, wav_path)
         duration = audio_duration_seconds(wav_path)
+        if max_audio_seconds is not None and duration > max_audio_seconds:
+            raise RuntimeError(
+                f"audio exceeds maximum duration: {duration:.1f}s > {max_audio_seconds:.1f}s"
+            )
 
         waveform, sample_rate = sf.read(str(wav_path), dtype="float32")
         if waveform.ndim > 1:
