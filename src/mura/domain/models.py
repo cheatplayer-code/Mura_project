@@ -174,9 +174,7 @@ class RelationshipClaim(StrictModel):
             },
         }
         if role_pair not in allowed_pairs[self.relationship_type]:
-            raise ValueError(
-                f"invalid role pair {role_pair!r} for {self.relationship_type.value}"
-            )
+            raise ValueError(f"invalid role pair {role_pair!r} for {self.relationship_type.value}")
         return self
 
 
