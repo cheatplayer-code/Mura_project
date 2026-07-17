@@ -13,6 +13,7 @@ from mura.deepseek.prompts import (
     EXTRACTOR_SYSTEM_PROMPT,
 )
 from mura.domain.models import CleanerResult, ExtractionResult, TranscriptEnvelope
+from mura.evidence import complete_relationship_evidence
 from mura.validation import (
     ContractValidationError,
     validate_cleaner_result,
@@ -116,9 +117,13 @@ class DeepSeekPipelineService:
             max_tokens=16_000,
         )
         initial_usage = self._usage_dict(usage)
+        initial_evidence_closure_relationships = 0
 
         try:
             result = self._validate_model(ExtractionResult, raw, "extractor")
+            result, initial_evidence_closure_relationships = (
+                complete_relationship_evidence(result, transcript)
+            )
             validate_extraction_result(transcript, result)
         except (DeepSeekError, ContractValidationError) as exc:
             result, repair_usage = self._repair_extraction(
@@ -131,10 +136,17 @@ class DeepSeekPipelineService:
                 **repair_usage,
                 "repair_attempted": True,
                 "initial_validation_error": str(exc),
+                "initial_evidence_closure_relationships": (
+                    initial_evidence_closure_relationships
+                ),
                 "initial_usage": initial_usage,
             }
 
-        return result, {**initial_usage, "repair_attempted": False}
+        return result, {
+            **initial_usage,
+            "repair_attempted": False,
+            "evidence_closure_relationships": initial_evidence_closure_relationships,
+        }
 
     def _repair_extraction(
         self,
@@ -159,8 +171,14 @@ class DeepSeekPipelineService:
             attempts=2,
         )
         repaired = self._validate_model(ExtractionResult, repaired_raw, "extractor repair")
+        repaired, evidence_closure_relationships = complete_relationship_evidence(
+            repaired, transcript
+        )
         validate_extraction_result(transcript, repaired)
-        return repaired, self._usage_dict(repair_usage)
+        return repaired, {
+            **self._usage_dict(repair_usage),
+            "evidence_closure_relationships": evidence_closure_relationships,
+        }
 
     @staticmethod
     def _validate_model(model_type: type[ModelT], raw: dict[str, Any], stage: str) -> ModelT:
