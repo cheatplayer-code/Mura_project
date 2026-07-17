@@ -44,8 +44,26 @@ jobs:
       - name: Lint
         run: ruff check .
 
-      - name: Check formatting
-        run: ruff format --check --diff .
+      - name: Generate formatting patch
+        id: formatting
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ruff format .
+          git diff --binary > ruff-format.patch
+          if test -s ruff-format.patch; then
+            echo "Formatting changes are required. Download the ruff-format-patch artifact."
+            exit 1
+          fi
+
+      - name: Upload formatting patch
+        if: failure() && steps.formatting.outcome == 'failure'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ruff-format-patch
+          path: ruff-format.patch
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Type check
         run: mypy src/mura apps services scripts
