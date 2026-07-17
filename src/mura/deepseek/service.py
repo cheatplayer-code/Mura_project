@@ -109,9 +109,7 @@ class DeepSeekPipelineService:
             "validation_error": validation_error,
             "output_schema": ExtractionResult.model_json_schema(),
             "invalid_output": invalid_output,
-            "allowed_segment_ids": [
-                segment.segment_id for segment in transcript.segments
-            ],
+            "allowed_segment_ids": [segment.segment_id for segment in transcript.segments],
             "raw_segments": [segment.model_dump() for segment in transcript.segments],
             "readable_segments": [segment.model_dump() for segment in cleaned.readable_segments],
         }
