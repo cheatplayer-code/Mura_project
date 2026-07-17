@@ -237,48 +237,55 @@ def sanitize_extraction_output(
         issues=issues,
     )
 
-    valid_people = _semantic_filter(
-        items=people,
-        object_type="person",
-        id_field="mention_id",
-        build_candidate=lambda item: _base_result(
+    def build_result(
+        *,
+        selected_people: list[PersonMention] | None = None,
+        selected_relationships: list[RelationshipClaim] | None = None,
+        selected_events: list[FamilyEvent] | None = None,
+        selected_descriptions: list[PersonDescription] | None = None,
+        selected_stories: list[Story] | None = None,
+        selected_questions: list[UnresolvedQuestion] | None = None,
+    ) -> ExtractionResult:
+        return _base_result(
             recording_id=transcript.recording_id,
             speaker_id=speaker_id,
             speaker_name=speaker_name,
             languages=languages,
-            people=[item],
-        ),
+            people=selected_people,
+            relationships=selected_relationships,
+            events=selected_events,
+            descriptions=selected_descriptions,
+            stories=selected_stories,
+            questions=selected_questions,
+        )
+
+    valid_people = _semantic_filter(
+        items=people,
+        object_type="person",
+        id_field="mention_id",
+        build_candidate=lambda item: build_result(selected_people=[item]),
         transcript=transcript,
         issues=issues,
     )
 
-    preliminary = _base_result(
-        recording_id=transcript.recording_id,
-        speaker_id=speaker_id,
-        speaker_name=speaker_name,
-        languages=languages,
-        people=valid_people,
-        relationships=relationships,
-        events=events,
-        descriptions=descriptions,
-        stories=stories,
-        questions=questions,
+    preliminary = build_result(
+        selected_people=valid_people,
+        selected_relationships=relationships,
+        selected_events=events,
+        selected_descriptions=descriptions,
+        selected_stories=stories,
+        selected_questions=questions,
     )
     preliminary, evidence_closure_count = complete_relationship_evidence(preliminary, transcript)
     relationships = preliminary.relationship_claims
 
-    common = {
-        "recording_id": transcript.recording_id,
-        "speaker_id": speaker_id,
-        "speaker_name": speaker_name,
-        "languages": languages,
-    }
     valid_relationships = _semantic_filter(
         items=relationships,
         object_type="relationship",
         id_field="relationship_id",
-        build_candidate=lambda item: _base_result(
-            **common, people=valid_people, relationships=[item]
+        build_candidate=lambda item: build_result(
+            selected_people=valid_people,
+            selected_relationships=[item],
         ),
         transcript=transcript,
         issues=issues,
@@ -287,7 +294,10 @@ def sanitize_extraction_output(
         items=events,
         object_type="event",
         id_field="event_id",
-        build_candidate=lambda item: _base_result(**common, people=valid_people, events=[item]),
+        build_candidate=lambda item: build_result(
+            selected_people=valid_people,
+            selected_events=[item],
+        ),
         transcript=transcript,
         issues=issues,
     )
@@ -295,8 +305,9 @@ def sanitize_extraction_output(
         items=descriptions,
         object_type="description",
         id_field="description_id",
-        build_candidate=lambda item: _base_result(
-            **common, people=valid_people, descriptions=[item]
+        build_candidate=lambda item: build_result(
+            selected_people=valid_people,
+            selected_descriptions=[item],
         ),
         transcript=transcript,
         issues=issues,
@@ -305,8 +316,10 @@ def sanitize_extraction_output(
         items=stories,
         object_type="story",
         id_field="story_id",
-        build_candidate=lambda item: _base_result(
-            **common, people=valid_people, events=valid_events, stories=[item]
+        build_candidate=lambda item: build_result(
+            selected_people=valid_people,
+            selected_events=valid_events,
+            selected_stories=[item],
         ),
         transcript=transcript,
         issues=issues,
@@ -315,19 +328,21 @@ def sanitize_extraction_output(
         items=questions,
         object_type="question",
         id_field="question_id",
-        build_candidate=lambda item: _base_result(**common, people=valid_people, questions=[item]),
+        build_candidate=lambda item: build_result(
+            selected_people=valid_people,
+            selected_questions=[item],
+        ),
         transcript=transcript,
         issues=issues,
     )
 
-    result = _base_result(
-        **common,
-        people=valid_people,
-        relationships=valid_relationships,
-        events=valid_events,
-        descriptions=valid_descriptions,
-        stories=valid_stories,
-        questions=valid_questions,
+    result = build_result(
+        selected_people=valid_people,
+        selected_relationships=valid_relationships,
+        selected_events=valid_events,
+        selected_descriptions=valid_descriptions,
+        selected_stories=valid_stories,
+        selected_questions=valid_questions,
     )
     validate_extraction_result(transcript, result)
     return result, [issue.to_dict() for issue in issues], evidence_closure_count
