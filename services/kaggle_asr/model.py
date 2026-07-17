@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import Any
 
 from mura.domain.models import RawSegment, TranscriptEnvelope
 from services.kaggle_asr.audio import audio_duration_seconds, convert_to_wav
@@ -23,8 +24,8 @@ class GigaAMTranscriber:
     def __init__(self, *, device: str = "cuda:0", hf_token: str | None = None) -> None:
         self.device = device
         self.hf_token = hf_token
-        self._model = None
-        self._vad_model = None
+        self._model: Any | None = None
+        self._vad_model: Any | None = None
 
     def load(self) -> None:
         import torch
@@ -34,13 +35,14 @@ class GigaAMTranscriber:
         if not torch.cuda.is_available() and self.device.startswith("cuda"):
             raise RuntimeError("CUDA is not available")
 
-        self._model = AutoModel.from_pretrained(
+        model = AutoModel.from_pretrained(
             self.model_id,
             revision=self.revision,
             trust_remote_code=True,
             token=self.hf_token,
         ).to(self.device)
-        self._model.eval()
+        model.eval()
+        self._model = model
         self._vad_model = load_silero_vad()
 
     @property
@@ -61,6 +63,8 @@ class GigaAMTranscriber:
 
         if not self.loaded:
             self.load()
+        assert self._model is not None
+        assert self._vad_model is not None
 
         started = time.perf_counter()
         wav_path = work_dir / "audio_16k_mono.wav"
@@ -93,9 +97,7 @@ class GigaAMTranscriber:
         if not regions_raw:
             raise RuntimeError("Silero VAD detected no speech")
 
-        regions = [
-            SpeechRegion(int(item["start"]), int(item["end"])) for item in regions_raw
-        ]
+        regions = [SpeechRegion(int(item["start"]), int(item["end"])) for item in regions_raw]
         smart_ranges = build_smart_ranges(regions, sample_rate=sample_rate)
         padded_ranges = apply_edge_padding(
             smart_ranges,
@@ -152,7 +154,7 @@ class GigaAMTranscriber:
     @staticmethod
     def _extract_text(output: object) -> str:
         if hasattr(output, "text"):
-            return str(output.text).strip()  # type: ignore[attr-defined]
+            return str(output.text).strip()
         if isinstance(output, dict):
             return str(output.get("text", "")).strip()
         return str(output).strip()

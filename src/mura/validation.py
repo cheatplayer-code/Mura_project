@@ -19,9 +19,7 @@ def _ensure_known_segments(
         )
 
 
-def validate_cleaner_result(
-    transcript: TranscriptEnvelope, result: CleanerResult
-) -> None:
+def validate_cleaner_result(transcript: TranscriptEnvelope, result: CleanerResult) -> None:
     raw_ids = [segment.segment_id for segment in transcript.segments]
     cleaned_ids = [segment.segment_id for segment in result.readable_segments]
 
@@ -36,16 +34,12 @@ def validate_cleaner_result(
 
     valid_ids = set(raw_ids)
     for correction in result.detected_corrections:
-        _ensure_known_segments(
-            correction.source_segment_ids, valid_ids, "detected correction"
-        )
+        _ensure_known_segments(correction.source_segment_ids, valid_ids, "detected correction")
     for fragment in result.uncertain_fragments:
         _ensure_known_segments(fragment.source_segment_ids, valid_ids, "uncertain fragment")
 
 
-def validate_extraction_result(
-    transcript: TranscriptEnvelope, result: ExtractionResult
-) -> None:
+def validate_extraction_result(transcript: TranscriptEnvelope, result: ExtractionResult) -> None:
     valid_segments = {segment.segment_id for segment in transcript.segments}
     mention_ids = [person.mention_id for person in result.people_mentions]
     event_ids = [event.event_id for event in result.events]
@@ -106,9 +100,7 @@ def validate_extraction_result(
             )
 
     for question in result.unresolved_questions:
-        _ensure_known_segments(
-            question.source_segment_ids, valid_segments, question.question_id
-        )
+        _ensure_known_segments(question.source_segment_ids, valid_segments, question.question_id)
         unknown = set(question.related_mention_ids) - mention_set
         if unknown:
             raise ContractValidationError(
