@@ -9,8 +9,7 @@ from pathlib import Path
 import requests
 
 CLOUDFLARED_URL = (
-    "https://github.com/cloudflare/cloudflared/releases/latest/download/"
-    "cloudflared-linux-amd64"
+    "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
 )
 
 
