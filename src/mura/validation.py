@@ -76,7 +76,10 @@ def _explicit_people_in_segments(
     source_text = _joined_segment_text(source_ids, segment_text_by_id)
     explicit_people: set[str] = set()
     for person in people:
-        if any(_contains_evidence(source_text, surface) for surface in [person.name, *person.aliases]):
+        if any(
+            _contains_evidence(source_text, surface)
+            for surface in [person.name, *person.aliases]
+        ):
             explicit_people.add(person.mention_id)
     return explicit_people
 
@@ -93,7 +96,9 @@ def _ensure_person_evidence_overlap(
         )
 
 
-def validate_cleaner_result(transcript: TranscriptEnvelope, result: CleanerResult) -> None:
+def validate_cleaner_result(
+    transcript: TranscriptEnvelope, result: CleanerResult
+) -> None:
     raw_ids = [segment.segment_id for segment in transcript.segments]
     cleaned_ids = [segment.segment_id for segment in result.readable_segments]
 
@@ -107,13 +112,19 @@ def validate_cleaner_result(transcript: TranscriptEnvelope, result: CleanerResul
         )
 
     valid_ids = set(raw_ids)
-    raw_text_by_id = {segment.segment_id: segment.text for segment in transcript.segments}
+    raw_text_by_id = {
+        segment.segment_id: segment.text for segment in transcript.segments
+    }
     readable_text_by_id = {
         segment.segment_id: segment.text for segment in result.readable_segments
     }
 
-    joined_readable = " ".join(readable_text_by_id[segment_id] for segment_id in raw_ids)
-    if _normalize_evidence(joined_readable) != _normalize_evidence(result.full_readable_text):
+    joined_readable = " ".join(
+        readable_text_by_id[segment_id] for segment_id in raw_ids
+    )
+    if _normalize_evidence(joined_readable) != _normalize_evidence(
+        result.full_readable_text
+    ):
         raise ContractValidationError(
             "full_readable_text does not match the ordered readable segments"
         )
@@ -141,7 +152,9 @@ def validate_cleaner_result(transcript: TranscriptEnvelope, result: CleanerResul
                 segment_text_by_id=readable_text_by_id,
                 object_name=f"{object_name} original self-correction value",
             )
-        normalized_correction_sources.append(_normalize_evidence(correction.original_value))
+        normalized_correction_sources.append(
+            _normalize_evidence(correction.original_value)
+        )
 
     for fragment in result.uncertain_fragments:
         object_name = f"uncertain fragment {fragment.raw_text!r}"
@@ -152,7 +165,6 @@ def validate_cleaner_result(transcript: TranscriptEnvelope, result: CleanerResul
             segment_text_by_id=raw_text_by_id,
             object_name=object_name,
         )
-
         normalized_fragment = _normalize_evidence(fragment.raw_text)
         if normalized_fragment in normalized_correction_sources:
             raise ContractValidationError(
@@ -167,9 +179,13 @@ def validate_cleaner_result(transcript: TranscriptEnvelope, result: CleanerResul
         )
 
 
-def validate_extraction_result(transcript: TranscriptEnvelope, result: ExtractionResult) -> None:
+def validate_extraction_result(
+    transcript: TranscriptEnvelope, result: ExtractionResult
+) -> None:
     valid_segments = {segment.segment_id for segment in transcript.segments}
-    segment_text_by_id = {segment.segment_id: segment.text for segment in transcript.segments}
+    segment_text_by_id = {
+        segment.segment_id: segment.text for segment in transcript.segments
+    }
 
     mention_ids = [person.mention_id for person in result.people_mentions]
     relationship_ids = [item.relationship_id for item in result.relationship_claims]
@@ -190,11 +206,15 @@ def validate_extraction_result(transcript: TranscriptEnvelope, result: Extractio
     event_set = set(event_ids)
 
     for person in result.people_mentions:
-        _ensure_known_segments(person.source_segment_ids, valid_segments, person.mention_id)
+        _ensure_known_segments(
+            person.source_segment_ids, valid_segments, person.mention_id
+        )
 
     for relationship in result.relationship_claims:
         object_name = f"relationship {relationship.relationship_id}"
-        _ensure_known_segments(relationship.source_segment_ids, valid_segments, object_name)
+        _ensure_known_segments(
+            relationship.source_segment_ids, valid_segments, object_name
+        )
         if relationship.subject_mention_id not in mention_set:
             raise ContractValidationError(
                 f"{relationship.relationship_id} has unknown subject mention"
@@ -238,7 +258,9 @@ def validate_extraction_result(transcript: TranscriptEnvelope, result: Extractio
 
     for description in result.descriptions:
         object_name = f"description {description.description_id}"
-        _ensure_known_segments(description.source_segment_ids, valid_segments, object_name)
+        _ensure_known_segments(
+            description.source_segment_ids, valid_segments, object_name
+        )
         if description.person_mention_id not in mention_set:
             raise ContractValidationError(
                 f"{description.description_id} references an unknown person"
@@ -271,7 +293,9 @@ def validate_extraction_result(transcript: TranscriptEnvelope, result: Extractio
             )
 
     for question in result.unresolved_questions:
-        _ensure_known_segments(question.source_segment_ids, valid_segments, question.question_id)
+        _ensure_known_segments(
+            question.source_segment_ids, valid_segments, question.question_id
+        )
         unknown = set(question.related_mention_ids) - mention_set
         if unknown:
             raise ContractValidationError(
