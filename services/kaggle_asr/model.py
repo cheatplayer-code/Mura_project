@@ -35,13 +35,14 @@ class GigaAMTranscriber:
         if not torch.cuda.is_available() and self.device.startswith("cuda"):
             raise RuntimeError("CUDA is not available")
 
-        self._model = AutoModel.from_pretrained(
+        model = AutoModel.from_pretrained(
             self.model_id,
             revision=self.revision,
             trust_remote_code=True,
             token=self.hf_token,
         ).to(self.device)
-        self._model.eval()
+        model.eval()
+        self._model = model
         self._vad_model = load_silero_vad()
 
     @property
@@ -62,6 +63,8 @@ class GigaAMTranscriber:
 
         if not self.loaded:
             self.load()
+        assert self._model is not None
+        assert self._vad_model is not None
 
         started = time.perf_counter()
         wav_path = work_dir / "audio_16k_mono.wav"
