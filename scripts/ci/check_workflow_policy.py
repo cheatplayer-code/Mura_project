@@ -90,7 +90,7 @@ def validate_workflow_policy(
                 errors.append(f"{location}:{line_number}: action reference has no immutable SHA")
                 continue
 
-            path, _, ref = reference.partition("@")
+            _, _, ref = reference.partition("@")
             repository = _action_repository(reference)
             if repository == "actions/checkout":
                 checkout_used = True
