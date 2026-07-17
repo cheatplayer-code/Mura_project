@@ -34,6 +34,7 @@ ALLOWED_EXTENSIONS = {
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # Load once so the first public request is not a surprise cold start.
     await asyncio.to_thread(transcriber.load)
     yield
 
@@ -114,15 +115,11 @@ async def transcribe(
                     input_path=input_path,
                     work_dir=temp_path,
                     recording_id=resolved_recording_id,
+                    max_audio_seconds=settings.max_audio_seconds,
                 )
             except AudioProcessingError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             except RuntimeError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-            if result.duration_seconds > settings.max_audio_seconds:
-                raise HTTPException(
-                    status_code=413,
-                    detail=f"audio exceeds {settings.max_audio_seconds} seconds",
-                )
             return result
