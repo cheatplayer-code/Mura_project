@@ -82,14 +82,30 @@ jobs:
           retention-days: 1
 
       - name: Test with coverage
-        run: >-
-          pytest -ra
-          --cov=mura
-          --cov=apps.api
-          --cov=services.kaggle_asr
-          --cov-report=term-missing
-          --cov-report=xml
-          --cov-fail-under=45
+        id: tests
+        shell: bash
+        run: |
+          set -o pipefail
+          pytest -ra \
+            --junitxml=pytest-report.xml \
+            --cov=mura \
+            --cov=apps.api \
+            --cov=services.kaggle_asr \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=45 2>&1 | tee pytest-output.txt
+
+      - name: Upload pytest diagnostics
+        if: failure() && steps.tests.outcome == 'failure'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pytest-diagnostics
+          path: |
+            pytest-output.txt
+            pytest-report.xml
+            coverage.xml
+          if-no-files-found: warn
+          retention-days: 1
 
       - name: Static security scan
         run: bandit -q -r src apps services -ll
