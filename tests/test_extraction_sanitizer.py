@@ -126,7 +126,9 @@ def test_sanitizer_keeps_valid_objects_and_quarantines_bad_ones() -> None:
         "relationship_valid"
     ]
     assert result.relationship_claims[0].source_segment_ids == ["seg_001", "seg_002"]
-    assert [item.description_id for item in result.descriptions] == ["description_valid"]
+    assert [item.description_id for item in result.descriptions] == [
+        "description_valid"
+    ]
 
     issue_ids = {issue["object_id"] for issue in issues}
     assert "relationship_invalid" in issue_ids
