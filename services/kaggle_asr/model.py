@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import Any
 
 from mura.domain.models import RawSegment, TranscriptEnvelope
 from services.kaggle_asr.audio import audio_duration_seconds, convert_to_wav
@@ -23,8 +24,8 @@ class GigaAMTranscriber:
     def __init__(self, *, device: str = "cuda:0", hf_token: str | None = None) -> None:
         self.device = device
         self.hf_token = hf_token
-        self._model = None
-        self._vad_model = None
+        self._model: Any | None = None
+        self._vad_model: Any | None = None
 
     def load(self) -> None:
         import torch
@@ -150,7 +151,7 @@ class GigaAMTranscriber:
     @staticmethod
     def _extract_text(output: object) -> str:
         if hasattr(output, "text"):
-            return str(output.text).strip()  # type: ignore[attr-defined]
+            return str(output.text).strip()
         if isinstance(output, dict):
             return str(output.get("text", "")).strip()
         return str(output).strip()
