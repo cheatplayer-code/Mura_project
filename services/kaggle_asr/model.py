@@ -93,9 +93,7 @@ class GigaAMTranscriber:
         if not regions_raw:
             raise RuntimeError("Silero VAD detected no speech")
 
-        regions = [
-            SpeechRegion(int(item["start"]), int(item["end"])) for item in regions_raw
-        ]
+        regions = [SpeechRegion(int(item["start"]), int(item["end"])) for item in regions_raw]
         smart_ranges = build_smart_ranges(regions, sample_rate=sample_rate)
         padded_ranges = apply_edge_padding(
             smart_ranges,
