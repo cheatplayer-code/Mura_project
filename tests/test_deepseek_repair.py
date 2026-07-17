@@ -1,0 +1,101 @@
+from __future__ import annotations
+
+from typing import Any
+
+from mura.deepseek.client import DeepSeekUsage
+from mura.deepseek.service import DeepSeekPipelineService
+from mura.domain.models import CleanerResult, RawSegment, ReadableSegment, TranscriptEnvelope
+
+
+class FakeDeepSeekClient:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def request_json(
+        self,
+        *,
+        system_prompt: str,
+        payload: dict[str, Any],
+        max_tokens: int,
+        attempts: int = 3,
+    ) -> tuple[dict[str, Any], DeepSeekUsage]:
+        del system_prompt, payload, max_tokens, attempts
+        self.calls += 1
+        usage = DeepSeekUsage(
+            model="deepseek-v4-flash",
+            finish_reason="stop",
+            request_seconds=0.1,
+        )
+
+        base = {
+            "recording_id": "rec_1",
+            "speaker_id": "speaker_1",
+            "speaker_name": "Күләш",
+            "languages": ["kk"],
+            "people_mentions": [
+                {
+                    "mention_id": "mention_001",
+                    "name": "Сапар",
+                    "source_segment_ids": ["seg_001"],
+                    "confidence": 1.0,
+                }
+            ],
+            "events": [],
+            "descriptions": [],
+            "stories": [],
+            "unresolved_questions": [],
+        }
+
+        if self.calls == 1:
+            return {
+                **base,
+                "relationship_claims": [
+                    {
+                        "relationship_id": "relationship_005",
+                        "subject_mention_id": "mention_001",
+                        "relation": "parent_of",
+                        "object_mention_id": "mention_001",
+                        "source_segment_ids": ["seg_001"],
+                        "confidence": 1.0,
+                    }
+                ],
+            }, usage
+
+        return {**base, "relationship_claims": []}, usage
+
+
+def test_extractor_repairs_self_relationship_once() -> None:
+    transcript = TranscriptEnvelope(
+        recording_id="rec_1",
+        duration_seconds=12,
+        full_text="Әкемнің аты Сапар.",
+        segments=[
+            RawSegment(
+                segment_id="seg_001",
+                start=0,
+                end=12,
+                text="әкемнің аты сапар",
+            )
+        ],
+        asr_model="gigaam",
+        asr_revision="large_ctc",
+        chunker_version="v1",
+    )
+    cleaned = CleanerResult(
+        readable_segments=[ReadableSegment(segment_id="seg_001", text="Әкемнің аты Сапар.")],
+        full_readable_text="Әкемнің аты Сапар.",
+    )
+    client = FakeDeepSeekClient()
+    service = DeepSeekPipelineService(client)  # type: ignore[arg-type]
+
+    result, usage = service.extract(
+        transcript=transcript,
+        cleaned=cleaned,
+        speaker_id="speaker_1",
+        speaker_name="Күләш",
+    )
+
+    assert client.calls == 2
+    assert result.relationship_claims == []
+    assert usage["repair_attempted"] is True
+    assert "self relationship" in usage["initial_validation_error"]

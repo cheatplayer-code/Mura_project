@@ -6,9 +6,17 @@ from typing import Any, TypeVar
 from pydantic import BaseModel, ValidationError
 
 from mura.deepseek.client import DeepSeekClient, DeepSeekError, DeepSeekUsage
-from mura.deepseek.prompts import CLEANER_SYSTEM_PROMPT, EXTRACTOR_SYSTEM_PROMPT
+from mura.deepseek.prompts import (
+    CLEANER_SYSTEM_PROMPT,
+    EXTRACTION_REPAIR_SYSTEM_PROMPT,
+    EXTRACTOR_SYSTEM_PROMPT,
+)
 from mura.domain.models import CleanerResult, ExtractionResult, TranscriptEnvelope
-from mura.validation import validate_cleaner_result, validate_extraction_result
+from mura.validation import (
+    ContractValidationError,
+    validate_cleaner_result,
+    validate_extraction_result,
+)
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -68,9 +76,52 @@ class DeepSeekPipelineService:
             payload=payload,
             max_tokens=16_000,
         )
-        result = self._validate_model(ExtractionResult, raw, "extractor")
-        validate_extraction_result(transcript, result)
-        return result, self._usage_dict(usage)
+        initial_usage = self._usage_dict(usage)
+
+        try:
+            result = self._validate_model(ExtractionResult, raw, "extractor")
+            validate_extraction_result(transcript, result)
+        except (DeepSeekError, ContractValidationError) as exc:
+            result, repair_usage = self._repair_extraction(
+                transcript=transcript,
+                cleaned=cleaned,
+                invalid_output=raw,
+                validation_error=str(exc),
+            )
+            return result, {
+                **repair_usage,
+                "repair_attempted": True,
+                "initial_validation_error": str(exc),
+                "initial_usage": initial_usage,
+            }
+
+        return result, {**initial_usage, "repair_attempted": False}
+
+    def _repair_extraction(
+        self,
+        *,
+        transcript: TranscriptEnvelope,
+        cleaned: CleanerResult,
+        invalid_output: dict[str, Any],
+        validation_error: str,
+    ) -> tuple[ExtractionResult, dict[str, Any]]:
+        repair_payload = {
+            "validation_error": validation_error,
+            "output_schema": ExtractionResult.model_json_schema(),
+            "invalid_output": invalid_output,
+            "allowed_segment_ids": [segment.segment_id for segment in transcript.segments],
+            "raw_segments": [segment.model_dump() for segment in transcript.segments],
+            "readable_segments": [segment.model_dump() for segment in cleaned.readable_segments],
+        }
+        repaired_raw, repair_usage = self.client.request_json(
+            system_prompt=EXTRACTION_REPAIR_SYSTEM_PROMPT,
+            payload=repair_payload,
+            max_tokens=16_000,
+            attempts=2,
+        )
+        repaired = self._validate_model(ExtractionResult, repaired_raw, "extractor repair")
+        validate_extraction_result(transcript, repaired)
+        return repaired, self._usage_dict(repair_usage)
 
     @staticmethod
     def _validate_model(model_type: type[ModelT], raw: dict[str, Any], stage: str) -> ModelT:
