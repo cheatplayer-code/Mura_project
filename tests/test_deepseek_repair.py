@@ -82,7 +82,9 @@ def test_extractor_quarantines_self_relationship_without_second_llm_call() -> No
         chunker_version="v1",
     )
     cleaned = CleanerResult(
-        readable_segments=[ReadableSegment(segment_id="seg_001", text="Әкемнің аты Сапар.")],
+        readable_segments=[
+            ReadableSegment(segment_id="seg_001", text="Әкемнің аты Сапар.")
+        ],
         full_readable_text="Әкемнің аты Сапар.",
     )
     client = FakeDeepSeekClient()
