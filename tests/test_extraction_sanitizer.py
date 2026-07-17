@@ -9,8 +9,7 @@ def _transcript() -> TranscriptEnvelope:
         recording_id="rec_1",
         duration_seconds=30,
         full_text=(
-            "Әкемнің аты Сапар. Оның інісі Нұрғали еді. "
-            "Диас баскетбол ойнағанды жақсы көреді."
+            "Әкемнің аты Сапар. Оның інісі Нұрғали еді. Диас баскетбол ойнағанды жақсы көреді."
         ),
         segments=[
             RawSegment(
@@ -122,13 +121,9 @@ def test_sanitizer_keeps_valid_objects_and_quarantines_bad_ones() -> None:
     )
 
     assert closure_count == 1
-    assert [item.relationship_id for item in result.relationship_claims] == [
-        "relationship_valid"
-    ]
+    assert [item.relationship_id for item in result.relationship_claims] == ["relationship_valid"]
     assert result.relationship_claims[0].source_segment_ids == ["seg_001", "seg_002"]
-    assert [item.description_id for item in result.descriptions] == [
-        "description_valid"
-    ]
+    assert [item.description_id for item in result.descriptions] == ["description_valid"]
 
     issue_ids = {issue["object_id"] for issue in issues}
     assert "relationship_invalid" in issue_ids
