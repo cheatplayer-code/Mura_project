@@ -35,9 +35,7 @@ def _transcript(text: str) -> TranscriptEnvelope:
 def test_self_correction_may_render_only_final_value() -> None:
     raw = _transcript("ал кенжеміз бекжат бекзат")
     result = CleanerResult(
-        readable_segments=[
-            ReadableSegment(segment_id="seg_001", text="Ал кенжеміз Бекзат.")
-        ],
+        readable_segments=[ReadableSegment(segment_id="seg_001", text="Ал кенжеміз Бекзат.")],
         detected_corrections=[
             DetectedCorrection(
                 kind=CorrectionKind.SPEAKER_SELF_CORRECTION,
@@ -58,9 +56,7 @@ def test_self_correction_may_render_only_final_value() -> None:
 def test_correction_original_value_must_still_exist_in_raw_evidence() -> None:
     raw = _transcript("ал кенжеміз бекзат")
     result = CleanerResult(
-        readable_segments=[
-            ReadableSegment(segment_id="seg_001", text="Ал кенжеміз Бекзат.")
-        ],
+        readable_segments=[ReadableSegment(segment_id="seg_001", text="Ал кенжеміз Бекзат.")],
         detected_corrections=[
             DetectedCorrection(
                 kind=CorrectionKind.ASR_NORMALIZATION,
