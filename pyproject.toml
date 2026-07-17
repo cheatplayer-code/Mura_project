@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mura-project"
+version = "0.1.0"
+description = "Voice-first family memory archive for Kazakh and Russian stories"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Mura team"}]
+dependencies = [
+  "fastapi>=0.116,<1",
+  "uvicorn[standard]>=0.35,<1",
+  "python-multipart>=0.0.20,<1",
+  "pydantic>=2.11,<3",
+  "pydantic-settings>=2.10,<3",
+  "requests>=2.32,<3",
+]
+
+[project.optional-dependencies]
+kaggle = [
+  "torch==2.10.*",
+  "torchaudio==2.10.*",
+  "transformers==5.*",
+  "huggingface-hub>=0.34,<1",
+  "hydra-core>=1.3,<2",
+  "omegaconf>=2.3,<3",
+  "soundfile>=0.13,<1",
+  "silero-vad>=6.0,<7",
+  "pyannote.audio==4.0.*",
+  "torchcodec==0.10.*",
+]
+dev = [
+  "pytest>=8.4,<9",
+  "pytest-cov>=6.2,<7",
+  "ruff>=0.12,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mura", "apps", "services"]
+
+[tool.pytest.ini_options]
+pythonpath = [".", "src"]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "RUF"]
