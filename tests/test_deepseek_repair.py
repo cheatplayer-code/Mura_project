@@ -36,6 +36,7 @@ class FakeDeepSeekClient:
                 {
                     "mention_id": "mention_001",
                     "name": "Сапар",
+                    "category": "family_member",
                     "source_segment_ids": ["seg_001"],
                     "confidence": 1.0,
                 }
@@ -52,9 +53,11 @@ class FakeDeepSeekClient:
                 "relationship_claims": [
                     {
                         "relationship_id": "relationship_005",
+                        "relationship_type": "parent_child",
                         "subject_mention_id": "mention_001",
-                        "relation": "parent_of",
+                        "subject_role": "parent",
                         "object_mention_id": "mention_001",
+                        "object_role": "child",
                         "source_segment_ids": ["seg_001"],
                         "confidence": 1.0,
                     }
@@ -98,4 +101,4 @@ def test_extractor_repairs_self_relationship_once() -> None:
     assert client.calls == 2
     assert result.relationship_claims == []
     assert usage["repair_attempted"] is True
-    assert "self relationship" in usage["initial_validation_error"]
+    assert "different mentions" in usage["initial_validation_error"]
