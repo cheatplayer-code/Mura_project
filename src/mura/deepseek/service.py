@@ -73,9 +73,7 @@ class DeepSeekPipelineService:
         return result, self._usage_dict(usage)
 
     @staticmethod
-    def _validate_model(
-        model_type: type[ModelT], raw: dict[str, Any], stage: str
-    ) -> ModelT:
+    def _validate_model(model_type: type[ModelT], raw: dict[str, Any], stage: str) -> ModelT:
         try:
             return model_type.model_validate(raw)
         except ValidationError as exc:
