@@ -4,10 +4,11 @@ from mura.versioning import CURRENT_PIPELINE_VERSIONS, get_pipeline_versions
 def test_pipeline_versions_are_explicit_and_copy_safe() -> None:
     versions = get_pipeline_versions()
 
-    assert versions.pipeline == "mura-core-v0.7.0"
+    assert versions.pipeline == "mura-core-v0.8.0"
     assert versions.domain_schema == "domain-v2"
     assert versions.cleaner_prompt == "cleaner-v1"
-    assert versions.extractor_prompt == "extractor-v2"
+    assert versions.extractor_prompt == "extractor-v3-anchor-constrained"
+    assert versions.extractor_repair_prompt == "extractor-repair-v1-anchor-constrained"
     assert versions.evidence_rules == "claim-evidence-v2+bounded-coreference-v1"
     assert versions.resolver == "mention-resolver-v1+bounded-coreference-v1"
     assert versions.evaluator == "core-evaluator-v1"
