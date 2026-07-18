@@ -63,7 +63,8 @@ def _source_text(source_ids: list[str], transcript: TranscriptEnvelope) -> str:
 def _is_speaker(person: PersonMention, speaker_name: str) -> bool:
     normalized_speaker = normalize_evidence(speaker_name)
     return any(
-        normalize_evidence(surface) == normalized_speaker for surface in person_name_surfaces(person)
+        normalize_evidence(surface) == normalized_speaker
+        for surface in person_name_surfaces(person)
     )
 
 
