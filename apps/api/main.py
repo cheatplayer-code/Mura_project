@@ -310,26 +310,20 @@ def get_review_items(
 
     extractor_usage = result.processing.get("extractor_usage", {})
     extraction_issues = (
-        extractor_usage.get("extraction_issues", [])
-        if isinstance(extractor_usage, dict)
-        else []
+        extractor_usage.get("extraction_issues", []) if isinstance(extractor_usage, dict) else []
     )
     return ReviewItemsView(
         recording_id=recording_id,
         uncertain_fragments=[
-            item.model_dump(mode="json")
-            for item in result.cleaned_transcript.uncertain_fragments
+            item.model_dump(mode="json") for item in result.cleaned_transcript.uncertain_fragments
         ],
         detected_corrections=[
-            item.model_dump(mode="json")
-            for item in result.cleaned_transcript.detected_corrections
+            item.model_dump(mode="json") for item in result.cleaned_transcript.detected_corrections
         ],
         unresolved_questions=[
             item.model_dump(mode="json") for item in result.extraction.unresolved_questions
         ],
-        extraction_issues=(
-            extraction_issues if isinstance(extraction_issues, list) else []
-        ),
+        extraction_issues=(extraction_issues if isinstance(extraction_issues, list) else []),
         ambiguous_resolutions=[
             item.model_dump(mode="json")
             for item in result.resolutions
