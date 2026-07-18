@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-from mura.deepseek.prompts import (
-    EXTRACTION_REPAIR_SYSTEM_PROMPT,
-    EXTRACTOR_SYSTEM_PROMPT,
-)
+from mura.deepseek.prompts import EXTRACTION_REPAIR_SYSTEM_PROMPT, EXTRACTOR_SYSTEM_PROMPT
 
 
 ANCHOR_CONSTRAINTS = """
