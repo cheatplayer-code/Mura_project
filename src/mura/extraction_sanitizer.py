@@ -350,7 +350,9 @@ def sanitize_extraction_output(
         preliminary,
         transcript,
     )
-    relationships = preliminary.relationship_claims
+    relationships = list(preliminary.relationship_claims)
+    evidence = list(preliminary.evidence_spans)
+    coreference_links = list(preliminary.coreference_links)
 
     def relationship_issue_context(item: RelationshipClaim) -> dict[str, Any]:
         analysis = analyze_relationship_evidence(
