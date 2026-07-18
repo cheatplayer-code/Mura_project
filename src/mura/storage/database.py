@@ -15,6 +15,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.types import JSON
 
 from mura.domain.models import PipelineResult
@@ -109,12 +110,21 @@ class Database:
         connect_args: dict[str, Any] = {}
         if database_url.startswith("sqlite"):
             connect_args["check_same_thread"] = False
-        self.engine = create_engine(
-            database_url,
-            pool_pre_ping=True,
-            future=True,
-            connect_args=connect_args,
-        )
+        if database_url.startswith("sqlite") and ":memory:" in database_url:
+            self.engine = create_engine(
+                database_url,
+                pool_pre_ping=True,
+                future=True,
+                connect_args=connect_args,
+                poolclass=StaticPool,
+            )
+        else:
+            self.engine = create_engine(
+                database_url,
+                pool_pre_ping=True,
+                future=True,
+                connect_args=connect_args,
+            )
         self.session_factory = sessionmaker(
             bind=self.engine,
             class_=Session,
