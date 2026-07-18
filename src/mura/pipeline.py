@@ -34,7 +34,7 @@ class MuraPipeline:
             cleaned=cleaned,
             speaker_id=request.speaker_id,
             speaker_name=request.speaker_name,
-            known_people=[person.model_dump() for person in request.known_people],
+            known_people=request.known_people,
         )
         self._report(stage_callback, "resolving")
         resolutions = resolve_mentions(extraction, request.known_people)
