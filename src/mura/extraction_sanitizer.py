@@ -17,6 +17,7 @@ from mura.domain.models import (
     UnresolvedQuestion,
 )
 from mura.evidence import complete_relationship_evidence
+from mura.relationship_evidence import analyze_relationship_evidence
 from mura.validation import ContractValidationError, validate_extraction_result
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -28,9 +29,13 @@ class ExtractionIssue:
     object_id: str | None
     stage: str
     detail: str
+    context: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        result = asdict(self)
+        if self.context is None:
+            result.pop("context")
+        return result
 
 
 def _object_id(raw: object, field_name: str) -> str | None:
@@ -50,6 +55,7 @@ def _list_value(raw: dict[str, Any], key: str, issues: list[ExtractionIssue]) ->
             object_id=None,
             stage="schema",
             detail=f"top-level field {key!r} must be a list; received {type(value).__name__}",
+            context={"received_value": value},
         )
     )
     return []
@@ -77,6 +83,7 @@ def _parse_items(
                     object_id=object_id,
                     stage="schema",
                     detail=str(exc),
+                    context={"candidate": raw_item},
                 )
             )
             continue
@@ -89,6 +96,7 @@ def _parse_items(
                     object_id=resolved_id,
                     stage="schema",
                     detail=f"duplicate {id_field}",
+                    context={"candidate": item.model_dump(mode="json")},
                 )
             )
             continue
@@ -134,6 +142,7 @@ def _semantic_filter(
     build_candidate: Callable[[ModelT], ExtractionResult],
     transcript: TranscriptEnvelope,
     issues: list[ExtractionIssue],
+    issue_context: Callable[[ModelT], dict[str, Any]] | None = None,
 ) -> list[ModelT]:
     accepted: list[ModelT] = []
     for item in items:
@@ -141,12 +150,16 @@ def _semantic_filter(
         try:
             validate_extraction_result(transcript, build_candidate(item))
         except ContractValidationError as exc:
+            context: dict[str, Any] = {"candidate": item.model_dump(mode="json")}
+            if issue_context is not None:
+                context.update(issue_context(item))
             issues.append(
                 ExtractionIssue(
                     object_type=object_type,
                     object_id=object_id,
                     stage="semantic",
                     detail=str(exc),
+                    context=context,
                 )
             )
             continue
@@ -177,6 +190,7 @@ def sanitize_extraction_output(
                     object_id=key,
                     stage="schema",
                     detail=f"model returned {actual!r}; authoritative value {expected!r} was used",
+                    context={"model_value": actual, "authoritative_value": expected},
                 )
             )
 
@@ -191,6 +205,7 @@ def sanitize_extraction_output(
                 object_id="languages",
                 stage="schema",
                 detail="languages must be a list of strings",
+                context={"received_value": raw_languages},
             )
         )
 
@@ -208,6 +223,9 @@ def sanitize_extraction_output(
         id_field="relationship_id",
         issues=issues,
     )
+    original_relationships = {
+        item.relationship_id: item.model_dump(mode="json") for item in relationships
+    }
     events = _parse_items(
         raw_items=_list_value(raw, "events", issues),
         model_type=FamilyEvent,
@@ -279,6 +297,18 @@ def sanitize_extraction_output(
     preliminary, evidence_closure_count = complete_relationship_evidence(preliminary, transcript)
     relationships = preliminary.relationship_claims
 
+    def relationship_issue_context(item: RelationshipClaim) -> dict[str, Any]:
+        analysis = analyze_relationship_evidence(
+            relationship=item,
+            transcript=transcript,
+            people=valid_people,
+            speaker_name=speaker_name,
+        )
+        return {
+            "original_candidate": original_relationships.get(item.relationship_id),
+            "evidence_analysis": analysis.to_dict(),
+        }
+
     valid_relationships = _semantic_filter(
         items=relationships,
         object_type="relationship",
@@ -289,6 +319,7 @@ def sanitize_extraction_output(
         ),
         transcript=transcript,
         issues=issues,
+        issue_context=relationship_issue_context,
     )
     valid_events = _semantic_filter(
         items=events,
