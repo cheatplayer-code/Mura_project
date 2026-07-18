@@ -30,9 +30,11 @@ src/mura/deepseek/        HTTP client, prompts, cleaner, extractor
 src/mura/orchestration/   Audio storage and background job worker
 src/mura/storage/         SQLAlchemy models and repository
 src/mura/domain/          Stable Pydantic contracts
+src/mura/evaluation/      Deterministic benchmark schemas, scorer, and reports
+benchmarks/               Versioned synthetic and approved evaluation fixtures
 migrations/               Alembic PostgreSQL migrations
 tests/                    Unit and contract tests
-docs/                     Architecture and decisions
+docs/                     Architecture, decisions, and frozen baselines
 notebooks/                Kaggle launch instructions
 ```
 
@@ -119,13 +121,32 @@ The worker exposes:
 
 Quick Tunnel URLs are temporary and live only while the Kaggle session and `cloudflared` process remain active. The latest URL is persisted in PostgreSQL by the Core API.
 
+## ML core benchmark
+
+The benchmark runs without a GPU or API keys. It feeds fixed extraction candidates through the current deterministic sanitizer and evidence validator, then measures person recall, relationship precision/recall, direction accuracy, expected quarantine, and provenance completeness.
+
+```bash
+pip install -e ".[dev]"
+mura-evaluate-core \
+  --manifest benchmarks/manifest.json \
+  --json-output /tmp/mura-core-report.json \
+  --markdown-output /tmp/mura-core-report.md
+```
+
+The checked-in baseline is available at:
+
+- `docs/baselines/current_main.json`
+- `docs/baselines/current_main.md`
+
+This evaluator intentionally does not call GigaAM or DeepSeek. It isolates deterministic reasoning behavior so later linguistic and coreference changes can be compared against the same candidates.
+
 ## Tests
 
 ```bash
 pip install -e ".[dev]"
 pytest
 ruff check .
-mypy src apps services
+mypy src apps services scripts
 ```
 
 ## Safety rules
