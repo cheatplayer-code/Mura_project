@@ -56,9 +56,7 @@ def test_adjacent_spelling_variant_is_asr_normalization() -> None:
 def test_explicit_kazakh_self_correction_may_render_only_final_value() -> None:
     raw = _transcript("жоқ 1942 емес 1943 болуы керек")
     result = CleanerResult(
-        readable_segments=[
-            ReadableSegment(segment_id="seg_001", text="Жоқ, 1943 болуы керек.")
-        ],
+        readable_segments=[ReadableSegment(segment_id="seg_001", text="Жоқ, 1943 болуы керек.")],
         detected_corrections=[
             DetectedCorrection(
                 kind=CorrectionKind.SPEAKER_SELF_CORRECTION,
