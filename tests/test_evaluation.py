@@ -38,9 +38,10 @@ def test_current_main_baseline_is_reproducible() -> None:
 
     assert summary.quarantined_relationships.true_positive == 3
     assert summary.quarantined_relationships.false_positive == 0
-    assert summary.quarantined_relationships.false_negative == 1
+    assert summary.quarantined_relationships.false_negative == 0
     assert summary.quarantined_relationships.precision == 1.0
-    assert summary.quarantined_relationships.recall == 0.75
+    assert summary.quarantined_relationships.recall == 1.0
+    assert summary.quarantined_relationships.f1 == 1.0
 
     assert summary.relationship_direction_accuracy.value == 1.0
     assert summary.relationship_direction_accuracy.denominator == 4
