@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from mura.domain.models import ExtractionResult, RelationshipClaim, TranscriptEnvelope
+from mura.domain.models import ExtractionResult, PersonMention, RelationshipClaim, TranscriptEnvelope
+from mura.relationship_evidence import contains_surface, has_first_person_reference, normalize_evidence
 
 
 def _ordered_unique_segment_ids(
@@ -22,10 +23,39 @@ def _ordered_unique_segment_ids(
     return ordered
 
 
+def _segment_text_by_id(transcript: TranscriptEnvelope) -> dict[str, str]:
+    return {segment.segment_id: segment.text for segment in transcript.segments}
+
+
+def _best_identity_segment(
+    person: PersonMention,
+    transcript: TranscriptEnvelope,
+) -> str | None:
+    text_by_id = _segment_text_by_id(transcript)
+    surfaces = [person.name, *person.aliases]
+    for segment in transcript.segments:
+        if segment.segment_id not in person.source_segment_ids:
+            continue
+        text = text_by_id[segment.segment_id]
+        if any(contains_surface(text, surface) for surface in surfaces):
+            return segment.segment_id
+    return next((segment_id for segment_id in person.source_segment_ids if segment_id in text_by_id), None)
+
+
+def _source_text(source_ids: list[str], transcript: TranscriptEnvelope) -> str:
+    text_by_id = _segment_text_by_id(transcript)
+    return " ".join(text_by_id[item] for item in source_ids if item in text_by_id)
+
+
+def _is_speaker(person: PersonMention, speaker_name: str) -> bool:
+    return normalize_evidence(person.name) == normalize_evidence(speaker_name)
+
+
 def _complete_relationship(
     relationship: RelationshipClaim,
     *,
-    mention_sources: dict[str, list[str]],
+    people_by_id: dict[str, PersonMention],
+    speaker_name: str,
     transcript: TranscriptEnvelope,
 ) -> tuple[RelationshipClaim, bool]:
     source_ids = list(relationship.source_segment_ids)
@@ -36,13 +66,29 @@ def _complete_relationship(
         relationship.subject_mention_id,
         relationship.object_mention_id,
     ):
-        person_source_ids = mention_sources.get(mention_id, [])
-        if source_set.intersection(person_source_ids):
+        person = people_by_id.get(mention_id)
+        if person is None:
             continue
 
-        source_ids.extend(person_source_ids)
-        source_set.update(person_source_ids)
-        changed = changed or bool(person_source_ids)
+        source_text = _source_text(source_ids, transcript)
+        explicitly_named = any(
+            contains_surface(source_text, surface) for surface in [person.name, *person.aliases]
+        )
+        speaker_referenced = _is_speaker(person, speaker_name) and has_first_person_reference(
+            source_text
+        )
+        has_overlap = bool(source_set.intersection(person.source_segment_ids))
+
+        if explicitly_named or (speaker_referenced and has_overlap):
+            continue
+
+        identity_segment = _best_identity_segment(person, transcript)
+        if identity_segment is None or identity_segment in source_set:
+            continue
+
+        source_ids.append(identity_segment)
+        source_set.add(identity_segment)
+        changed = True
 
     if not changed:
         return relationship, False
@@ -56,26 +102,22 @@ def complete_relationship_evidence(
     result: ExtractionResult,
     transcript: TranscriptEnvelope,
 ) -> tuple[ExtractionResult, int]:
-    """Add missing endpoint identity evidence without changing relationship semantics.
+    """Add minimal endpoint identity evidence without changing relationship semantics.
 
-    DeepSeek sometimes cites the segment containing the kinship statement but omits the
-    earlier segment that establishes a pronoun's canonical person mention. The endpoint
-    mention already carries that source evidence, so this function closes the evidence
-    bundle deterministically before strict semantic validation.
-
-    It never changes endpoint IDs, roles, relationship type, confidence, or status.
-    Unknown endpoint IDs are left untouched for the validator to reject.
+    The extractor may cite a kinship statement that uses a pronoun or first-person form while the
+    canonical name was established elsewhere. This function adds at most one identity-bearing
+    segment per missing endpoint. It never changes endpoint IDs, roles, relationship type,
+    confidence, assertion mode, or verification status.
     """
-    mention_sources = {
-        person.mention_id: person.source_segment_ids for person in result.people_mentions
-    }
+    people_by_id = {person.mention_id: person for person in result.people_mentions}
     completed: list[RelationshipClaim] = []
     changed_count = 0
 
     for relationship in result.relationship_claims:
         updated, changed = _complete_relationship(
             relationship,
-            mention_sources=mention_sources,
+            people_by_id=people_by_id,
+            speaker_name=result.speaker_name,
             transcript=transcript,
         )
         completed.append(updated)
