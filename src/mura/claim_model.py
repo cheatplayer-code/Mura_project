@@ -304,9 +304,7 @@ def _weakest_evidence_class(
     fallback: EvidenceClass,
 ) -> EvidenceClass:
     classes = [
-        evidence_by_id[item].evidence_class
-        for item in evidence_ids
-        if item in evidence_by_id
+        evidence_by_id[item].evidence_class for item in evidence_ids if item in evidence_by_id
     ]
     if not classes:
         return fallback
@@ -328,9 +326,7 @@ def _materialize_name_variants(
         ]
         if not candidate_segments:
             continue
-        candidate_evidence = [
-            item for item in candidate.evidence_ids if item in valid_evidence_ids
-        ]
+        candidate_evidence = [item for item in candidate.evidence_ids if item in valid_evidence_ids]
         updated = candidate.model_copy(
             update={
                 "source_segment_ids": candidate_segments,
@@ -435,8 +431,7 @@ def _materialize_item(
                 object_id=object_id,
                 stage="provenance",
                 detail=(
-                    "unknown or out-of-scope evidence IDs were removed: "
-                    f"{invalid_evidence_ids}"
+                    f"unknown or out-of-scope evidence IDs were removed: {invalid_evidence_ids}"
                 ),
             )
         )
@@ -569,9 +564,7 @@ def _sync_conflict_ids(
                 list(result.relationship_claims), conflict_ids_by_claim
             ),
             "events": _attach_conflict_ids(list(result.events), conflict_ids_by_claim),
-            "descriptions": _attach_conflict_ids(
-                list(result.descriptions), conflict_ids_by_claim
-            ),
+            "descriptions": _attach_conflict_ids(list(result.descriptions), conflict_ids_by_claim),
             "stories": _attach_conflict_ids(list(result.stories), conflict_ids_by_claim),
             "unresolved_questions": _attach_conflict_ids(
                 list(result.unresolved_questions), conflict_ids_by_claim
@@ -838,9 +831,7 @@ def validate_extraction_contract_v2(
                 f"{object_type.value} {object_id} references unknown evidence: "
                 f"{sorted(unknown_evidence)}"
             )
-        evidence_segments = {
-            evidence_by_id[item_id].segment_id for item_id in item.evidence_ids
-        }
+        evidence_segments = {evidence_by_id[item_id].segment_id for item_id in item.evidence_ids}
         if not evidence_segments.issubset(item.source_segment_ids):
             raise ValueError(
                 f"{object_type.value} {object_id} evidence is outside source_segment_ids"
@@ -864,13 +855,9 @@ def validate_extraction_contract_v2(
         if narrator_mismatch:
             raise ValueError(f"{object_type.value} {object_id} has wrong narrator provenance")
         if provenance.generated_by_activity_id not in activity_ids:
-            raise ValueError(
-                f"{object_type.value} {object_id} has unknown generation activity"
-            )
+            raise ValueError(f"{object_type.value} {object_id} has unknown generation activity")
         if set(provenance.validated_by_activity_ids) - activity_ids:
-            raise ValueError(
-                f"{object_type.value} {object_id} has unknown validation activity"
-            )
+            raise ValueError(f"{object_type.value} {object_id} has unknown validation activity")
         if provenance.evidence_ids != item.evidence_ids:
             raise ValueError(
                 f"{object_type.value} {object_id} provenance evidence does not match claim"
@@ -911,6 +898,4 @@ def validate_extraction_contract_v2(
                     f"name variant {variant.variant_id} is outside person source segments"
                 )
             if set(variant.evidence_ids) - set(evidence_by_id):
-                raise ValueError(
-                    f"name variant {variant.variant_id} references unknown evidence"
-                )
+                raise ValueError(f"name variant {variant.variant_id} references unknown evidence")

@@ -142,8 +142,7 @@ def exactly_named_people(
         person
         for person in people
         if any(
-            contains_exact_surface(source_text, surface)
-            for surface in person_name_surfaces(person)
+            contains_exact_surface(source_text, surface) for surface in person_name_surfaces(person)
         )
     ]
 
@@ -237,12 +236,9 @@ def analyze_relationship_evidence(
         explicit_people=[
             {"mention_id": person.mention_id, "name": person.name} for person in explicit
         ],
-        exact_people=[
-            {"mention_id": person.mention_id, "name": person.name} for person in exact
-        ],
+        exact_people=[{"mention_id": person.mention_id, "name": person.name} for person in exact],
         morphological_people=[
-            {"mention_id": person.mention_id, "name": person.name}
-            for person in morphological
+            {"mention_id": person.mention_id, "name": person.name} for person in morphological
         ],
         speaker_mention_ids=sorted(speaker_ids),
         first_person_reference=first_person,

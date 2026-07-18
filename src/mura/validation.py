@@ -81,8 +81,7 @@ def _explicit_people_in_segments(
     explicit_people: set[str] = set()
     for person in people:
         if any(
-            _contains_evidence(source_text, surface)
-            for surface in person_name_surfaces(person)
+            _contains_evidence(source_text, surface) for surface in person_name_surfaces(person)
         ):
             explicit_people.add(person.mention_id)
     return explicit_people

@@ -113,8 +113,7 @@ def test_legacy_candidate_is_materialized_as_complete_v2_claim_bundle() -> None:
         assert person.evidence_ids
         assert person.provenance is not None
         assert any(
-            variant.variant_type is NameVariantType.PRIMARY
-            and variant.surface == person.name
+            variant.variant_type is NameVariantType.PRIMARY and variant.surface == person.name
             for variant in person.name_variants
         )
 
