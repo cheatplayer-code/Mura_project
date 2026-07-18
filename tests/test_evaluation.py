@@ -1,10 +1,12 @@
 from pathlib import Path
 
+from mura.evaluation.models import BenchmarkReport
 from mura.evaluation.reporting import render_markdown_report
 from mura.evaluation.runner import load_manifest, run_benchmark
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "benchmarks" / "manifest.json"
+FROZEN_BASELINE = ROOT / "docs" / "baselines" / "current_main.json"
 
 
 def test_manifest_loads_versioned_validation_dataset() -> None:
@@ -45,6 +47,13 @@ def test_current_main_baseline_is_reproducible() -> None:
     assert summary.provenance_completeness.value == 1.0
     assert summary.unknown_segment_references == 0
     assert summary.self_relationships == 0
+
+
+def test_generated_report_matches_frozen_baseline() -> None:
+    generated = run_benchmark(MANIFEST)
+    frozen = BenchmarkReport.model_validate_json(FROZEN_BASELINE.read_text(encoding="utf-8"))
+
+    assert generated == frozen
 
 
 def test_baseline_exposes_known_precision_and_recall_failures() -> None:
