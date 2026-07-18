@@ -212,9 +212,7 @@ def find_known_name_matches(text: str, surface: str) -> list[KazakhNameMatch]:
                     suffix=suffix,
                     exact=suffix is None,
                     rule_id=(
-                        "kk.name.exact.v1"
-                        if suffix is None
-                        else "kk.name.known_case_suffix.v1"
+                        "kk.name.exact.v1" if suffix is None else "kk.name.known_case_suffix.v1"
                     ),
                 )
             )
@@ -306,16 +304,13 @@ def _person_name_matches(
     return result
 
 
-def _speaker_mentions(
-    people: list[PersonMention], speaker_name: str
-) -> list[PersonMention]:
+def _speaker_mentions(people: list[PersonMention], speaker_name: str) -> list[PersonMention]:
     normalized_speaker = normalize_text(speaker_name)
     return [
         person
         for person in people
         if any(
-            normalize_text(surface) == normalized_speaker
-            for surface in _person_surfaces(person)
+            normalize_text(surface) == normalized_speaker for surface in _person_surfaces(person)
         )
     ]
 
@@ -334,8 +329,7 @@ def _unique_nearby_target(
         if mention_id not in excluded_ids
         and any(
             match.start >= 0
-            and min(abs(match.start - anchor_end), abs(anchor_start - match.end))
-            <= max_distance
+            and min(abs(match.start - anchor_end), abs(anchor_start - match.end)) <= max_distance
             for match in matches
         )
     }
@@ -425,8 +419,7 @@ def find_relationship_signals(
             following_tokens = [
                 token
                 for token in tokens
-                if token.start >= possessor_match.end
-                and token.start - possessor_match.end <= 40
+                if token.start >= possessor_match.end and token.start - possessor_match.end <= 40
             ]
             for token in following_tokens[:4]:
                 frame = _NAMED_POSSESSOR_FRAMES.get(token.normalized)
