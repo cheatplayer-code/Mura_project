@@ -184,10 +184,10 @@ def analyze_relationship_evidence(
     unsupported = [mention_id for mention_id in endpoint_ids if mention_id not in supported]
 
     endpoint_set = set(endpoint_ids)
-    if endpoint_set.issubset(exact_ids):
-        evidence_class = EvidenceClass.A_EXPLICIT
-    elif not unsupported and first_person and endpoint_set.intersection(speaker_ids):
+    if not unsupported and first_person and endpoint_set.intersection(speaker_ids):
         evidence_class = EvidenceClass.C_SPEAKER_ANCHORED
+    elif endpoint_set.issubset(exact_ids):
+        evidence_class = EvidenceClass.A_EXPLICIT
     elif not unsupported:
         evidence_class = EvidenceClass.B_MORPHOLOGICALLY_EXPLICIT
     elif relationship.coreference_link_ids:
