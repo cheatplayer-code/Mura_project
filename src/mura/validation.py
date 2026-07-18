@@ -4,6 +4,7 @@ import re
 import unicodedata
 from collections.abc import Iterable
 
+from mura.claim_model import validate_extraction_contract_v2
 from mura.domain.models import (
     CleanerResult,
     ExtractionResult,
@@ -132,8 +133,6 @@ def validate_cleaner_result(transcript: TranscriptEnvelope, result: CleanerResul
             segment_text_by_id=readable_text_by_id,
             object_name=f"{object_name} corrected value",
         )
-        # The immutable raw segment and the DetectedCorrection object preserve the withdrawn
-        # wording. The readable transcript may render only the speaker's final corrected form.
         normalized_correction_sources.append(_normalize_evidence(correction.original_value))
 
     for fragment in result.uncertain_fragments:
@@ -270,3 +269,8 @@ def validate_extraction_result(transcript: TranscriptEnvelope, result: Extractio
             raise ContractValidationError(
                 f"{question.question_id} references unknown mentions: {sorted(unknown)}"
             )
+
+    try:
+        validate_extraction_contract_v2(transcript, result)
+    except ValueError as exc:
+        raise ContractValidationError(f"evidence/claim v2 contract failed: {exc}") from exc
