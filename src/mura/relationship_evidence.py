@@ -118,6 +118,7 @@ class RelationshipEvidenceAnalysis:
     evidence_class: str
     auto_accept_eligible: bool
     coreference_link_ids: list[str]
+    resolved_coreference_antecedent_ids: list[str]
     linguistic_relationship_signals: list[dict[str, str]]
     kazakh_relationship_signals: list[dict[str, str]]
     russian_relationship_signals: list[dict[str, str]]
@@ -148,7 +149,9 @@ def analyze_relationship_evidence(
     transcript: TranscriptEnvelope,
     people: list[PersonMention],
     speaker_name: str,
+    resolved_coreference_antecedent_ids: set[str] | None = None,
 ) -> RelationshipEvidenceAnalysis:
+    resolved_antecedents = resolved_coreference_antecedent_ids or set()
     mention_by_id = {person.mention_id: person for person in people}
     source_text = joined_segment_text(relationship.source_segment_ids, transcript)
     explicit = explicitly_named_people(source_text, people)
@@ -176,7 +179,8 @@ def analyze_relationship_evidence(
         signal for signal in endpoint_signals if not signal_matches_relationship(signal, relationship)
     ]
     third_person_markers = find_third_person_possessive_markers(source_text)
-    unresolved_third_person = bool(third_person_markers) and not relationship.coreference_link_ids
+    resolved_endpoint_antecedents = endpoint_set.intersection(resolved_antecedents)
+    unresolved_third_person = bool(third_person_markers) and not resolved_endpoint_antecedents
 
     if unresolved_third_person or conflicting_signals:
         role_consistent: bool | None = False
@@ -198,7 +202,7 @@ def analyze_relationship_evidence(
         evidence_class = EvidenceClass.A_EXPLICIT
     elif not unsupported:
         evidence_class = EvidenceClass.B_MORPHOLOGICALLY_EXPLICIT
-    elif relationship.coreference_link_ids:
+    elif resolved_endpoint_antecedents:
         evidence_class = EvidenceClass.D_CONTEXT_RESOLVED
     elif relationship.assertion_mode.value == "inferred":
         evidence_class = EvidenceClass.E_INFERRED
@@ -245,6 +249,7 @@ def analyze_relationship_evidence(
             and speaker_signal_requirement_met
         ),
         coreference_link_ids=list(relationship.coreference_link_ids),
+        resolved_coreference_antecedent_ids=sorted(resolved_antecedents),
         linguistic_relationship_signals=signal_dicts,
         kazakh_relationship_signals=[item for item in signal_dicts if item["language"] == "kk"],
         russian_relationship_signals=[item for item in signal_dicts if item["language"] == "ru"],
