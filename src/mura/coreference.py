@@ -560,12 +560,23 @@ def augment_bounded_coreference(
             if not matching:
                 continue
 
-            status = CoreferenceStatus.RESOLVED if resolved else CoreferenceStatus.AMBIGUOUS
+            if resolved:
+                status = CoreferenceStatus.RESOLVED
+            elif len(candidate_ids) >= 2:
+                status = CoreferenceStatus.AMBIGUOUS
+            else:
+                status = CoreferenceStatus.UNRESOLVED
             antecedents = candidate_ids if resolved else []
             evidence_class = (
                 EvidenceClass.D_CONTEXT_RESOLVED if resolved else EvidenceClass.U_UNCERTAIN
             )
-            confidence = 1.0 if resolved else 0.5
+            confidence = (
+                1.0
+                if resolved
+                else 0.5
+                if status is CoreferenceStatus.AMBIGUOUS
+                else 0.0
+            )
             link_id = (
                 f"coreference_{_safe_id(segment.segment_id)}_{anaphor.start}_"
                 f"{anaphor.grammatical_number.value}"
@@ -579,6 +590,8 @@ def augment_bounded_coreference(
                 else "discourse.singular.unique_antecedent.v1"
                 if resolved
                 else "discourse.ambiguous_competing_antecedents.v1"
+                if status is CoreferenceStatus.AMBIGUOUS
+                else "discourse.unresolved.insufficient_candidates.v1"
             )
             source_segment_ids = _ordered_segment_ids(
                 [context_segment_id, segment.segment_id],
