@@ -50,7 +50,9 @@ def has_first_person_reference(text: str) -> bool:
 
 def joined_segment_text(segment_ids: list[str], transcript: TranscriptEnvelope) -> str:
     text_by_id = {segment.segment_id: segment.text for segment in transcript.segments}
-    return " ".join(text_by_id[segment_id] for segment_id in segment_ids if segment_id in text_by_id)
+    return " ".join(
+        text_by_id[segment_id] for segment_id in segment_ids if segment_id in text_by_id
+    )
 
 
 def explicitly_named_people(
@@ -60,7 +62,10 @@ def explicitly_named_people(
     return [
         person
         for person in people
-        if any(contains_surface(source_text, surface) for surface in [person.name, *person.aliases])
+        if any(
+            contains_surface(source_text, surface)
+            for surface in [person.name, *person.aliases]
+        )
     ]
 
 
