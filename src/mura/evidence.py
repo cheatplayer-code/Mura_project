@@ -49,11 +49,7 @@ def _best_identity_segment(
         if any(contains_surface(text, surface) for surface in surfaces):
             return segment.segment_id
     return next(
-        (
-            segment_id
-            for segment_id in person.source_segment_ids
-            if segment_id in text_by_id
-        ),
+        (segment_id for segment_id in person.source_segment_ids if segment_id in text_by_id),
         None,
     )
 
