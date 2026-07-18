@@ -382,6 +382,27 @@ def _canonical_signal(
     )
 
 
+def _only_separators(text: str, start: int, end: int) -> bool:
+    return start <= end and not normalize_text(text[start:end])
+
+
+def _is_u_possessor_frame(
+    text: str,
+    tokens: list[Any],
+    possessor_match: RussianNameMatch,
+    kinship: RussianKinshipMatch,
+) -> bool:
+    if kinship.start <= possessor_match.end:
+        return False
+    previous_tokens = [token for token in tokens if token.end <= possessor_match.start]
+    if not previous_tokens or previous_tokens[-1].normalized != "у":
+        return False
+    if not _only_separators(text, previous_tokens[-1].end, possessor_match.start):
+        return False
+    between = normalize_text(text[possessor_match.end : kinship.start])
+    return between in {"", "есть"}
+
+
 def find_relationship_signals(
     text: str,
     people: list[PersonMention],
@@ -423,20 +444,19 @@ def find_relationship_signals(
     for possessor in people:
         possessor_matches = matches_by_person.get(possessor.mention_id, [])
         for possessor_match in possessor_matches:
-            is_genitive = possessor_match.grammatical_case == "genitive"
-            previous_is_u = any(
-                token.end <= possessor_match.start
-                and possessor_match.start - token.end <= 3
-                and token.normalized == "у"
-                for token in tokens
-            )
-            if not is_genitive and not previous_is_u:
-                continue
             for kinship in kinships:
-                if min(
-                    abs(kinship.start - possessor_match.end),
-                    abs(possessor_match.start - kinship.end),
-                ) > 45:
+                kinship_before_genitive = (
+                    possessor_match.grammatical_case == "genitive"
+                    and kinship.end <= possessor_match.start
+                    and _only_separators(text, kinship.end, possessor_match.start)
+                )
+                u_possessor_frame = _is_u_possessor_frame(
+                    text,
+                    tokens,
+                    possessor_match,
+                    kinship,
+                )
+                if not kinship_before_genitive and not u_possessor_frame:
                     continue
                 target_id = _unique_nearby_target(
                     anchor_start=kinship.start,
