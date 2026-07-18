@@ -169,9 +169,7 @@ def _prefer_specific_endpoint_signals(
     for candidates in grouped.values():
         strongest = max(_signal_specificity(candidate) for candidate in candidates)
         selected.extend(
-            candidate
-            for candidate in candidates
-            if _signal_specificity(candidate) == strongest
+            candidate for candidate in candidates if _signal_specificity(candidate) == strongest
         )
     return selected
 
