@@ -261,13 +261,15 @@ def _kinship_token_indexes(text: str) -> set[int]:
     indexes = {
         index for index, token in enumerate(tokens) if token.normalized in _KAZAKH_KINSHIP_LEXEMES
     }
-    spans = [
-        (match.start, match.end)
-        for match in [
-            *russian.find_kinship_matches(text),
-            *english.find_kinship_matches(text),
-        ]
+    russian_spans = [
+        (kinship_match.start, kinship_match.end)
+        for kinship_match in russian.find_kinship_matches(text)
     ]
+    english_spans = [
+        (kinship_match.start, kinship_match.end)
+        for kinship_match in english.find_kinship_matches(text)
+    ]
+    spans = [*russian_spans, *english_spans]
     indexes.update(
         index
         for index, token in enumerate(tokens)
