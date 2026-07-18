@@ -1,0 +1,52 @@
+name: PR14 Format
+
+on:
+  push:
+    branches:
+      - feature/evidence-claim-model-v2
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr14-format
+  cancel-in-progress: true
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+
+      - name: Install Ruff
+        run: python -m pip install --disable-pip-version-check -q "ruff>=0.12,<1"
+
+      - name: Format PR14 sources
+        run: |
+          set -Eeuo pipefail
+          ruff format \
+            src/mura/claim_model.py \
+            src/mura/relationship_evidence.py \
+            src/mura/validation.py \
+            tests/test_claim_model_v2.py
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/mura/claim_model.py \
+            src/mura/relationship_evidence.py \
+            src/mura/validation.py \
+            tests/test_claim_model_v2.py
+          git commit -m "Apply Ruff formatting to PR14"
+          git push
