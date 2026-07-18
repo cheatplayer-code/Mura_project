@@ -158,9 +158,7 @@ def find_known_name_matches(text: str, surface: str) -> list[EnglishNameMatch]:
         possessive = (
             index + size < len(tokens)
             and tokens[index + size].normalized == "s"
-            and text[window[-1].end : tokens[index + size].end]
-            .lstrip()
-            .startswith(("'", "’"))
+            and text[window[-1].end : tokens[index + size].end].lstrip().startswith(("'", "’"))
         )
         matches.append(
             EnglishNameMatch(
@@ -255,8 +253,7 @@ def _speaker_mentions(people: list[PersonMention], speaker_name: str) -> list[Pe
         person
         for person in people
         if any(
-            normalize_text(surface) == normalized_speaker
-            for surface in _person_surfaces(person)
+            normalize_text(surface) == normalized_speaker for surface in _person_surfaces(person)
         )
     ]
 
@@ -364,14 +361,11 @@ def find_relationship_signals(
             for kinship in kinships:
                 normalized_between = normalize_text(text[possessor_match.end : kinship.start])
                 possessive_pattern = (
-                    possessor_match.possessive
-                    and 0 <= kinship.start - possessor_match.end <= 20
+                    possessor_match.possessive and 0 <= kinship.start - possessor_match.end <= 20
                 )
-                of_pattern = (
-                    0 <= possessor_match.start - kinship.end <= 20
-                    and normalize_text(text[kinship.end : possessor_match.start])
-                    in {"of", "of the"}
-                )
+                of_pattern = 0 <= possessor_match.start - kinship.end <= 20 and normalize_text(
+                    text[kinship.end : possessor_match.start]
+                ) in {"of", "of the"}
                 have_pattern = (
                     0 <= kinship.start - possessor_match.end <= 30
                     and normalized_between in {"has a", "has an", "has", "have a", "have"}
