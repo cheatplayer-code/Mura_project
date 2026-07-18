@@ -9,6 +9,7 @@ from mura.domain.models import (
     MentionResolution,
     ResolutionStatus,
 )
+from mura.relationship_evidence import person_name_surfaces
 
 
 def normalize_name(value: str) -> str:
@@ -29,7 +30,7 @@ def resolve_mentions(
     resolutions: list[MentionResolution] = []
     for mention in extraction.people_mentions:
         candidate_map: dict[str, KnownPerson] = {}
-        for surface in [mention.name, *mention.aliases]:
+        for surface in person_name_surfaces(mention):
             for candidate in index.get(normalize_name(surface), []):
                 candidate_map[candidate.person_id] = candidate
 
@@ -49,7 +50,7 @@ def resolve_mentions(
                         status=ResolutionStatus.RESOLVED,
                         person_id=candidate.person_id,
                         candidate_person_ids=[candidate.person_id],
-                        reason="exact canonical-name or alias match",
+                        reason="exact canonical-name, alias, or structured name-variant match",
                     )
                 )
                 continue
@@ -68,7 +69,7 @@ def resolve_mentions(
                 MentionResolution(
                     mention_id=mention.mention_id,
                     status=ResolutionStatus.NEW_PERSON,
-                    reason="no exact canonical-name or alias candidate",
+                    reason="no exact canonical-name, alias, or name-variant candidate",
                 )
             )
 

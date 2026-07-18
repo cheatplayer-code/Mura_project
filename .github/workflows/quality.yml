@@ -42,7 +42,20 @@ jobs:
         run: python scripts/ci/check_workflow_policy.py
 
       - name: Lint
-        run: ruff check .
+        id: lint
+        shell: bash
+        run: |
+          set -o pipefail
+          ruff check . 2>&1 | tee ruff-report.txt
+
+      - name: Upload Ruff diagnostics
+        if: failure() && steps.lint.outcome == 'failure'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ruff-report
+          path: ruff-report.txt
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Generate formatting patch
         id: formatting
@@ -61,7 +74,12 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ruff-format-patch
-          path: ruff-format.patch
+          path: |
+            ruff-format.patch
+            src/mura/claim_model.py
+            src/mura/relationship_evidence.py
+            src/mura/validation.py
+            tests/test_claim_model_v2.py
           if-no-files-found: error
           retention-days: 1
 

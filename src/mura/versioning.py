@@ -17,11 +17,11 @@ class PipelineVersions(StrictModel):
 
 
 CURRENT_PIPELINE_VERSIONS = PipelineVersions(
-    pipeline="mura-core-v0.3.0",
-    domain_schema="domain-v1",
+    pipeline="mura-core-v0.4.0",
+    domain_schema="domain-v2",
     cleaner_prompt="cleaner-v1",
-    extractor_prompt="extractor-v1",
-    evidence_rules="relationship-evidence-v1",
+    extractor_prompt="extractor-v2",
+    evidence_rules="claim-evidence-v2",
     resolver="mention-resolver-v1",
     evaluator="core-evaluator-v1",
     benchmark_schema="benchmark-v1",

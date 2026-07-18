@@ -10,6 +10,7 @@ from mura.relationship_evidence import (
     contains_surface,
     has_first_person_reference,
     normalize_evidence,
+    person_name_surfaces,
 )
 
 
@@ -17,6 +18,7 @@ def _ordered_unique_segment_ids(
     segment_ids: list[str], transcript: TranscriptEnvelope
 ) -> list[str]:
     """Return unique IDs in transcript order, preserving unknown IDs at the end."""
+
     requested = set(segment_ids)
     ordered = [
         segment.segment_id for segment in transcript.segments if segment.segment_id in requested
@@ -28,7 +30,6 @@ def _ordered_unique_segment_ids(
             continue
         ordered.append(segment_id)
         seen.add(segment_id)
-
     return ordered
 
 
@@ -41,7 +42,7 @@ def _best_identity_segment(
     transcript: TranscriptEnvelope,
 ) -> str | None:
     text_by_id = _segment_text_by_id(transcript)
-    surfaces = [person.name, *person.aliases]
+    surfaces = person_name_surfaces(person)
     for segment in transcript.segments:
         if segment.segment_id not in person.source_segment_ids:
             continue
@@ -60,7 +61,11 @@ def _source_text(source_ids: list[str], transcript: TranscriptEnvelope) -> str:
 
 
 def _is_speaker(person: PersonMention, speaker_name: str) -> bool:
-    return normalize_evidence(person.name) == normalize_evidence(speaker_name)
+    normalized_speaker = normalize_evidence(speaker_name)
+    return any(
+        normalize_evidence(surface) == normalized_speaker
+        for surface in person_name_surfaces(person)
+    )
 
 
 def _complete_relationship(
@@ -84,7 +89,7 @@ def _complete_relationship(
 
         source_text = _source_text(source_ids, transcript)
         explicitly_named = any(
-            contains_surface(source_text, surface) for surface in [person.name, *person.aliases]
+            contains_surface(source_text, surface) for surface in person_name_surfaces(person)
         )
         if explicitly_named:
             continue
@@ -127,6 +132,7 @@ def complete_relationship_evidence(
     The function never changes endpoint IDs, roles, relationship type, confidence, assertion
     mode, or verification status.
     """
+
     people_by_id = {person.mention_id: person for person in result.people_mentions}
     completed: list[RelationshipClaim] = []
     changed_count = 0

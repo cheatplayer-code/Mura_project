@@ -8,11 +8,11 @@ Manifest: `benchmarks/manifest.json`
 |---|---|
 | benchmark_schema | `benchmark-v1` |
 | cleaner_prompt | `cleaner-v1` |
-| domain_schema | `domain-v1` |
+| domain_schema | `domain-v2` |
 | evaluator | `core-evaluator-v1` |
-| evidence_rules | `relationship-evidence-v1` |
-| extractor_prompt | `extractor-v1` |
-| pipeline | `mura-core-v0.3.0` |
+| evidence_rules | `claim-evidence-v2` |
+| extractor_prompt | `extractor-v2` |
+| pipeline | `mura-core-v0.4.0` |
 | resolver | `mention-resolver-v1` |
 
 ## Aggregate metrics
@@ -34,4 +34,4 @@ Manifest: `benchmarks/manifest.json`
 
 ## Scope
 
-This baseline measures the deterministic validation layer against fixed extraction candidates. It intentionally does not call GigaAM or DeepSeek, so it does not measure ASR quality or live candidate-generation quality. The fixed candidates make changes to evidence logic measurable and reproducible.
+This baseline measures the deterministic validation layer against fixed extraction candidates. It intentionally does not call GigaAM or DeepSeek, so it does not measure ASR quality or live candidate-generation quality. PR 14 changes the claim contract and provenance model but intentionally leaves these linguistic and discourse failures for PRs 15–17.

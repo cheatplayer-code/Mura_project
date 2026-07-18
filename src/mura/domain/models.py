@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import unicodedata
 from enum import StrEnum
 from typing import Any
 
@@ -61,6 +63,113 @@ class RelationshipRole(StrEnum):
     OLDER_SIBLING = "older_sibling"
     YOUNGER_SIBLING = "younger_sibling"
     SIBLING = "sibling"
+
+
+class EvidenceClass(StrEnum):
+    """Strength and linguistic origin of support for an extracted object.
+
+    A-C are locally grounded classes. D requires an explicit coreference link. E and U are never
+    sufficient for automatic graph materialization.
+    """
+
+    A_EXPLICIT = "A_explicit"
+    B_MORPHOLOGICALLY_EXPLICIT = "B_morphologically_explicit"
+    C_SPEAKER_ANCHORED = "C_speaker_anchored"
+    D_CONTEXT_RESOLVED = "D_context_resolved"
+    E_INFERRED = "E_inferred"
+    U_UNCERTAIN = "U_uncertain"
+
+
+class EvidenceSourceLayer(StrEnum):
+    RAW_TRANSCRIPT = "raw_transcript"
+    READABLE_TRANSCRIPT = "readable_transcript"
+
+
+class EvidencePurpose(StrEnum):
+    IDENTITY = "identity"
+    CLAIM = "claim"
+    COREFERENCE = "coreference"
+    CORRECTION = "correction"
+    CONTEXT = "context"
+    CONFLICT = "conflict"
+
+
+class NameVariantType(StrEnum):
+    PRIMARY = "primary"
+    EXPLICIT_ALIAS = "explicit_alias"
+    NICKNAME = "nickname"
+    DIMINUTIVE = "diminutive"
+    PATRONYMIC = "patronymic"
+    SURNAME = "surname"
+    MARRIED_NAME = "married_name"
+    TRANSLITERATION = "transliteration"
+    SCRIPT_VARIANT = "script_variant"
+    ASR_VARIANT = "asr_variant"
+    INFLECTED_FORM = "inflected_form"
+    UNKNOWN = "unknown"
+
+
+class ProvenanceStage(StrEnum):
+    ASR = "asr"
+    CLEANER = "cleaner"
+    EXTRACTOR = "extractor"
+    SANITIZER = "sanitizer"
+    RESOLVER = "resolver"
+    HUMAN_REVIEW = "human_review"
+    MIGRATION = "migration"
+
+
+class CoreferenceStatus(StrEnum):
+    RESOLVED = "resolved"
+    AMBIGUOUS = "ambiguous"
+    UNRESOLVED = "unresolved"
+    REJECTED = "rejected"
+
+
+class CoreferenceMethod(StrEnum):
+    EXPLICIT_NAMING = "explicit_naming"
+    SPEAKER_ANCHOR = "speaker_anchor"
+    MORPHOLOGICAL = "morphological"
+    DETERMINISTIC_DISCOURSE = "deterministic_discourse"
+    MODEL_PROPOSAL = "model_proposal"
+    HUMAN_REVIEW = "human_review"
+
+
+class GrammaticalNumber(StrEnum):
+    SINGULAR = "singular"
+    PLURAL = "plural"
+    UNKNOWN = "unknown"
+
+
+class ClaimObjectType(StrEnum):
+    PERSON_MENTION = "person_mention"
+    RELATIONSHIP = "relationship"
+    EVENT = "event"
+    DESCRIPTION = "description"
+    STORY = "story"
+    QUESTION = "question"
+
+
+class ConflictType(StrEnum):
+    IDENTITY = "identity"
+    RELATIONSHIP = "relationship"
+    ATTRIBUTE = "attribute"
+    TEMPORAL = "temporal"
+    NAME = "name"
+    CORRECTION = "correction"
+    OTHER = "other"
+
+
+class ConflictStatus(StrEnum):
+    OPEN = "open"
+    RESOLVED = "resolved"
+    DISMISSED = "dismissed"
+
+
+class ConflictDetectionMethod(StrEnum):
+    DETERMINISTIC = "deterministic"
+    MODEL = "model"
+    HUMAN = "human"
 
 
 class RawSegment(StrictModel):
@@ -131,26 +240,182 @@ class CleanerResult(StrictModel):
     full_readable_text: str = Field(min_length=1)
 
 
-class PersonMention(StrictModel):
+class ProvenanceActivity(StrictModel):
+    activity_id: str = Field(min_length=1)
+    stage: ProvenanceStage
+    system: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+    prompt_version: str | None = None
+    model_name: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ClaimProvenance(StrictModel):
+    recording_id: str = Field(min_length=1)
+    speaker_id: str = Field(min_length=1)
+    speaker_name: str = Field(min_length=1)
+    generated_by_activity_id: str = Field(min_length=1)
+    validated_by_activity_ids: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(min_length=1)
+    derived_from_claim_ids: list[str] = Field(default_factory=list)
+    pipeline_versions: dict[str, str] = Field(default_factory=dict)
+
+
+class EvidenceSpan(StrictModel):
+    evidence_id: str = Field(min_length=1)
+    segment_id: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+    source_layer: EvidenceSourceLayer = EvidenceSourceLayer.RAW_TRANSCRIPT
+    start_char: int | None = Field(default=None, ge=0)
+    end_char: int | None = Field(default=None, gt=0)
+    evidence_class: EvidenceClass = EvidenceClass.U_UNCERTAIN
+    purposes: list[EvidencePurpose] = Field(default_factory=lambda: [EvidencePurpose.CLAIM])
+    mention_ids: list[str] = Field(default_factory=list)
+    coreference_link_ids: list[str] = Field(default_factory=list)
+    derived_from_evidence_ids: list[str] = Field(default_factory=list)
+    created_by_activity_id: str | None = None
+    confidence: float = Field(default=1.0, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_offsets(self) -> EvidenceSpan:
+        if (self.start_char is None) != (self.end_char is None):
+            raise ValueError("evidence offsets must either both be set or both be omitted")
+        if self.start_char is not None and self.end_char is not None:
+            if self.end_char <= self.start_char:
+                raise ValueError("evidence end_char must be greater than start_char")
+            if self.end_char - self.start_char != len(self.text):
+                raise ValueError("evidence offsets must span exactly evidence text length")
+        if len(self.purposes) != len(set(self.purposes)):
+            raise ValueError("evidence purposes must be unique")
+        return self
+
+
+def _normalize_name_surface(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    normalized = re.sub(r"[^\w]+", " ", normalized, flags=re.UNICODE)
+    return " ".join(normalized.replace("_", " ").split())
+
+
+class NameVariant(StrictModel):
+    variant_id: str = Field(min_length=1)
+    surface: str = Field(min_length=1)
+    normalized: str = Field(min_length=1)
+    variant_type: NameVariantType
+    language: str | None = None
+    script: str | None = None
+    source_segment_ids: list[str] = Field(min_length=1)
+    evidence_ids: list[str] = Field(default_factory=list)
+    confidence: float = Field(default=1.0, ge=0, le=1)
+    verification_status: VerificationStatus = VerificationStatus.UNREVIEWED
+
+    @model_validator(mode="after")
+    def validate_normalized_surface(self) -> NameVariant:
+        expected = _normalize_name_surface(self.surface)
+        if self.normalized != expected:
+            raise ValueError(f"normalized name must equal {expected!r}")
+        return self
+
+
+class CoreferenceLink(StrictModel):
+    coreference_id: str = Field(min_length=1)
+    anaphor_text: str = Field(min_length=1)
+    source_segment_ids: list[str] = Field(min_length=1)
+    evidence_ids: list[str] = Field(min_length=1)
+    status: CoreferenceStatus
+    method: CoreferenceMethod
+    grammatical_number: GrammaticalNumber = GrammaticalNumber.UNKNOWN
+    antecedent_mention_ids: list[str] = Field(default_factory=list)
+    candidate_mention_ids: list[str] = Field(default_factory=list)
+    evidence_class: EvidenceClass = EvidenceClass.U_UNCERTAIN
+    confidence: float = Field(ge=0, le=1)
+    reason: str = Field(min_length=1)
+    verification_status: VerificationStatus = VerificationStatus.UNREVIEWED
+
+    @model_validator(mode="after")
+    def validate_resolution_state(self) -> CoreferenceLink:
+        antecedents = list(dict.fromkeys(self.antecedent_mention_ids))
+        candidates = list(dict.fromkeys(self.candidate_mention_ids))
+        if antecedents != self.antecedent_mention_ids:
+            raise ValueError("coreference antecedent IDs must be unique")
+        if candidates != self.candidate_mention_ids:
+            raise ValueError("coreference candidate IDs must be unique")
+
+        if self.status is CoreferenceStatus.RESOLVED:
+            if not antecedents:
+                raise ValueError("resolved coreference requires at least one antecedent")
+            if self.grammatical_number is GrammaticalNumber.SINGULAR and len(antecedents) != 1:
+                raise ValueError("singular resolved coreference requires exactly one antecedent")
+            if candidates and not set(antecedents).issubset(candidates):
+                raise ValueError("resolved antecedents must be included in candidate IDs")
+        elif antecedents:
+            raise ValueError("only resolved coreference may contain antecedent IDs")
+
+        if self.status is CoreferenceStatus.AMBIGUOUS and len(candidates) < 2:
+            raise ValueError("ambiguous coreference requires at least two candidates")
+        return self
+
+
+class ClaimReference(StrictModel):
+    object_type: ClaimObjectType
+    object_id: str = Field(min_length=1)
+
+
+class ConflictSet(StrictModel):
+    conflict_id: str = Field(min_length=1)
+    conflict_type: ConflictType
+    claim_refs: list[ClaimReference] = Field(min_length=2)
+    status: ConflictStatus = ConflictStatus.OPEN
+    detected_by: ConflictDetectionMethod
+    evidence_ids: list[str] = Field(default_factory=list)
+    rationale: str = Field(min_length=1)
+    preferred_claim: ClaimReference | None = None
+    resolution_note: str | None = None
+    verification_status: VerificationStatus = VerificationStatus.UNREVIEWED
+
+    @model_validator(mode="after")
+    def validate_conflict_resolution(self) -> ConflictSet:
+        keys = [(item.object_type, item.object_id) for item in self.claim_refs]
+        if len(keys) != len(set(keys)):
+            raise ValueError("conflict claim references must be unique")
+        if self.preferred_claim is not None:
+            preferred_key = (self.preferred_claim.object_type, self.preferred_claim.object_id)
+            if preferred_key not in keys:
+                raise ValueError("preferred conflict claim must belong to the conflict set")
+            if self.status is not ConflictStatus.RESOLVED:
+                raise ValueError("a preferred claim is allowed only for a resolved conflict")
+        if self.status is ConflictStatus.RESOLVED and not self.resolution_note:
+            raise ValueError("resolved conflict requires a resolution note")
+        return self
+
+
+class EvidenceBackedObject(StrictModel):
+    source_segment_ids: list[str] = Field(min_length=1)
+    evidence_ids: list[str] = Field(default_factory=list)
+    evidence_class: EvidenceClass = EvidenceClass.U_UNCERTAIN
+    coreference_link_ids: list[str] = Field(default_factory=list)
+    conflict_ids: list[str] = Field(default_factory=list)
+    provenance: ClaimProvenance | None = None
+
+
+class PersonMention(EvidenceBackedObject):
     mention_id: str
     name: str = Field(min_length=1)
     aliases: list[str] = Field(default_factory=list)
+    name_variants: list[NameVariant] = Field(default_factory=list)
     category: PersonCategory = PersonCategory.UNKNOWN
     relation_to_speaker: str | None = None
-    source_segment_ids: list[str] = Field(min_length=1)
     assertion_mode: AssertionMode = AssertionMode.EXPLICIT
     verification_status: VerificationStatus = VerificationStatus.UNREVIEWED
     confidence: float = Field(ge=0, le=1)
 
 
-class RelationshipClaim(StrictModel):
+class RelationshipClaim(EvidenceBackedObject):
     relationship_id: str
     relationship_type: RelationshipType
     subject_mention_id: str
     subject_role: RelationshipRole
     object_mention_id: str
     object_role: RelationshipRole
-    source_segment_ids: list[str] = Field(min_length=1)
     assertion_mode: AssertionMode = AssertionMode.EXPLICIT
     verification_status: VerificationStatus = VerificationStatus.UNREVIEWED
     confidence: float = Field(ge=0, le=1)
@@ -184,7 +449,7 @@ class EventDate(StrictModel):
     original_expression: str | None = None
 
 
-class FamilyEvent(StrictModel):
+class FamilyEvent(EvidenceBackedObject):
     event_id: str
     event_type: str
     title: str
@@ -192,30 +457,27 @@ class FamilyEvent(StrictModel):
     date: EventDate | None = None
     location: str | None = None
     description: str
-    source_segment_ids: list[str] = Field(min_length=1)
     assertion_mode: AssertionMode = AssertionMode.EXPLICIT
     verification_status: VerificationStatus = VerificationStatus.UNREVIEWED
     confidence: float = Field(ge=0, le=1)
 
 
-class PersonDescription(StrictModel):
+class PersonDescription(EvidenceBackedObject):
     description_id: str
     person_mention_id: str
     description: str
     perspective: str
-    source_segment_ids: list[str] = Field(min_length=1)
     assertion_mode: AssertionMode = AssertionMode.EXPLICIT
     verification_status: VerificationStatus = VerificationStatus.UNREVIEWED
     confidence: float = Field(ge=0, le=1)
 
 
-class Story(StrictModel):
+class Story(EvidenceBackedObject):
     story_id: str
     title: str
     summary: str
     person_mention_ids: list[str] = Field(default_factory=list)
     event_ids: list[str] = Field(default_factory=list)
-    source_segment_ids: list[str] = Field(min_length=1)
     privacy: Privacy = Privacy.PRIVATE
     sensitivity: str = "normal"
 
@@ -225,25 +487,42 @@ class Story(StrictModel):
         return self
 
 
-class UnresolvedQuestion(StrictModel):
+class UnresolvedQuestion(EvidenceBackedObject):
     question_id: str
     question: str
     reason: str
     related_mention_ids: list[str] = Field(default_factory=list)
-    source_segment_ids: list[str] = Field(min_length=1)
 
 
 class ExtractionResult(StrictModel):
+    schema_version: str = "extraction-v1"
     recording_id: str
     speaker_id: str
     speaker_name: str
     languages: list[str] = Field(default_factory=list)
+    provenance_activities: list[ProvenanceActivity] = Field(default_factory=list)
+    evidence_spans: list[EvidenceSpan] = Field(default_factory=list)
+    coreference_links: list[CoreferenceLink] = Field(default_factory=list)
+    conflict_sets: list[ConflictSet] = Field(default_factory=list)
     people_mentions: list[PersonMention] = Field(default_factory=list)
     relationship_claims: list[RelationshipClaim] = Field(default_factory=list)
     events: list[FamilyEvent] = Field(default_factory=list)
     descriptions: list[PersonDescription] = Field(default_factory=list)
     stories: list[Story] = Field(default_factory=list)
     unresolved_questions: list[UnresolvedQuestion] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_unique_contract_ids(self) -> ExtractionResult:
+        collections = {
+            "provenance activity": [item.activity_id for item in self.provenance_activities],
+            "evidence": [item.evidence_id for item in self.evidence_spans],
+            "coreference": [item.coreference_id for item in self.coreference_links],
+            "conflict": [item.conflict_id for item in self.conflict_sets],
+        }
+        for object_name, values in collections.items():
+            if len(values) != len(set(values)):
+                raise ValueError(f"{object_name} IDs must be unique")
+        return self
 
 
 class KnownPerson(StrictModel):
