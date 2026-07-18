@@ -10,6 +10,7 @@ class PipelineVersions(StrictModel):
     domain_schema: str
     cleaner_prompt: str
     extractor_prompt: str
+    extractor_repair_prompt: str
     evidence_rules: str
     resolver: str
     evaluator: str
@@ -17,10 +18,11 @@ class PipelineVersions(StrictModel):
 
 
 CURRENT_PIPELINE_VERSIONS = PipelineVersions(
-    pipeline="mura-core-v0.7.0",
+    pipeline="mura-core-v0.8.0",
     domain_schema="domain-v2",
     cleaner_prompt="cleaner-v1",
-    extractor_prompt="extractor-v2",
+    extractor_prompt="extractor-v3-anchor-constrained",
+    extractor_repair_prompt="extractor-repair-v1-anchor-constrained",
     evidence_rules="claim-evidence-v2+bounded-coreference-v1",
     resolver="mention-resolver-v1+bounded-coreference-v1",
     evaluator="core-evaluator-v1",
