@@ -6,6 +6,7 @@ from collections.abc import Callable
 from mura.deepseek.service import DeepSeekPipelineService
 from mura.domain.models import PipelineRequest, PipelineResult
 from mura.resolution import resolve_mentions
+from mura.versioning import get_pipeline_versions
 
 StageCallback = Callable[[str], None]
 
@@ -47,6 +48,7 @@ class MuraPipeline:
                 "total_seconds": round(time.perf_counter() - started, 3),
                 "cleaner_usage": cleaner_usage,
                 "extractor_usage": extractor_usage,
+                "versions": get_pipeline_versions().model_dump(mode="json"),
             },
         )
 
