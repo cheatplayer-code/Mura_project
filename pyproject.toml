@@ -65,7 +65,7 @@ line-length = 100
 select = ["E", "F", "I", "B", "UP", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
-"src/mura/coreference.py" = ["RUF001"]
+"src/mura/coreference.py" = ["B009", "RUF001"]
 "src/mura/deepseek/prompts.py" = ["RUF001"]
 "src/mura/linguistics/english.py" = ["RUF001"]
 "src/mura/linguistics/kazakh.py" = ["RUF001"]
