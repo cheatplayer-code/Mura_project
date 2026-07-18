@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from mura.domain.models import PersonMention, RelationshipRole, RelationshipType
-from mura.linguistics.common import normalize_text, tokenize
+from mura.linguistics.common import TextToken, normalize_text, tokenize
 
 
 @dataclass(frozen=True)
@@ -318,7 +318,10 @@ def _speaker_mentions(people: list[PersonMention], speaker_name: str) -> list[Pe
     return [
         person
         for person in people
-        if any(normalize_text(surface) == normalized_speaker for surface in _person_surfaces(person))
+        if any(
+            normalize_text(surface) == normalized_speaker
+            for surface in _person_surfaces(person)
+        )
     ]
 
 
@@ -388,7 +391,7 @@ def _only_separators(text: str, start: int, end: int) -> bool:
 
 def _is_u_possessor_frame(
     text: str,
-    tokens: list[Any],
+    tokens: list[TextToken],
     possessor_match: RussianNameMatch,
     kinship: RussianKinshipMatch,
 ) -> bool:
