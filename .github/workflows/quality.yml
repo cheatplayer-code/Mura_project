@@ -42,20 +42,7 @@ jobs:
         run: python scripts/ci/check_workflow_policy.py
 
       - name: Lint
-        id: lint
-        shell: bash
-        run: |
-          set -o pipefail
-          ruff check . 2>&1 | tee ruff-lint-report.txt
-
-      - name: Upload lint diagnostics
-        if: failure() && steps.lint.outcome == 'failure'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: ruff-lint-report
-          path: ruff-lint-report.txt
-          if-no-files-found: error
-          retention-days: 1
+        run: ruff check .
 
       - name: Generate formatting patch
         id: formatting
