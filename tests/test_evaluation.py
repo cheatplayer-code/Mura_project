@@ -3,7 +3,6 @@ from pathlib import Path
 from mura.evaluation.reporting import render_markdown_report
 from mura.evaluation.runner import load_manifest, run_benchmark
 
-
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "benchmarks" / "manifest.json"
 
