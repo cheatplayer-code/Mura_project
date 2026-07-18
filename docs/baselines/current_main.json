@@ -82,7 +82,7 @@
       "accepted_relationship_ids": [],
       "quarantined_relationship_ids": ["relationship_001"],
       "extraction_issue_count": 1,
-      "evidence_closure_relationships": 0
+      "evidence_closure_relationships": 1
     },
     {
       "case_id": "kk_plural_antecedent_children",
