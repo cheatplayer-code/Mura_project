@@ -319,8 +319,7 @@ def _speaker_mentions(people: list[PersonMention], speaker_name: str) -> list[Pe
         person
         for person in people
         if any(
-            normalize_text(surface) == normalized_speaker
-            for surface in _person_surfaces(person)
+            normalize_text(surface) == normalized_speaker for surface in _person_surfaces(person)
         )
     ]
 
