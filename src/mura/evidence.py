@@ -1,7 +1,16 @@
 from __future__ import annotations
 
-from mura.domain.models import ExtractionResult, PersonMention, RelationshipClaim, TranscriptEnvelope
-from mura.relationship_evidence import contains_surface, has_first_person_reference, normalize_evidence
+from mura.domain.models import (
+    ExtractionResult,
+    PersonMention,
+    RelationshipClaim,
+    TranscriptEnvelope,
+)
+from mura.relationship_evidence import (
+    contains_surface,
+    has_first_person_reference,
+    normalize_evidence,
+)
 
 
 def _ordered_unique_segment_ids(
@@ -39,7 +48,14 @@ def _best_identity_segment(
         text = text_by_id[segment.segment_id]
         if any(contains_surface(text, surface) for surface in surfaces):
             return segment.segment_id
-    return next((segment_id for segment_id in person.source_segment_ids if segment_id in text_by_id), None)
+    return next(
+        (
+            segment_id
+            for segment_id in person.source_segment_ids
+            if segment_id in text_by_id
+        ),
+        None,
+    )
 
 
 def _source_text(source_ids: list[str], transcript: TranscriptEnvelope) -> str:
