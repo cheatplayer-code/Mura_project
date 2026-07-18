@@ -12,13 +12,17 @@ from mura.security import verify_bearer_token
 DEEPSEEK_KEY = "sk-" + "d" * 40
 REGISTRATION_TOKEN = "r" * 40
 ASR_TOKEN = "a" * 40
+CORE_TOKEN = "c" * 40
 
 
 def core_settings() -> CoreSettings:
     return CoreSettings.model_validate(
         {
             "DEEPSEEK_API_KEY": DEEPSEEK_KEY,
+            "CORE_API_KEY": CORE_TOKEN,
             "WORKER_REGISTRATION_TOKEN": REGISTRATION_TOKEN,
+            "KAGGLE_ASR_API_KEY": ASR_TOKEN,
+            "DATABASE_URL": "sqlite+pysqlite:///:memory:",
         }
     )
 
@@ -52,7 +56,10 @@ def test_core_settings_require_strong_registration_token() -> None:
         CoreSettings.model_validate(
             {
                 "DEEPSEEK_API_KEY": DEEPSEEK_KEY,
+                "CORE_API_KEY": CORE_TOKEN,
                 "WORKER_REGISTRATION_TOKEN": "short",
+                "KAGGLE_ASR_API_KEY": ASR_TOKEN,
+                "DATABASE_URL": "sqlite+pysqlite:///:memory:",
             }
         )
 
