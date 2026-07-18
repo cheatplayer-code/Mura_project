@@ -123,19 +123,24 @@ Rules:
     means subject=Сапар/older_sibling and object=Нұрғали/younger_sibling.
 11. A relationship must connect two different mention IDs. If both people or the direction are
     not supported, omit it and add an unresolved question.
-12. Relationship evidence must cite enough segments to identify both endpoints. If a phrase
-    says "my father", also cite the segment that establishes the father's name.
-13. A description must be assigned to the person explicitly named or unambiguously referred to
+12. First-person forms such as "мен", "менің", "біз", "біздің", "я", "мы", "мой", and
+    "наш" refer to the supplied speaker. They may support a relationship endpoint even when the
+    speaker's name is not repeated in that sentence.
+13. Relationship evidence must cite the kinship statement and enough identity context to
+    identify both endpoints. When a first-person form is used, cite that claim segment. When a
+    third-person pronoun such as "ол", "оның", "они", "его", or "их" is ambiguous, omit the
+    relationship and add an unresolved question instead of guessing.
+14. A description must be assigned to the person explicitly named or unambiguously referred to
     in its evidence. Example: "Диас баскетбол ойнағанды жақсы көреді" belongs to Диас, never
     to another grandson such as Нұрлан.
-14. Descriptions are the speaker's perspective, not psychological diagnoses.
-15. Every new story must use privacy="private".
-16. assertion_mode must be explicit, inferred, or uncertain.
-17. verification_status must remain unreviewed.
-18. IDs must be deterministic within the response: mention_001, relationship_001, event_001,
+15. Descriptions are the speaker's perspective, not psychological diagnoses.
+16. Every new story must use privacy="private".
+17. assertion_mode must be explicit, inferred, or uncertain.
+18. verification_status must remain unreviewed.
+19. IDs must be deterministic within the response: mention_001, relationship_001, event_001,
     description_001, story_001, question_001, and so on.
-19. Return all top-level keys even when lists are empty.
-20. Return JSON only, without Markdown or explanation.
+20. Return all top-level keys even when lists are empty.
+21. Return JSON only, without Markdown or explanation.
 """.strip()
 
 
@@ -154,7 +159,7 @@ Rules:
    sibling=(older_sibling, younger_sibling) when order is known,
    otherwise sibling=(sibling, sibling).
 5. A relationship must connect two different existing mention IDs and cite evidence that
-   identifies both endpoints.
+   identifies both endpoints. First-person forms refer only to the supplied speaker.
 6. Each person's source_segment_ids must cover the relationship and description evidence that
    uses that person.
 7. A description must point to the person named or unambiguously referred to in its cited

@@ -10,6 +10,7 @@ from mura.domain.models import (
     PersonMention,
     TranscriptEnvelope,
 )
+from mura.relationship_evidence import analyze_relationship_evidence
 
 
 class ContractValidationError(ValueError):
@@ -208,15 +209,16 @@ def validate_extraction_result(transcript: TranscriptEnvelope, result: Extractio
             object_name=object_name,
         )
 
-        explicit_people = _explicit_people_in_segments(
-            relationship.source_segment_ids,
-            segment_text_by_id,
-            result.people_mentions,
+        evidence = analyze_relationship_evidence(
+            relationship=relationship,
+            transcript=transcript,
+            people=result.people_mentions,
+            speaker_name=result.speaker_name,
         )
-        endpoints = {subject.mention_id, object_person.mention_id}
-        if len(explicit_people) >= 2 and not endpoints.issubset(explicit_people):
+        if evidence.unsupported_endpoint_ids:
             raise ContractValidationError(
-                f"{relationship.relationship_id} endpoints do not match explicitly named people"
+                f"{relationship.relationship_id} has unsupported relationship endpoints: "
+                f"{evidence.unsupported_endpoint_ids}"
             )
 
     for event in result.events:
