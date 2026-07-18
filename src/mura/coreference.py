@@ -570,13 +570,7 @@ def augment_bounded_coreference(
             evidence_class = (
                 EvidenceClass.D_CONTEXT_RESOLVED if resolved else EvidenceClass.U_UNCERTAIN
             )
-            confidence = (
-                1.0
-                if resolved
-                else 0.5
-                if status is CoreferenceStatus.AMBIGUOUS
-                else 0.0
-            )
+            confidence = 1.0 if resolved else 0.5 if status is CoreferenceStatus.AMBIGUOUS else 0.0
             link_id = (
                 f"coreference_{_safe_id(segment.segment_id)}_{anaphor.start}_"
                 f"{anaphor.grammatical_number.value}"
