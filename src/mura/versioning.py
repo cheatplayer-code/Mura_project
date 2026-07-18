@@ -7,7 +7,7 @@ class PipelineVersions(StrictModel):
     """Immutable identifiers for every behavior-changing ML-core component."""
 
     pipeline: str
-    schema: str
+    domain_schema: str
     cleaner_prompt: str
     extractor_prompt: str
     evidence_rules: str
@@ -18,7 +18,7 @@ class PipelineVersions(StrictModel):
 
 CURRENT_PIPELINE_VERSIONS = PipelineVersions(
     pipeline="mura-core-v0.3.0",
-    schema="domain-v1",
+    domain_schema="domain-v1",
     cleaner_prompt="cleaner-v1",
     extractor_prompt="extractor-v1",
     evidence_rules="relationship-evidence-v1",
