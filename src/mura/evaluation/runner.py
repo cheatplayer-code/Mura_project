@@ -9,7 +9,6 @@ from mura.evaluation.models import (
     BenchmarkManifest,
     BenchmarkReport,
     CaseEvaluation,
-    DatasetSplit,
 )
 from mura.evaluation.scoring import aggregate_case_metrics, score_case
 from mura.extraction_sanitizer import sanitize_extraction_output
@@ -40,7 +39,8 @@ def _resolve_dataset_path(manifest_path: Path, dataset_path: str) -> Path:
 
 
 def run_benchmark(manifest_path: str | Path) -> BenchmarkReport:
-    resolved_manifest_path = Path(manifest_path).resolve()
+    requested_manifest_path = Path(manifest_path)
+    resolved_manifest_path = requested_manifest_path.resolve()
     manifest = load_manifest(resolved_manifest_path)
     evaluations: list[CaseEvaluation] = []
 
@@ -66,7 +66,7 @@ def run_benchmark(manifest_path: str | Path) -> BenchmarkReport:
                 score_case(
                     case=case,
                     dataset_id=dataset.dataset_id,
-                    split=DatasetSplit(entry.split),
+                    split=entry.split,
                     extraction=extraction,
                     issues=issues,
                     evidence_closure_relationships=closure_count,
@@ -78,7 +78,7 @@ def run_benchmark(manifest_path: str | Path) -> BenchmarkReport:
 
     return BenchmarkReport(
         report_schema_version="evaluation-report-v1",
-        manifest_path=str(resolved_manifest_path),
+        manifest_path=requested_manifest_path.as_posix(),
         pipeline_versions=get_pipeline_versions().model_dump(mode="json"),
         cases=evaluations,
         summary=aggregate_case_metrics(evaluations),
