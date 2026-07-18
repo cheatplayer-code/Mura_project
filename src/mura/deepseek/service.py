@@ -117,12 +117,27 @@ class DeepSeekPipelineService:
             speaker_id=speaker_id,
             speaker_name=speaker_name,
         )
+        raw_relationships = raw.get("relationship_claims", [])
+        relationship_candidates = len(raw_relationships) if isinstance(raw_relationships, list) else 0
+        quarantined_relationships = sum(
+            issue.get("object_type") == "relationship" for issue in extraction_issues
+        )
+        accepted_relationships = len(result.relationship_claims)
+        acceptance_rate = (
+            accepted_relationships / relationship_candidates if relationship_candidates else None
+        )
         return result, {
             **self._usage_dict(usage),
             "repair_attempted": False,
             "evidence_closure_relationships": evidence_closure_count,
             "quarantined_items": len(extraction_issues),
             "extraction_issues": extraction_issues,
+            "relationship_metrics": {
+                "candidates": relationship_candidates,
+                "accepted": accepted_relationships,
+                "quarantined": quarantined_relationships,
+                "acceptance_rate": acceptance_rate,
+            },
         }
 
     @staticmethod
