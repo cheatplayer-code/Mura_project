@@ -21,25 +21,16 @@ _FIRST_PERSON_TOKENS = {
     "мои",
     "моего",
     "моей",
-    "мою",
-    "моим",
-    "моими",
     "наш",
     "наша",
     "наше",
     "наши",
     "нашего",
     "нашей",
-    "нашу",
     "мен",
     "менің",
     "біз",
     "біздің",
-    "i",
-    "me",
-    "my",
-    "we",
-    "our",
 }
 
 _KAZAKH_NAME_SUFFIXES = {
@@ -162,7 +153,10 @@ def speaker_mentions(people: list[PersonMention], speaker_name: str) -> list[Per
     return [
         person
         for person in people
-        if any(normalize_evidence(surface) == normalized_speaker for surface in person_name_surfaces(person))
+        if any(
+            normalize_evidence(surface) == normalized_speaker
+            for surface in person_name_surfaces(person)
+        )
     ]
 
 
