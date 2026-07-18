@@ -215,8 +215,7 @@ def _speaker_mentions(people: list[PersonMention], speaker_name: str) -> list[Pe
         person
         for person in people
         if any(
-            normalize_text(surface) == normalized_speaker
-            for surface in _person_surfaces(person)
+            normalize_text(surface) == normalized_speaker for surface in _person_surfaces(person)
         )
     ]
 
@@ -250,8 +249,7 @@ def _unique_nearby_target(
         for mention_id, matches in matches_by_person.items()
         if mention_id not in excluded_ids
         and any(
-            match.start >= 0
-            and min(abs(match.start - end), abs(start - match.end)) <= max_distance
+            match.start >= 0 and min(abs(match.start - end), abs(start - match.end)) <= max_distance
             for match in matches
         )
     }
