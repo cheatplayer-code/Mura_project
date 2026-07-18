@@ -197,9 +197,7 @@ def _known_person_anchors(
     cleaned: CleanerResult,
     known_people: list[KnownPerson],
 ) -> list[_AnchorCandidate]:
-    readable_by_id = {
-        segment.segment_id: segment.text for segment in cleaned.readable_segments
-    }
+    readable_by_id = {segment.segment_id: segment.text for segment in cleaned.readable_segments}
     anchors: list[_AnchorCandidate] = []
     for person in known_people:
         for segment in transcript.segments:
@@ -218,9 +216,7 @@ def _known_person_anchors(
                                 normalized=normalize_text(name_match.token),
                                 segment_id=segment.segment_id,
                                 source_layer=source_layer,
-                                start_char=name_match.start
-                                if name_match.start >= 0
-                                else None,
+                                start_char=name_match.start if name_match.start >= 0 else None,
                                 end_char=name_match.end if name_match.end > 0 else None,
                                 anchor_kind=MentionAnchorKind.KNOWN_PERSON,
                                 known_person_id=person.person_id,
@@ -263,9 +259,7 @@ def _speaker_anchors(
 def _kinship_token_indexes(text: str) -> set[int]:
     tokens = tokenize(text)
     indexes = {
-        index
-        for index, token in enumerate(tokens)
-        if token.normalized in _KAZAKH_KINSHIP_LEXEMES
+        index for index, token in enumerate(tokens) if token.normalized in _KAZAKH_KINSHIP_LEXEMES
     }
     spans = [
         (match.start, match.end)
@@ -292,10 +286,7 @@ def _name_candidate_anchors(cleaned: CleanerResult) -> list[_AnchorCandidate]:
         for index, token in enumerate(tokens):
             if not token.surface[:1].isupper():
                 continue
-            if (
-                len(token.normalized) < 2
-                or token.normalized in _NAME_CANDIDATE_EXCLUSIONS
-            ):
+            if len(token.normalized) < 2 or token.normalized in _NAME_CANDIDATE_EXCLUSIONS:
                 continue
             if min(abs(index - kinship_index) for kinship_index in kinship_indexes) > 4:
                 continue
