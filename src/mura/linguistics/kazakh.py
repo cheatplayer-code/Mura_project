@@ -118,6 +118,9 @@ _PARENT_CHILD = RelationshipType.PARENT_CHILD
 _SIBLING_TYPE = RelationshipType.SIBLING
 _SPOUSE_TYPE = RelationshipType.SPOUSE
 
+# Only locally unambiguous kinship lexemes are allowed to prove graph edges. Terms such as
+# "жолдас" (spouse/companion) and "бауыр" (sibling/relative/affectionate address) stay outside
+# this deterministic rule pack and require contextual reasoning or review.
 _SPEAKER_KINSHIP_FRAMES: dict[str, KinshipFrame] = {
     "әкем": _frame(_PARENT_CHILD, _CHILD, _PARENT),
     "анам": _frame(_PARENT_CHILD, _CHILD, _PARENT),
@@ -133,10 +136,8 @@ _SPEAKER_KINSHIP_FRAMES: dict[str, KinshipFrame] = {
     "інім": _frame(_SIBLING_TYPE, _OLDER, _YOUNGER),
     "сіңлім": _frame(_SIBLING_TYPE, _OLDER, _YOUNGER),
     "қарындасым": _frame(_SIBLING_TYPE, _OLDER, _YOUNGER),
-    "бауырым": _frame(_SIBLING_TYPE, _SIBLING, _SIBLING),
     "әйелім": _frame(_SPOUSE_TYPE, _SPOUSE, _SPOUSE),
     "күйеуім": _frame(_SPOUSE_TYPE, _SPOUSE, _SPOUSE),
-    "жолдасым": _frame(_SPOUSE_TYPE, _SPOUSE, _SPOUSE),
 }
 
 _NAMED_POSSESSOR_FRAMES: dict[str, KinshipFrame] = {
@@ -151,10 +152,8 @@ _NAMED_POSSESSOR_FRAMES: dict[str, KinshipFrame] = {
     "інісі": _frame(_SIBLING_TYPE, _OLDER, _YOUNGER),
     "сіңлісі": _frame(_SIBLING_TYPE, _OLDER, _YOUNGER),
     "қарындасы": _frame(_SIBLING_TYPE, _OLDER, _YOUNGER),
-    "бауыры": _frame(_SIBLING_TYPE, _SIBLING, _SIBLING),
     "әйелі": _frame(_SPOUSE_TYPE, _SPOUSE, _SPOUSE),
     "күйеуі": _frame(_SPOUSE_TYPE, _SPOUSE, _SPOUSE),
-    "жолдасы": _frame(_SPOUSE_TYPE, _SPOUSE, _SPOUSE),
 }
 
 
