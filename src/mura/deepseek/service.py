@@ -6,14 +6,13 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+from mura.deepseek.anchor_prompts import (
+    ANCHOR_CONSTRAINED_EXTRACTION_REPAIR_SYSTEM_PROMPT,
+    ANCHOR_CONSTRAINED_EXTRACTOR_SYSTEM_PROMPT,
+)
 from mura.deepseek.anchors import ExtractionAnchorBundle, build_extraction_anchor_bundle
 from mura.deepseek.client import DeepSeekClient, DeepSeekError, DeepSeekUsage
-from mura.deepseek.prompts import (
-    CLEANER_REPAIR_SYSTEM_PROMPT,
-    CLEANER_SYSTEM_PROMPT,
-    EXTRACTION_REPAIR_SYSTEM_PROMPT,
-    EXTRACTOR_SYSTEM_PROMPT,
-)
+from mura.deepseek.prompts import CLEANER_REPAIR_SYSTEM_PROMPT, CLEANER_SYSTEM_PROMPT
 from mura.domain.models import CleanerResult, ExtractionResult, KnownPerson, TranscriptEnvelope
 from mura.extraction_sanitizer import sanitize_extraction_output
 from mura.validation import ContractValidationError, validate_cleaner_result
@@ -120,11 +119,12 @@ class DeepSeekPipelineService:
             anchors=anchors,
         )
         raw, usage = self.client.request_json(
-            system_prompt=EXTRACTOR_SYSTEM_PROMPT,
+            system_prompt=ANCHOR_CONSTRAINED_EXTRACTOR_SYSTEM_PROMPT,
             payload=payload,
             max_tokens=16_000,
         )
         initial_usage = self._usage_dict(usage)
+        final_raw = raw
         repair_attempted = False
         initial_validation_error: str | None = None
         try:
@@ -136,7 +136,13 @@ class DeepSeekPipelineService:
             )
         except (ValidationError, ContractValidationError) as exc:
             initial_validation_error = str(exc)
-            result, extraction_issues, evidence_closure_count, usage = self._repair_extraction(
+            (
+                final_raw,
+                result,
+                extraction_issues,
+                evidence_closure_count,
+                usage,
+            ) = self._repair_extraction(
                 transcript=transcript,
                 cleaned=cleaned,
                 speaker_id=speaker_id,
@@ -154,7 +160,13 @@ class DeepSeekPipelineService:
                 extraction_issues=extraction_issues,
             ):
                 initial_validation_error = self._repair_reason(extraction_issues)
-                result, extraction_issues, evidence_closure_count, usage = self._repair_extraction(
+                (
+                    final_raw,
+                    result,
+                    extraction_issues,
+                    evidence_closure_count,
+                    usage,
+                ) = self._repair_extraction(
                     transcript=transcript,
                     cleaned=cleaned,
                     speaker_id=speaker_id,
@@ -167,7 +179,7 @@ class DeepSeekPipelineService:
                 repair_attempted = True
 
         usage_payload = self._extraction_usage(
-            raw=raw,
+            raw=final_raw,
             usage=usage,
             result=result,
             extraction_issues=extraction_issues,
@@ -220,7 +232,13 @@ class DeepSeekPipelineService:
         anchors: ExtractionAnchorBundle,
         invalid_output: dict[str, Any],
         validation_error: str,
-    ) -> tuple[ExtractionResult, list[dict[str, Any]], int, DeepSeekUsage]:
+    ) -> tuple[
+        dict[str, Any],
+        ExtractionResult,
+        list[dict[str, Any]],
+        int,
+        DeepSeekUsage,
+    ]:
         repair_payload = {
             **self._extraction_payload(
                 transcript=transcript,
@@ -234,7 +252,7 @@ class DeepSeekPipelineService:
             "invalid_output": invalid_output,
         }
         repaired_raw, repair_usage = self.client.request_json(
-            system_prompt=EXTRACTION_REPAIR_SYSTEM_PROMPT,
+            system_prompt=ANCHOR_CONSTRAINED_EXTRACTION_REPAIR_SYSTEM_PROMPT,
             payload=repair_payload,
             max_tokens=16_000,
             attempts=2,
@@ -245,7 +263,7 @@ class DeepSeekPipelineService:
             speaker_id=speaker_id,
             speaker_name=speaker_name,
         )
-        return result, issues, closure_count, repair_usage
+        return repaired_raw, result, issues, closure_count, repair_usage
 
     @staticmethod
     def _requires_extraction_repair(
