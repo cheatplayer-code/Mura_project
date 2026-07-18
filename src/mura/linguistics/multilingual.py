@@ -9,19 +9,37 @@ from mura.linguistics.common import normalize_text, tokenize
 
 
 class _Frame(Protocol):
-    relationship_type: RelationshipType
-    possessor_role: RelationshipRole
-    relative_role: RelationshipRole
+    @property
+    def relationship_type(self) -> RelationshipType: ...
+
+    @property
+    def possessor_role(self) -> RelationshipRole: ...
+
+    @property
+    def relative_role(self) -> RelationshipRole: ...
 
 
 class _Signal(Protocol):
-    relationship_type: RelationshipType
-    subject_mention_id: str
-    subject_role: RelationshipRole
-    object_mention_id: str
-    object_role: RelationshipRole
-    source_surface: str
-    rule_id: str
+    @property
+    def relationship_type(self) -> RelationshipType: ...
+
+    @property
+    def subject_mention_id(self) -> str: ...
+
+    @property
+    def subject_role(self) -> RelationshipRole: ...
+
+    @property
+    def object_mention_id(self) -> str: ...
+
+    @property
+    def object_role(self) -> RelationshipRole: ...
+
+    @property
+    def source_surface(self) -> str: ...
+
+    @property
+    def rule_id(self) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -101,21 +119,27 @@ def find_known_name_matches(text: str, surface: str) -> list[LinguisticNameMatch
         ("ru", russian.find_known_name_matches),
         ("en", english.find_known_name_matches),
     ):
-        for match in finder(text, surface):
+        for candidate in finder(text, surface):
             matches.append(
                 LinguisticNameMatch(
                     language=language,
-                    surface=match.surface,
-                    token=match.token,
-                    start=match.start,
-                    end=match.end,
-                    exact=match.exact,
-                    rule_id=match.rule_id,
+                    surface=candidate.surface,
+                    token=candidate.token,
+                    start=candidate.start,
+                    end=candidate.end,
+                    exact=candidate.exact,
+                    rule_id=candidate.rule_id,
                 )
             )
     unique: dict[tuple[str, int, int, str], LinguisticNameMatch] = {}
-    for match in matches:
-        unique.setdefault((match.language, match.start, match.end, match.rule_id), match)
+    for unified_match in matches:
+        key = (
+            unified_match.language,
+            unified_match.start,
+            unified_match.end,
+            unified_match.rule_id,
+        )
+        unique.setdefault(key, unified_match)
     return list(unique.values())
 
 
@@ -130,20 +154,26 @@ def find_speaker_anchor_matches(text: str) -> list[LinguisticAnchorMatch]:
         ("ru", russian.find_speaker_anchor_matches),
         ("en", english.find_speaker_anchor_matches),
     ):
-        for match in finder(text):
+        for candidate in finder(text):
             matches.append(
                 LinguisticAnchorMatch(
                     language=language,
-                    surface=match.surface,
-                    start=match.start,
-                    end=match.end,
-                    anchor_kind=match.anchor_kind,
-                    rule_id=match.rule_id,
+                    surface=candidate.surface,
+                    start=candidate.start,
+                    end=candidate.end,
+                    anchor_kind=candidate.anchor_kind,
+                    rule_id=candidate.rule_id,
                 )
             )
     unique: dict[tuple[str, int, int, str], LinguisticAnchorMatch] = {}
-    for match in matches:
-        unique.setdefault((match.language, match.start, match.end, match.rule_id), match)
+    for unified_match in matches:
+        key = (
+            unified_match.language,
+            unified_match.start,
+            unified_match.end,
+            unified_match.rule_id,
+        )
+        unique.setdefault(key, unified_match)
     return list(unique.values())
 
 
