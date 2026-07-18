@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, TypeVar, cast
 
 from mura.domain.models import (
     AssertionMode,
@@ -28,12 +28,16 @@ from mura.domain.models import (
 )
 from mura.relationship_evidence import (
     analyze_relationship_evidence,
+    contains_exact_surface,
     contains_surface,
     has_first_person_reference,
     joined_segment_text,
     normalize_evidence,
+    person_name_surfaces,
 )
 from mura.versioning import get_pipeline_versions
+
+ObjectT = TypeVar("ObjectT", bound=EvidenceBackedObject)
 
 _AUTO_ACCEPTABLE_EVIDENCE_CLASSES = {
     EvidenceClass.A_EXPLICIT,
@@ -82,14 +86,6 @@ def _ordered_segment_ids(segment_ids: list[str], transcript: TranscriptEnvelope)
     ]
 
 
-def _exact_surface(text: str, surface: str) -> bool:
-    normalized_text = normalize_evidence(text)
-    normalized_surface = normalize_evidence(surface)
-    if not normalized_surface:
-        return False
-    return f" {normalized_surface} " in f" {normalized_text} "
-
-
 def _object_identity(item: EvidenceBackedObject) -> tuple[ClaimObjectType, str]:
     for object_type, field_name in (
         (ClaimObjectType.PERSON_MENTION, "mention_id"),
@@ -118,38 +114,40 @@ def _objects(result: ExtractionResult) -> list[EvidenceBackedObject]:
 
 def _authoritative_activities(
     transcript: TranscriptEnvelope,
-) -> tuple[list[ProvenanceActivity], str, str, str]:
+) -> tuple[list[ProvenanceActivity], str, str]:
     suffix = _safe_id(transcript.recording_id)
-    asr_activity_id = f"activity_asr_{suffix}"
+    versions = get_pipeline_versions()
     extractor_activity_id = f"activity_extractor_{suffix}"
     sanitizer_activity_id = f"activity_sanitizer_{suffix}"
-    versions = get_pipeline_versions()
-    activities = [
-        ProvenanceActivity(
-            activity_id=asr_activity_id,
-            stage=ProvenanceStage.ASR,
-            system=transcript.asr_model,
-            version=transcript.asr_revision,
-            model_name=transcript.asr_model,
-            metadata={"chunker_version": transcript.chunker_version},
-        ),
-        ProvenanceActivity(
-            activity_id=extractor_activity_id,
-            stage=ProvenanceStage.EXTRACTOR,
-            system="deepseek",
-            version=versions.extractor_prompt,
-            prompt_version=versions.extractor_prompt,
-            metadata={"pipeline": versions.pipeline},
-        ),
-        ProvenanceActivity(
-            activity_id=sanitizer_activity_id,
-            stage=ProvenanceStage.SANITIZER,
-            system="mura",
-            version=versions.evidence_rules,
-            metadata={"domain_schema": versions.domain_schema},
-        ),
-    ]
-    return activities, asr_activity_id, extractor_activity_id, sanitizer_activity_id
+    return (
+        [
+            ProvenanceActivity(
+                activity_id=f"activity_asr_{suffix}",
+                stage=ProvenanceStage.ASR,
+                system=transcript.asr_model,
+                version=transcript.asr_revision,
+                model_name=transcript.asr_model,
+                metadata={"chunker_version": transcript.chunker_version},
+            ),
+            ProvenanceActivity(
+                activity_id=extractor_activity_id,
+                stage=ProvenanceStage.EXTRACTOR,
+                system="deepseek",
+                version=versions.extractor_prompt,
+                prompt_version=versions.extractor_prompt,
+                metadata={"pipeline": versions.pipeline},
+            ),
+            ProvenanceActivity(
+                activity_id=sanitizer_activity_id,
+                stage=ProvenanceStage.SANITIZER,
+                system="mura",
+                version=versions.evidence_rules,
+                metadata={"domain_schema": versions.domain_schema},
+            ),
+        ],
+        extractor_activity_id,
+        sanitizer_activity_id,
+    )
 
 
 def _validate_candidate_evidence(
@@ -164,7 +162,7 @@ def _validate_candidate_evidence(
         return "references an unknown segment"
     if evidence.source_layer is not EvidenceSourceLayer.RAW_TRANSCRIPT:
         return "claim evidence must be anchored to the immutable raw transcript"
-    if not _exact_surface(segment.text, evidence.text):
+    if not contains_exact_surface(segment.text, evidence.text):
         return "text is not present in the cited raw segment"
     if evidence.start_char is not None and evidence.end_char is not None:
         if segment.text[evidence.start_char : evidence.end_char] != evidence.text:
@@ -182,8 +180,8 @@ def _infer_person_evidence_class(
     speaker_name: str,
 ) -> EvidenceClass:
     source_text = joined_segment_text(person.source_segment_ids, transcript)
-    surfaces = [person.name, *person.aliases]
-    if any(_exact_surface(source_text, surface) for surface in surfaces):
+    surfaces = person_name_surfaces(person)
+    if any(contains_exact_surface(source_text, surface) for surface in surfaces):
         return EvidenceClass.A_EXPLICIT
     if any(contains_surface(source_text, surface) for surface in surfaces):
         return EvidenceClass.B_MORPHOLOGICALLY_EXPLICIT
@@ -209,26 +207,12 @@ def _infer_relationship_evidence_class(
         people=people,
         speaker_name=speaker_name,
     )
-    people_by_id = {person.mention_id: person for person in people}
-    exact_endpoint_ids: set[str] = set()
-    for mention_id in (relationship.subject_mention_id, relationship.object_mention_id):
-        person = people_by_id.get(mention_id)
-        if person is None:
-            continue
-        if any(_exact_surface(analysis.source_text, surface) for surface in [person.name, *person.aliases]):
-            exact_endpoint_ids.add(mention_id)
-
-    endpoint_ids = {relationship.subject_mention_id, relationship.object_mention_id}
-    if exact_endpoint_ids == endpoint_ids:
-        return EvidenceClass.A_EXPLICIT
-    if not analysis.unsupported_endpoint_ids:
-        speaker_endpoint = bool(
-            endpoint_ids.intersection(analysis.speaker_mention_ids)
-            and analysis.first_person_reference
-        )
-        if speaker_endpoint:
-            return EvidenceClass.C_SPEAKER_ANCHORED
-        return EvidenceClass.B_MORPHOLOGICALLY_EXPLICIT
+    if analysis.evidence_class in {
+        EvidenceClass.A_EXPLICIT.value,
+        EvidenceClass.B_MORPHOLOGICALLY_EXPLICIT.value,
+        EvidenceClass.C_SPEAKER_ANCHORED.value,
+    }:
+        return EvidenceClass(analysis.evidence_class)
 
     resolved_antecedents = {
         mention_id
@@ -237,7 +221,9 @@ def _infer_relationship_evidence_class(
         and link.status is CoreferenceStatus.RESOLVED
         for mention_id in link.antecedent_mention_ids
     }
-    if set(analysis.unsupported_endpoint_ids).issubset(resolved_antecedents):
+    if analysis.unsupported_endpoint_ids and set(analysis.unsupported_endpoint_ids).issubset(
+        resolved_antecedents
+    ):
         return EvidenceClass.D_CONTEXT_RESOLVED
     if relationship.assertion_mode is AssertionMode.INFERRED:
         return EvidenceClass.E_INFERRED
@@ -253,6 +239,27 @@ def _infer_generic_evidence_class(item: EvidenceBackedObject) -> EvidenceClass:
     return EvidenceClass.U_UNCERTAIN
 
 
+def _mention_ids_for_object(
+    object_type: ClaimObjectType,
+    object_id: str,
+    item: EvidenceBackedObject,
+) -> list[str]:
+    if object_type is ClaimObjectType.PERSON_MENTION:
+        return [object_id]
+    if object_type is ClaimObjectType.RELATIONSHIP:
+        return [
+            cast(str, getattr(item, "subject_mention_id")),
+            cast(str, getattr(item, "object_mention_id")),
+        ]
+    if object_type is ClaimObjectType.EVENT:
+        return list(cast(list[str], getattr(item, "participant_mention_ids")))
+    if object_type is ClaimObjectType.DESCRIPTION:
+        return [cast(str, getattr(item, "person_mention_id"))]
+    if object_type is ClaimObjectType.STORY:
+        return list(cast(list[str], getattr(item, "person_mention_ids")))
+    return list(cast(list[str], getattr(item, "related_mention_ids")))
+
+
 def _generated_evidence(
     *,
     object_type: ClaimObjectType,
@@ -263,28 +270,12 @@ def _generated_evidence(
     sanitizer_activity_id: str,
 ) -> list[EvidenceSpan]:
     segment_by_id = {segment.segment_id: segment for segment in transcript.segments}
-    mention_ids: list[str] = []
-    if object_type is ClaimObjectType.PERSON_MENTION:
-        mention_ids = [object_id]
-    elif object_type is ClaimObjectType.RELATIONSHIP:
-        mention_ids = [
-            getattr(item, "subject_mention_id"),
-            getattr(item, "object_mention_id"),
-        ]
-    elif object_type is ClaimObjectType.EVENT:
-        mention_ids = list(getattr(item, "participant_mention_ids"))
-    elif object_type is ClaimObjectType.DESCRIPTION:
-        mention_ids = [getattr(item, "person_mention_id")]
-    elif object_type is ClaimObjectType.STORY:
-        mention_ids = list(getattr(item, "person_mention_ids"))
-    elif object_type is ClaimObjectType.QUESTION:
-        mention_ids = list(getattr(item, "related_mention_ids"))
-
     purpose = (
         EvidencePurpose.IDENTITY
         if object_type is ClaimObjectType.PERSON_MENTION
         else EvidencePurpose.CLAIM
     )
+    mention_ids = _mention_ids_for_object(object_type, object_id, item)
     generated: list[EvidenceSpan] = []
     for segment_id in _ordered_segment_ids(item.source_segment_ids, transcript):
         segment = segment_by_id[segment_id]
@@ -299,7 +290,7 @@ def _generated_evidence(
                 purposes=[purpose],
                 mention_ids=list(dict.fromkeys(mention_ids)),
                 created_by_activity_id=sanitizer_activity_id,
-                confidence=getattr(item, "confidence", 1.0),
+                confidence=cast(float, getattr(item, "confidence", 1.0)),
             )
         )
     return generated
@@ -324,9 +315,20 @@ def _materialize_name_variants(
 ) -> list[NameVariant]:
     variants: list[NameVariant] = []
     seen: set[tuple[str, NameVariantType]] = set()
+    person_segments = set(person.source_segment_ids)
     for candidate in person.name_variants:
+        candidate_segments = [
+            item for item in candidate.source_segment_ids if item in person_segments
+        ]
+        if not candidate_segments:
+            continue
         candidate_evidence = [item for item in candidate.evidence_ids if item in valid_evidence_ids]
-        updated = candidate.model_copy(update={"evidence_ids": candidate_evidence})
+        updated = candidate.model_copy(
+            update={
+                "source_segment_ids": candidate_segments,
+                "evidence_ids": candidate_evidence,
+            }
+        )
         key = (updated.normalized, updated.variant_type)
         if key in seen:
             continue
@@ -356,115 +358,6 @@ def _materialize_name_variants(
     return variants
 
 
-def _materialize_object(
-    item: EvidenceBackedObject,
-    *,
-    transcript: TranscriptEnvelope,
-    speaker_id: str,
-    speaker_name: str,
-    evidence_by_id: dict[str, EvidenceSpan],
-    coreference_by_id: dict[str, CoreferenceLink],
-    extractor_activity_id: str,
-    sanitizer_activity_id: str,
-) -> tuple[EvidenceBackedObject, list[EvidenceSpan], list[ClaimModelIssue]]:
-    object_type, object_id = _object_identity(item)
-    issues: list[ClaimModelIssue] = []
-    valid_evidence_ids = [item_id for item_id in item.evidence_ids if item_id in evidence_by_id]
-    invalid_evidence_ids = sorted(set(item.evidence_ids) - set(valid_evidence_ids))
-    if invalid_evidence_ids:
-        issues.append(
-            ClaimModelIssue(
-                object_type=object_type.value,
-                object_id=object_id,
-                stage="provenance",
-                detail=f"unknown evidence IDs were removed: {invalid_evidence_ids}",
-            )
-        )
-
-    if object_type is ClaimObjectType.PERSON_MENTION:
-        inferred_class = _infer_person_evidence_class(
-            item,
-            transcript=transcript,
-            speaker_name=speaker_name,
-        )
-    elif object_type is ClaimObjectType.RELATIONSHIP:
-        inferred_class = _infer_relationship_evidence_class(
-            item,
-            transcript=transcript,
-            people=[],
-            speaker_name=speaker_name,
-            coreference_by_id=coreference_by_id,
-        )
-    else:
-        inferred_class = _infer_generic_evidence_class(item)
-
-    generated: list[EvidenceSpan] = []
-    if not valid_evidence_ids:
-        generated = _generated_evidence(
-            object_type=object_type,
-            object_id=object_id,
-            item=item,
-            evidence_class=inferred_class,
-            transcript=transcript,
-            sanitizer_activity_id=sanitizer_activity_id,
-        )
-        valid_evidence_ids = [evidence.evidence_id for evidence in generated]
-        evidence_by_id.update({evidence.evidence_id: evidence for evidence in generated})
-
-    evidence_class = _weakest_evidence_class(
-        valid_evidence_ids,
-        evidence_by_id,
-        inferred_class,
-    )
-    valid_coreference_ids = [
-        item_id for item_id in item.coreference_link_ids if item_id in coreference_by_id
-    ]
-    invalid_coreference_ids = sorted(set(item.coreference_link_ids) - set(valid_coreference_ids))
-    if invalid_coreference_ids:
-        issues.append(
-            ClaimModelIssue(
-                object_type=object_type.value,
-                object_id=object_id,
-                stage="coreference",
-                detail=f"unknown coreference link IDs were removed: {invalid_coreference_ids}",
-            )
-        )
-
-    versions = get_pipeline_versions().model_dump(mode="json")
-    provenance = ClaimProvenance(
-        recording_id=transcript.recording_id,
-        speaker_id=speaker_id,
-        speaker_name=speaker_name,
-        generated_by_activity_id=extractor_activity_id,
-        validated_by_activity_ids=[sanitizer_activity_id],
-        evidence_ids=list(valid_evidence_ids),
-        derived_from_claim_ids=(
-            list(item.provenance.derived_from_claim_ids) if item.provenance is not None else []
-        ),
-        pipeline_versions=versions,
-    )
-    update: dict[str, Any] = {
-        "evidence_ids": valid_evidence_ids,
-        "evidence_class": evidence_class,
-        "coreference_link_ids": valid_coreference_ids,
-        "provenance": provenance,
-    }
-    if isinstance(item, PersonMention):
-        update["name_variants"] = _materialize_name_variants(
-            item,
-            evidence_ids=valid_evidence_ids,
-            valid_evidence_ids=set(evidence_by_id),
-        )
-    return item.model_copy(update=update), generated, issues
-
-
-def _claim_ref_index(result: ExtractionResult) -> dict[tuple[ClaimObjectType, str], EvidenceBackedObject]:
-    index: dict[tuple[ClaimObjectType, str], EvidenceBackedObject] = {}
-    for item in _objects(result):
-        index[_object_identity(item)] = item
-    return index
-
-
 def _filter_coreference_links(
     links: list[CoreferenceLink],
     *,
@@ -489,7 +382,7 @@ def _filter_coreference_links(
             detail = f"references unknown evidence: {sorted(unknown_evidence)}"
         elif unknown_mentions:
             detail = f"references unknown mentions: {sorted(unknown_mentions)}"
-        elif not _exact_surface(source_text, link.anaphor_text):
+        elif not contains_exact_surface(source_text, link.anaphor_text):
             detail = "anaphor text is not present in the cited segments"
         if detail is not None:
             issues.append(
@@ -504,6 +397,100 @@ def _filter_coreference_links(
             continue
         accepted.append(link)
     return accepted, issues
+
+
+def _materialize_item(
+    item: ObjectT,
+    *,
+    evidence_class: EvidenceClass,
+    transcript: TranscriptEnvelope,
+    speaker_id: str,
+    speaker_name: str,
+    evidence_by_id: dict[str, EvidenceSpan],
+    coreference_by_id: dict[str, CoreferenceLink],
+    extractor_activity_id: str,
+    sanitizer_activity_id: str,
+) -> tuple[ObjectT, list[ClaimModelIssue]]:
+    object_type, object_id = _object_identity(item)
+    issues: list[ClaimModelIssue] = []
+    valid_evidence_ids = [
+        evidence_id
+        for evidence_id in item.evidence_ids
+        if evidence_id in evidence_by_id
+        and evidence_by_id[evidence_id].segment_id in item.source_segment_ids
+    ]
+    invalid_evidence_ids = sorted(set(item.evidence_ids) - set(valid_evidence_ids))
+    if invalid_evidence_ids:
+        issues.append(
+            ClaimModelIssue(
+                object_type=object_type.value,
+                object_id=object_id,
+                stage="provenance",
+                detail=(
+                    "unknown or out-of-scope evidence IDs were removed: "
+                    f"{invalid_evidence_ids}"
+                ),
+            )
+        )
+
+    if not valid_evidence_ids:
+        generated = _generated_evidence(
+            object_type=object_type,
+            object_id=object_id,
+            item=item,
+            evidence_class=evidence_class,
+            transcript=transcript,
+            sanitizer_activity_id=sanitizer_activity_id,
+        )
+        valid_evidence_ids = [evidence.evidence_id for evidence in generated]
+        evidence_by_id.update({evidence.evidence_id: evidence for evidence in generated})
+
+    valid_coreference_ids = [
+        link_id for link_id in item.coreference_link_ids if link_id in coreference_by_id
+    ]
+    invalid_coreference_ids = sorted(set(item.coreference_link_ids) - set(valid_coreference_ids))
+    if invalid_coreference_ids:
+        issues.append(
+            ClaimModelIssue(
+                object_type=object_type.value,
+                object_id=object_id,
+                stage="coreference",
+                detail=f"unknown coreference link IDs were removed: {invalid_coreference_ids}",
+            )
+        )
+
+    final_class = _weakest_evidence_class(valid_evidence_ids, evidence_by_id, evidence_class)
+    provenance = ClaimProvenance(
+        recording_id=transcript.recording_id,
+        speaker_id=speaker_id,
+        speaker_name=speaker_name,
+        generated_by_activity_id=extractor_activity_id,
+        validated_by_activity_ids=[sanitizer_activity_id],
+        evidence_ids=list(valid_evidence_ids),
+        derived_from_claim_ids=(
+            list(item.provenance.derived_from_claim_ids) if item.provenance is not None else []
+        ),
+        pipeline_versions=get_pipeline_versions().model_dump(mode="json"),
+    )
+    update: dict[str, Any] = {
+        "evidence_ids": valid_evidence_ids,
+        "evidence_class": final_class,
+        "coreference_link_ids": valid_coreference_ids,
+        "provenance": provenance,
+    }
+    if isinstance(item, PersonMention):
+        update["name_variants"] = _materialize_name_variants(
+            item,
+            evidence_ids=valid_evidence_ids,
+            valid_evidence_ids=set(evidence_by_id),
+        )
+    return cast(ObjectT, item.model_copy(update=update)), issues
+
+
+def _claim_ref_index(
+    result: ExtractionResult,
+) -> dict[tuple[ClaimObjectType, str], EvidenceBackedObject]:
+    return {_object_identity(item): item for item in _objects(result)}
 
 
 def _filter_conflicts(
@@ -542,6 +529,16 @@ def _filter_conflicts(
     return accepted, issues
 
 
+def _attach_conflict_ids(items: list[ObjectT], mapping: dict[tuple[ClaimObjectType, str], list[str]]) -> list[ObjectT]:
+    return [
+        cast(
+            ObjectT,
+            item.model_copy(update={"conflict_ids": mapping.get(_object_identity(item), [])}),
+        )
+        for item in items
+    ]
+
+
 def _sync_conflict_ids(
     result: ExtractionResult,
     conflicts: list[ConflictSet],
@@ -552,40 +549,75 @@ def _sync_conflict_ids(
             conflict_ids_by_claim.setdefault((ref.object_type, ref.object_id), []).append(
                 conflict.conflict_id
             )
-
-    def update_items(items: list[EvidenceBackedObject]) -> list[EvidenceBackedObject]:
-        return [
-            item.model_copy(
-                update={"conflict_ids": conflict_ids_by_claim.get(_object_identity(item), [])}
-            )
-            for item in items
-        ]
-
     return result.model_copy(
         update={
-            "people_mentions": update_items(list(result.people_mentions)),
-            "relationship_claims": update_items(list(result.relationship_claims)),
-            "events": update_items(list(result.events)),
-            "descriptions": update_items(list(result.descriptions)),
-            "stories": update_items(list(result.stories)),
-            "unresolved_questions": update_items(list(result.unresolved_questions)),
+            "people_mentions": _attach_conflict_ids(
+                list(result.people_mentions), conflict_ids_by_claim
+            ),
+            "relationship_claims": _attach_conflict_ids(
+                list(result.relationship_claims), conflict_ids_by_claim
+            ),
+            "events": _attach_conflict_ids(list(result.events), conflict_ids_by_claim),
+            "descriptions": _attach_conflict_ids(
+                list(result.descriptions), conflict_ids_by_claim
+            ),
+            "stories": _attach_conflict_ids(list(result.stories), conflict_ids_by_claim),
+            "unresolved_questions": _attach_conflict_ids(
+                list(result.unresolved_questions), conflict_ids_by_claim
+            ),
             "conflict_sets": conflicts,
         }
     )
+
+
+def _materialize_generic_items(
+    items: list[ObjectT],
+    *,
+    transcript: TranscriptEnvelope,
+    result: ExtractionResult,
+    evidence_by_id: dict[str, EvidenceSpan],
+    coreference_by_id: dict[str, CoreferenceLink],
+    extractor_activity_id: str,
+    sanitizer_activity_id: str,
+) -> tuple[list[ObjectT], list[ClaimModelIssue]]:
+    materialized: list[ObjectT] = []
+    issues: list[ClaimModelIssue] = []
+    for candidate in items:
+        item, item_issues = _materialize_item(
+            candidate,
+            evidence_class=_infer_generic_evidence_class(candidate),
+            transcript=transcript,
+            speaker_id=result.speaker_id,
+            speaker_name=result.speaker_name,
+            evidence_by_id=evidence_by_id,
+            coreference_by_id=coreference_by_id,
+            extractor_activity_id=extractor_activity_id,
+            sanitizer_activity_id=sanitizer_activity_id,
+        )
+        materialized.append(item)
+        issues.extend(item_issues)
+    return materialized, issues
 
 
 def materialize_extraction_contract_v2(
     result: ExtractionResult,
     transcript: TranscriptEnvelope,
 ) -> tuple[ExtractionResult, list[ClaimModelIssue]]:
-    """Attach authoritative provenance while preserving valid model-proposed evidence metadata."""
+    """Attach authoritative provenance while preserving valid model-proposed metadata."""
 
     issues: list[ClaimModelIssue] = []
-    mention_ids = {person.mention_id for person in result.people_mentions}
-    activities, _, extractor_activity_id, sanitizer_activity_id = _authoritative_activities(
-        transcript
-    )
+    if result.provenance_activities:
+        issues.append(
+            ClaimModelIssue(
+                object_type="provenance_activity",
+                object_id=None,
+                stage="provenance",
+                detail="model-provided provenance activities were replaced by authoritative data",
+            )
+        )
 
+    mention_ids = {person.mention_id for person in result.people_mentions}
+    activities, extractor_activity_id, sanitizer_activity_id = _authoritative_activities(transcript)
     evidence_by_id: dict[str, EvidenceSpan] = {}
     for evidence in result.evidence_spans:
         detail = _validate_candidate_evidence(
@@ -618,16 +650,14 @@ def materialize_extraction_contract_v2(
     coreference_by_id = {item.coreference_id: item for item in coreference_links}
 
     people: list[PersonMention] = []
-    generated_evidence: list[EvidenceSpan] = []
     for person in result.people_mentions:
-        inferred_class = _infer_person_evidence_class(
+        item, item_issues = _materialize_item(
             person,
-            transcript=transcript,
-            speaker_name=result.speaker_name,
-        )
-        item, generated, item_issues = _materialize_object_with_class(
-            person,
-            evidence_class=inferred_class,
+            evidence_class=_infer_person_evidence_class(
+                person,
+                transcript=transcript,
+                speaker_name=result.speaker_name,
+            ),
             transcript=transcript,
             speaker_id=result.speaker_id,
             speaker_name=result.speaker_name,
@@ -637,21 +667,19 @@ def materialize_extraction_contract_v2(
             sanitizer_activity_id=sanitizer_activity_id,
         )
         people.append(item)
-        generated_evidence.extend(generated)
         issues.extend(item_issues)
 
-    relationship_items: list[RelationshipClaim] = []
+    relationships: list[RelationshipClaim] = []
     for relationship in result.relationship_claims:
-        inferred_class = _infer_relationship_evidence_class(
+        item, item_issues = _materialize_item(
             relationship,
-            transcript=transcript,
-            people=people,
-            speaker_name=result.speaker_name,
-            coreference_by_id=coreference_by_id,
-        )
-        item, generated, item_issues = _materialize_object_with_class(
-            relationship,
-            evidence_class=inferred_class,
+            evidence_class=_infer_relationship_evidence_class(
+                relationship,
+                transcript=transcript,
+                people=people,
+                speaker_name=result.speaker_name,
+                coreference_by_id=coreference_by_id,
+            ),
             transcript=transcript,
             speaker_id=result.speaker_id,
             speaker_name=result.speaker_name,
@@ -660,41 +688,62 @@ def materialize_extraction_contract_v2(
             extractor_activity_id=extractor_activity_id,
             sanitizer_activity_id=sanitizer_activity_id,
         )
-        relationship_items.append(item)
-        generated_evidence.extend(generated)
+        relationships.append(item)
         issues.extend(item_issues)
 
-    def materialize_generic(items: list[EvidenceBackedObject]) -> list[EvidenceBackedObject]:
-        materialized: list[EvidenceBackedObject] = []
-        for candidate in items:
-            item, generated, item_issues = _materialize_object_with_class(
-                candidate,
-                evidence_class=_infer_generic_evidence_class(candidate),
-                transcript=transcript,
-                speaker_id=result.speaker_id,
-                speaker_name=result.speaker_name,
-                evidence_by_id=evidence_by_id,
-                coreference_by_id=coreference_by_id,
-                extractor_activity_id=extractor_activity_id,
-                sanitizer_activity_id=sanitizer_activity_id,
-            )
-            materialized.append(item)
-            generated_evidence.extend(generated)
-            issues.extend(item_issues)
-        return materialized
+    events, event_issues = _materialize_generic_items(
+        list(result.events),
+        transcript=transcript,
+        result=result,
+        evidence_by_id=evidence_by_id,
+        coreference_by_id=coreference_by_id,
+        extractor_activity_id=extractor_activity_id,
+        sanitizer_activity_id=sanitizer_activity_id,
+    )
+    descriptions, description_issues = _materialize_generic_items(
+        list(result.descriptions),
+        transcript=transcript,
+        result=result,
+        evidence_by_id=evidence_by_id,
+        coreference_by_id=coreference_by_id,
+        extractor_activity_id=extractor_activity_id,
+        sanitizer_activity_id=sanitizer_activity_id,
+    )
+    stories, story_issues = _materialize_generic_items(
+        list(result.stories),
+        transcript=transcript,
+        result=result,
+        evidence_by_id=evidence_by_id,
+        coreference_by_id=coreference_by_id,
+        extractor_activity_id=extractor_activity_id,
+        sanitizer_activity_id=sanitizer_activity_id,
+    )
+    questions, question_issues = _materialize_generic_items(
+        list(result.unresolved_questions),
+        transcript=transcript,
+        result=result,
+        evidence_by_id=evidence_by_id,
+        coreference_by_id=coreference_by_id,
+        extractor_activity_id=extractor_activity_id,
+        sanitizer_activity_id=sanitizer_activity_id,
+    )
+    issues.extend(event_issues)
+    issues.extend(description_issues)
+    issues.extend(story_issues)
+    issues.extend(question_issues)
 
     updated = result.model_copy(
         update={
             "schema_version": "extraction-v2",
             "provenance_activities": activities,
-            "evidence_spans": [*evidence_by_id.values()],
+            "evidence_spans": list(evidence_by_id.values()),
             "coreference_links": coreference_links,
             "people_mentions": people,
-            "relationship_claims": relationship_items,
-            "events": materialize_generic(list(result.events)),
-            "descriptions": materialize_generic(list(result.descriptions)),
-            "stories": materialize_generic(list(result.stories)),
-            "unresolved_questions": materialize_generic(list(result.unresolved_questions)),
+            "relationship_claims": relationships,
+            "events": events,
+            "descriptions": descriptions,
+            "stories": stories,
+            "unresolved_questions": questions,
         }
     )
     conflicts, conflict_issues = _filter_conflicts(
@@ -703,89 +752,7 @@ def materialize_extraction_contract_v2(
         evidence_ids=set(evidence_by_id),
     )
     issues.extend(conflict_issues)
-    updated = _sync_conflict_ids(updated, conflicts)
-    return updated, issues
-
-
-def _materialize_object_with_class(
-    item: EvidenceBackedObject,
-    *,
-    evidence_class: EvidenceClass,
-    transcript: TranscriptEnvelope,
-    speaker_id: str,
-    speaker_name: str,
-    evidence_by_id: dict[str, EvidenceSpan],
-    coreference_by_id: dict[str, CoreferenceLink],
-    extractor_activity_id: str,
-    sanitizer_activity_id: str,
-) -> tuple[Any, list[EvidenceSpan], list[ClaimModelIssue]]:
-    object_type, object_id = _object_identity(item)
-    issues: list[ClaimModelIssue] = []
-    valid_evidence_ids = [item_id for item_id in item.evidence_ids if item_id in evidence_by_id]
-    invalid_evidence_ids = sorted(set(item.evidence_ids) - set(valid_evidence_ids))
-    if invalid_evidence_ids:
-        issues.append(
-            ClaimModelIssue(
-                object_type=object_type.value,
-                object_id=object_id,
-                stage="provenance",
-                detail=f"unknown evidence IDs were removed: {invalid_evidence_ids}",
-            )
-        )
-
-    generated: list[EvidenceSpan] = []
-    if not valid_evidence_ids:
-        generated = _generated_evidence(
-            object_type=object_type,
-            object_id=object_id,
-            item=item,
-            evidence_class=evidence_class,
-            transcript=transcript,
-            sanitizer_activity_id=sanitizer_activity_id,
-        )
-        valid_evidence_ids = [evidence.evidence_id for evidence in generated]
-        evidence_by_id.update({evidence.evidence_id: evidence for evidence in generated})
-
-    final_class = _weakest_evidence_class(valid_evidence_ids, evidence_by_id, evidence_class)
-    valid_coreference_ids = [
-        item_id for item_id in item.coreference_link_ids if item_id in coreference_by_id
-    ]
-    invalid_coreference_ids = sorted(set(item.coreference_link_ids) - set(valid_coreference_ids))
-    if invalid_coreference_ids:
-        issues.append(
-            ClaimModelIssue(
-                object_type=object_type.value,
-                object_id=object_id,
-                stage="coreference",
-                detail=f"unknown coreference link IDs were removed: {invalid_coreference_ids}",
-            )
-        )
-
-    provenance = ClaimProvenance(
-        recording_id=transcript.recording_id,
-        speaker_id=speaker_id,
-        speaker_name=speaker_name,
-        generated_by_activity_id=extractor_activity_id,
-        validated_by_activity_ids=[sanitizer_activity_id],
-        evidence_ids=list(valid_evidence_ids),
-        derived_from_claim_ids=(
-            list(item.provenance.derived_from_claim_ids) if item.provenance is not None else []
-        ),
-        pipeline_versions=get_pipeline_versions().model_dump(mode="json"),
-    )
-    update: dict[str, Any] = {
-        "evidence_ids": valid_evidence_ids,
-        "evidence_class": final_class,
-        "coreference_link_ids": valid_coreference_ids,
-        "provenance": provenance,
-    }
-    if isinstance(item, PersonMention):
-        update["name_variants"] = _materialize_name_variants(
-            item,
-            evidence_ids=valid_evidence_ids,
-            valid_evidence_ids=set(evidence_by_id),
-        )
-    return item.model_copy(update=update), generated, issues
+    return _sync_conflict_ids(updated, conflicts), issues
 
 
 def validate_extraction_contract_v2(
@@ -795,7 +762,6 @@ def validate_extraction_contract_v2(
     if result.schema_version != "extraction-v2":
         return
 
-    segment_by_id = {segment.segment_id: segment for segment in transcript.segments}
     activity_ids = {activity.activity_id for activity in result.provenance_activities}
     evidence_by_id = {evidence.evidence_id: evidence for evidence in result.evidence_spans}
     coreference_by_id = {item.coreference_id: item for item in result.coreference_links}
@@ -819,10 +785,6 @@ def validate_extraction_contract_v2(
             raise ValueError(
                 f"evidence {evidence.evidence_id} references an unknown provenance activity"
             )
-        segment = segment_by_id[evidence.segment_id]
-        if evidence.start_char is not None and evidence.end_char is not None:
-            if segment.text[evidence.start_char : evidence.end_char] != evidence.text:
-                raise ValueError(f"evidence {evidence.evidence_id} has invalid offsets")
 
     for link in result.coreference_links:
         unknown_evidence = set(link.evidence_ids) - set(evidence_by_id)
@@ -903,12 +865,11 @@ def validate_extraction_contract_v2(
         if set(item.conflict_ids) - set(conflict_by_id):
             raise ValueError(f"{object_type.value} {object_id} references unknown conflicts")
         for conflict_id in item.conflict_ids:
-            ref = ClaimReference(object_type=object_type, object_id=object_id)
             conflict_keys = {
                 (candidate.object_type, candidate.object_id)
                 for candidate in conflict_by_id[conflict_id].claim_refs
             }
-            if (ref.object_type, ref.object_id) not in conflict_keys:
+            if (object_type, object_id) not in conflict_keys:
                 raise ValueError(
                     f"{object_type.value} {object_id} is not included in conflict {conflict_id}"
                 )
@@ -916,6 +877,9 @@ def validate_extraction_contract_v2(
     for person in result.people_mentions:
         if not person.name_variants:
             raise ValueError(f"person mention {person.mention_id} has no name variants")
+        variant_ids = [variant.variant_id for variant in person.name_variants]
+        if len(variant_ids) != len(set(variant_ids)):
+            raise ValueError(f"person mention {person.mention_id} has duplicate variant IDs")
         primary = [
             variant
             for variant in person.name_variants
@@ -925,6 +889,10 @@ def validate_extraction_contract_v2(
         if not primary:
             raise ValueError(f"person mention {person.mention_id} has no primary name variant")
         for variant in person.name_variants:
+            if not set(variant.source_segment_ids).issubset(person.source_segment_ids):
+                raise ValueError(
+                    f"name variant {variant.variant_id} is outside person source segments"
+                )
             if set(variant.evidence_ids) - set(evidence_by_id):
                 raise ValueError(
                     f"name variant {variant.variant_id} references unknown evidence"
