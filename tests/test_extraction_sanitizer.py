@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from mura.domain.models import RawSegment, TranscriptEnvelope
+from mura.domain.models import (
+    CoreferenceStatus,
+    EvidenceClass,
+    RawSegment,
+    TranscriptEnvelope,
+)
 from mura.extraction_sanitizer import sanitize_extraction_output
 
 
@@ -240,7 +245,7 @@ def test_speaker_identity_closure_adds_only_one_identity_segment() -> None:
     assert result.relationship_claims[0].source_segment_ids == ["seg_001", "seg_002"]
 
 
-def test_ambiguous_third_person_endpoint_is_quarantined_with_debug_context() -> None:
+def test_unique_third_person_endpoint_is_context_resolved_with_provenance() -> None:
     transcript = TranscriptEnvelope(
         recording_id="rec_ambiguous",
         duration_seconds=20,
@@ -299,17 +304,12 @@ def test_ambiguous_third_person_endpoint_is_quarantined_with_debug_context() -> 
         speaker_name="Күләш",
     )
 
-    assert result.relationship_claims == []
-    assert closure_count == 0
-    relationship_issue = next(
-        issue for issue in issues if issue["object_id"] == "relationship_ambiguous"
-    )
-    issue_context = relationship_issue["context"]
-    analysis = issue_context["evidence_analysis"]
-    assert issue_context["original_candidate"]["subject_mention_id"] == "mention_erlan"
-    assert analysis["subject_name"] == "Ерлан"
-    assert analysis["object_name"] == "Нұрлан"
-    assert analysis["explicit_people"] == [{"mention_id": "mention_nurlan", "name": "Нұрлан"}]
-    assert analysis["first_person_reference"] is False
-    assert analysis["unsupported_endpoint_ids"] == ["mention_erlan"]
-    assert analysis["source_text"] == "оның ұлы нұрлан"
+    assert issues == []
+    assert closure_count == 1
+    relationship = result.relationship_claims[0]
+    assert relationship.evidence_class is EvidenceClass.D_CONTEXT_RESOLVED
+    assert relationship.source_segment_ids == ["seg_001", "seg_002"]
+    assert relationship.evidence_ids
+    link = result.coreference_links[0]
+    assert link.status is CoreferenceStatus.RESOLVED
+    assert link.antecedent_mention_ids == ["mention_erlan"]
