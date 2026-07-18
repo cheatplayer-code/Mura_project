@@ -127,9 +127,8 @@ def test_sanitizer_keeps_valid_objects_and_quarantines_bad_ones() -> None:
     assert [item.description_id for item in result.descriptions] == ["description_valid"]
 
     issue_by_id = {issue["object_id"]: issue for issue in issues}
-    assert issue_by_id["relationship_invalid"]["context"]["candidate"]["object_mention_id"] == (
-        "mention_dias"
-    )
+    invalid_context = issue_by_id["relationship_invalid"]["context"]
+    assert invalid_context["candidate"]["object_mention_id"] == "mention_dias"
     assert "description_wrong_person" in issue_by_id
 
 
@@ -153,7 +152,10 @@ def test_sanitizer_uses_authoritative_request_metadata() -> None:
     assert metadata_issue_ids == {"recording_id", "speaker_name"}
 
 
-def _speaker_relationship_payload(*, speaker_sources: list[str]) -> tuple[TranscriptEnvelope, dict]:
+def _speaker_relationship_payload(
+    *,
+    speaker_sources: list[str],
+) -> tuple[TranscriptEnvelope, dict[str, object]]:
     transcript = TranscriptEnvelope(
         recording_id="rec_speaker",
         duration_seconds=20,
@@ -166,7 +168,7 @@ def _speaker_relationship_payload(*, speaker_sources: list[str]) -> tuple[Transc
         asr_revision="large_ctc",
         chunker_version="v1",
     )
-    raw = {
+    raw: dict[str, object] = {
         "recording_id": "rec_speaker",
         "speaker_id": "speaker_1",
         "speaker_name": "Күләш",
@@ -252,7 +254,7 @@ def test_ambiguous_third_person_endpoint_is_quarantined_with_debug_context() -> 
         asr_revision="large_ctc",
         chunker_version="v1",
     )
-    raw = {
+    raw: dict[str, object] = {
         "recording_id": "rec_ambiguous",
         "speaker_id": "speaker_1",
         "speaker_name": "Күләш",
@@ -303,13 +305,14 @@ def test_ambiguous_third_person_endpoint_is_quarantined_with_debug_context() -> 
     relationship_issue = next(
         issue for issue in issues if issue["object_id"] == "relationship_ambiguous"
     )
-    analysis = relationship_issue["context"]["evidence_analysis"]
-    assert relationship_issue["context"]["original_candidate"]["subject_mention_id"] == (
-        "mention_erlan"
-    )
+    issue_context = relationship_issue["context"]
+    analysis = issue_context["evidence_analysis"]
+    assert issue_context["original_candidate"]["subject_mention_id"] == "mention_erlan"
     assert analysis["subject_name"] == "Ерлан"
     assert analysis["object_name"] == "Нұрлан"
-    assert analysis["explicit_people"] == [{"mention_id": "mention_nurlan", "name": "Нұрлан"}]
+    assert analysis["explicit_people"] == [
+        {"mention_id": "mention_nurlan", "name": "Нұрлан"}
+    ]
     assert analysis["first_person_reference"] is False
     assert analysis["unsupported_endpoint_ids"] == ["mention_erlan"]
     assert analysis["source_text"] == "оның ұлы нұрлан"
