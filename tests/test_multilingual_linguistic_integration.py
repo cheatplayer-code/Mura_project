@@ -87,9 +87,7 @@ def test_russian_inflected_speaker_relationship_is_accepted() -> None:
     )
 
     assert issues == []
-    assert [item.relationship_id for item in result.relationship_claims] == [
-        "relationship_parent"
-    ]
+    assert [item.relationship_id for item in result.relationship_claims] == ["relationship_parent"]
     relationship = result.relationship_claims[0]
     assert relationship.evidence_class is EvidenceClass.C_SPEAKER_ANCHORED
     assert relationship.provenance is not None
@@ -153,9 +151,7 @@ def test_russian_third_person_possessive_is_quarantined() -> None:
     analysis = issue["context"]["evidence_analysis"]
     assert analysis["role_consistent"] is False
     assert analysis["third_person_possessive_markers"][0]["surface"] == "Его"
-    assert "ru.coreference.third_person_possessive_guard.v1" in analysis[
-        "linguistic_rule_ids"
-    ]
+    assert "ru.coreference.third_person_possessive_guard.v1" in analysis["linguistic_rule_ids"]
 
 
 def test_english_named_possessive_relationship_is_accepted() -> None:
@@ -200,9 +196,7 @@ def test_english_named_possessive_relationship_is_accepted() -> None:
     )
 
     assert issues == []
-    assert [item.relationship_id for item in result.relationship_claims] == [
-        "relationship_spouse"
-    ]
+    assert [item.relationship_id for item in result.relationship_claims] == ["relationship_spouse"]
     assert result.relationship_claims[0].evidence_class is EvidenceClass.A_EXPLICIT
 
 
