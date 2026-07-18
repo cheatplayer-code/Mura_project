@@ -58,10 +58,7 @@ def _list_value(
             object_type=key,
             object_id=None,
             stage="schema",
-            detail=(
-                f"top-level field {key!r} must be a list; "
-                f"received {type(value).__name__}"
-            ),
+            detail=(f"top-level field {key!r} must be a list; received {type(value).__name__}"),
             context={"received_value": value},
         )
     )
@@ -197,17 +194,14 @@ def sanitize_extraction_output(
                     object_id=key,
                     stage="schema",
                     detail=(
-                        f"model returned {actual!r}; "
-                        f"authoritative value {expected!r} was used"
+                        f"model returned {actual!r}; authoritative value {expected!r} was used"
                     ),
                     context={"model_value": actual, "authoritative_value": expected},
                 )
             )
 
     raw_languages = raw.get("languages", [])
-    if isinstance(raw_languages, list) and all(
-        isinstance(item, str) for item in raw_languages
-    ):
+    if isinstance(raw_languages, list) and all(isinstance(item, str) for item in raw_languages):
         languages = list(dict.fromkeys(raw_languages))
     else:
         languages = []
