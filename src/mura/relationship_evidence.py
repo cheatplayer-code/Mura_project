@@ -10,31 +10,16 @@ from mura.domain.models import (
     TranscriptEnvelope,
 )
 from mura.linguistics.common import normalize_text
-from mura.linguistics.kazakh import (
+from mura.linguistics.multilingual import (
+    LinguisticRelationshipSignal,
     contains_known_name_surface,
     find_known_name_matches,
     find_relationship_signals,
     find_speaker_anchor_matches,
+    find_third_person_possessive_markers,
     find_uncertainty_markers,
     signal_matches_relationship,
 )
-
-_NON_KAZAKH_FIRST_PERSON_TOKENS = {
-    "я",
-    "мы",
-    "мой",
-    "моя",
-    "моё",
-    "мои",
-    "моего",
-    "моей",
-    "наш",
-    "наша",
-    "наше",
-    "наши",
-    "нашего",
-    "нашей",
-}
 
 _AUTO_ACCEPTABLE_CLASSES = {
     EvidenceClass.A_EXPLICIT,
@@ -68,10 +53,7 @@ def person_name_surfaces(person: PersonMention) -> list[str]:
 
 
 def has_first_person_reference(text: str) -> bool:
-    if find_speaker_anchor_matches(text):
-        return True
-    tokens = set(normalize_evidence(text).split())
-    return bool(tokens.intersection(_NON_KAZAKH_FIRST_PERSON_TOKENS))
+    return bool(find_speaker_anchor_matches(text))
 
 
 def joined_segment_text(segment_ids: list[str], transcript: TranscriptEnvelope) -> str:
@@ -137,9 +119,15 @@ class RelationshipEvidenceAnalysis:
     evidence_class: str
     auto_accept_eligible: bool
     coreference_link_ids: list[str]
+    resolved_coreference_antecedent_ids: list[str]
+    linguistic_relationship_signals: list[dict[str, str]]
     kazakh_relationship_signals: list[dict[str, str]]
+    russian_relationship_signals: list[dict[str, str]]
+    english_relationship_signals: list[dict[str, str]]
+    code_switching_relationship_signals: list[dict[str, str]]
     role_consistent: bool | None
-    uncertainty_markers: list[dict[str, str]]
+    third_person_possessive_markers: list[dict[str, Any]]
+    uncertainty_markers: list[dict[str, Any]]
     linguistic_rule_ids: list[str]
 
     def to_dict(self) -> dict[str, Any]:
@@ -156,13 +144,45 @@ def _name_rule_ids(source_text: str, people: list[PersonMention]) -> list[str]:
     return sorted(rule_ids)
 
 
+def _signal_specificity(signal: LinguisticRelationshipSignal) -> tuple[int, int]:
+    normalized = normalize_evidence(signal.source_surface)
+    tokens = normalized.split()
+    return len(tokens), len(normalized)
+
+
+def _prefer_specific_endpoint_signals(
+    signals: list[LinguisticRelationshipSignal],
+) -> list[LinguisticRelationshipSignal]:
+    grouped: dict[
+        tuple[str, str, frozenset[str]],
+        list[LinguisticRelationshipSignal],
+    ] = {}
+    for signal in signals:
+        key = (
+            signal.language,
+            signal.relationship_type.value,
+            frozenset({signal.subject_mention_id, signal.object_mention_id}),
+        )
+        grouped.setdefault(key, []).append(signal)
+
+    selected: list[LinguisticRelationshipSignal] = []
+    for candidates in grouped.values():
+        strongest = max(_signal_specificity(candidate) for candidate in candidates)
+        selected.extend(
+            candidate for candidate in candidates if _signal_specificity(candidate) == strongest
+        )
+    return selected
+
+
 def analyze_relationship_evidence(
     *,
     relationship: RelationshipClaim,
     transcript: TranscriptEnvelope,
     people: list[PersonMention],
     speaker_name: str,
+    resolved_coreference_antecedent_ids: set[str] | None = None,
 ) -> RelationshipEvidenceAnalysis:
+    resolved_antecedents = resolved_coreference_antecedent_ids or set()
     mention_by_id = {person.mention_id: person for person in people}
     source_text = joined_segment_text(relationship.source_segment_ids, transcript)
     explicit = explicitly_named_people(source_text, people)
@@ -173,9 +193,37 @@ def analyze_relationship_evidence(
     speakers = speaker_mentions(people, speaker_name)
     speaker_ids = {person.mention_id for person in speakers}
     speaker_anchors = find_speaker_anchor_matches(source_text)
-    first_person = bool(speaker_anchors) or has_first_person_reference(source_text)
+    first_person = bool(speaker_anchors)
 
+    signals = _prefer_specific_endpoint_signals(
+        find_relationship_signals(source_text, people, speaker_name)
+    )
     endpoint_ids = [relationship.subject_mention_id, relationship.object_mention_id]
+    endpoint_set = set(endpoint_ids)
+    endpoint_signals = [
+        signal
+        for signal in signals
+        if {signal.subject_mention_id, signal.object_mention_id} == endpoint_set
+    ]
+    matching_signals = [
+        signal for signal in endpoint_signals if signal_matches_relationship(signal, relationship)
+    ]
+    conflicting_signals = [
+        signal
+        for signal in endpoint_signals
+        if not signal_matches_relationship(signal, relationship)
+    ]
+    third_person_markers = find_third_person_possessive_markers(source_text)
+    resolved_endpoint_antecedents = endpoint_set.intersection(resolved_antecedents)
+    unresolved_third_person = bool(third_person_markers) and not resolved_endpoint_antecedents
+
+    if unresolved_third_person or conflicting_signals:
+        role_consistent: bool | None = False
+    elif matching_signals:
+        role_consistent = True
+    else:
+        role_consistent = None
+
     supported = [
         mention_id
         for mention_id in endpoint_ids
@@ -183,42 +231,30 @@ def analyze_relationship_evidence(
     ]
     unsupported = [mention_id for mention_id in endpoint_ids if mention_id not in supported]
 
-    endpoint_set = set(endpoint_ids)
     if not unsupported and first_person and endpoint_set.intersection(speaker_ids):
         evidence_class = EvidenceClass.C_SPEAKER_ANCHORED
     elif endpoint_set.issubset(exact_ids):
         evidence_class = EvidenceClass.A_EXPLICIT
     elif not unsupported:
         evidence_class = EvidenceClass.B_MORPHOLOGICALLY_EXPLICIT
-    elif relationship.coreference_link_ids:
+    elif resolved_endpoint_antecedents:
         evidence_class = EvidenceClass.D_CONTEXT_RESOLVED
     elif relationship.assertion_mode.value == "inferred":
         evidence_class = EvidenceClass.E_INFERRED
     else:
         evidence_class = EvidenceClass.U_UNCERTAIN
 
-    signals = find_relationship_signals(source_text, people, speaker_name)
-    endpoint_signals = [
-        signal
-        for signal in signals
-        if {
-            signal.subject_mention_id,
-            signal.object_mention_id,
-        }
-        == endpoint_set
-    ]
-    role_consistent = (
-        any(signal_matches_relationship(signal, relationship) for signal in endpoint_signals)
-        if endpoint_signals
-        else None
-    )
-    uncertainty_markers = find_uncertainty_markers(source_text)
+    speaker_endpoint_is_implicit = bool(endpoint_set.intersection(speaker_ids) - exact_ids)
+    speaker_signal_requirement_met = not speaker_endpoint_is_implicit or role_consistent is True
 
+    uncertainty_markers = find_uncertainty_markers(source_text)
     rule_ids = set(_name_rule_ids(source_text, people))
     rule_ids.update(anchor.rule_id for anchor in speaker_anchors)
     rule_ids.update(signal.rule_id for signal in signals)
+    rule_ids.update(marker.rule_id for marker in third_person_markers)
     rule_ids.update(marker.rule_id for marker in uncertainty_markers)
 
+    signal_dicts = [signal.to_dict() for signal in signals]
     subject = mention_by_id.get(relationship.subject_mention_id)
     object_person = mention_by_id.get(relationship.object_mention_id)
     return RelationshipEvidenceAnalysis(
@@ -243,11 +279,21 @@ def analyze_relationship_evidence(
         unsupported_endpoint_ids=unsupported,
         evidence_class=evidence_class.value,
         auto_accept_eligible=(
-            evidence_class in _AUTO_ACCEPTABLE_CLASSES and role_consistent is not False
+            evidence_class in _AUTO_ACCEPTABLE_CLASSES
+            and role_consistent is not False
+            and speaker_signal_requirement_met
         ),
         coreference_link_ids=list(relationship.coreference_link_ids),
-        kazakh_relationship_signals=[signal.to_dict() for signal in signals],
+        resolved_coreference_antecedent_ids=sorted(resolved_antecedents),
+        linguistic_relationship_signals=signal_dicts,
+        kazakh_relationship_signals=[item for item in signal_dicts if item["language"] == "kk"],
+        russian_relationship_signals=[item for item in signal_dicts if item["language"] == "ru"],
+        english_relationship_signals=[item for item in signal_dicts if item["language"] == "en"],
+        code_switching_relationship_signals=[
+            item for item in signal_dicts if item["language"] == "mixed"
+        ],
         role_consistent=role_consistent,
+        third_person_possessive_markers=[marker.to_dict() for marker in third_person_markers],
         uncertainty_markers=[marker.to_dict() for marker in uncertainty_markers],
         linguistic_rule_ids=sorted(rule_ids),
     )
