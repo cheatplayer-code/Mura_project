@@ -14,7 +14,10 @@ from mura.domain.models import (
 )
 from mura.linguistics import english, russian
 from mura.linguistics.common import normalize_text, tokenize
-from mura.linguistics.multilingual import find_known_name_matches, find_speaker_anchor_matches
+from mura.linguistics.multilingual import (
+    find_known_name_matches,
+    find_speaker_anchor_matches,
+)
 
 
 class MentionAnchorKind(StrEnum):
@@ -72,6 +75,17 @@ class _AnchorCandidate:
     rule_ids: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class _LexicalCandidate:
+    segment_id: str
+    surface: str
+    start_char: int
+    end_char: int
+    annotation_type: LexicalAnnotationType
+    language: str
+    rule_id: str
+
+
 _KAZAKH_KINSHIP_LEXEMES = frozenset(
     (
         "әкем анам шешем ұлым ұлымыз қызым қызымыз балам баламыз ағам әпкем інім "
@@ -91,7 +105,10 @@ def _known_person_surfaces(person: KnownPerson) -> list[str]:
     return list(dict.fromkeys([person.canonical_name, *person.aliases]))
 
 
-def _known_speaker_person_id(known_people: list[KnownPerson], speaker_name: str) -> str | None:
+def _known_speaker_person_id(
+    known_people: list[KnownPerson],
+    speaker_name: str,
+) -> str | None:
     normalized_speaker = normalize_text(speaker_name)
     matches = [
         person.person_id
@@ -104,71 +121,74 @@ def _known_speaker_person_id(known_people: list[KnownPerson], speaker_name: str)
     return matches[0] if len(matches) == 1 else None
 
 
-def _lexical_annotations(transcript: TranscriptEnvelope) -> list[ExtractionLexicalAnnotation]:
-    raw: list[tuple[str, str, int, int, LexicalAnnotationType, str, str]] = []
+def _lexical_candidates(transcript: TranscriptEnvelope) -> list[_LexicalCandidate]:
+    candidates: list[_LexicalCandidate] = []
     for segment in transcript.segments:
-        for match in find_speaker_anchor_matches(segment.text):
-            if match.start < 0 or match.end <= match.start:
+        for anchor_match in find_speaker_anchor_matches(segment.text):
+            if anchor_match.start < 0 or anchor_match.end <= anchor_match.start:
                 continue
-            raw.append(
-                (
-                    segment.segment_id,
-                    match.surface,
-                    match.start,
-                    match.end,
-                    LexicalAnnotationType.SPEAKER_ANCHOR,
-                    match.language,
-                    match.rule_id,
-                )
-            )
-        for language, matches in (
-            ("ru", russian.find_kinship_matches(segment.text)),
-            ("en", english.find_kinship_matches(segment.text)),
-        ):
-            for match in matches:
-                raw.append(
-                    (
-                        segment.segment_id,
-                        match.surface,
-                        match.start,
-                        match.end,
-                        LexicalAnnotationType.KINSHIP_LEXEME,
-                        language,
-                        match.rule_id,
-                    )
-                )
-        for token in tokenize(segment.text):
-            if token.normalized not in _KAZAKH_KINSHIP_LEXEMES:
-                continue
-            raw.append(
-                (
-                    segment.segment_id,
-                    token.surface,
-                    token.start,
-                    token.end,
-                    LexicalAnnotationType.KINSHIP_LEXEME,
-                    "kk",
-                    "kk.extraction_anchor.audited_kinship_lexeme.v1",
+            candidates.append(
+                _LexicalCandidate(
+                    segment_id=segment.segment_id,
+                    surface=anchor_match.surface,
+                    start_char=anchor_match.start,
+                    end_char=anchor_match.end,
+                    annotation_type=LexicalAnnotationType.SPEAKER_ANCHOR,
+                    language=anchor_match.language,
+                    rule_id=anchor_match.rule_id,
                 )
             )
 
-    unique = list(dict.fromkeys(raw))
-    annotations: list[ExtractionLexicalAnnotation] = []
-    for index, item in enumerate(unique, start=1):
-        segment_id, surface, start, end, annotation_type, language, rule_id = item
-        annotations.append(
-            ExtractionLexicalAnnotation(
-                annotation_id=f"annotation_{index:03d}",
-                segment_id=segment_id,
-                surface=surface,
-                start_char=start,
-                end_char=end,
-                annotation_type=annotation_type,
-                language=language,
-                rule_id=rule_id,
+        for language, kinship_matches in (
+            ("ru", russian.find_kinship_matches(segment.text)),
+            ("en", english.find_kinship_matches(segment.text)),
+        ):
+            for kinship_match in kinship_matches:
+                candidates.append(
+                    _LexicalCandidate(
+                        segment_id=segment.segment_id,
+                        surface=kinship_match.surface,
+                        start_char=kinship_match.start,
+                        end_char=kinship_match.end,
+                        annotation_type=LexicalAnnotationType.KINSHIP_LEXEME,
+                        language=language,
+                        rule_id=kinship_match.rule_id,
+                    )
+                )
+
+        for token in tokenize(segment.text):
+            if token.normalized not in _KAZAKH_KINSHIP_LEXEMES:
+                continue
+            candidates.append(
+                _LexicalCandidate(
+                    segment_id=segment.segment_id,
+                    surface=token.surface,
+                    start_char=token.start,
+                    end_char=token.end,
+                    annotation_type=LexicalAnnotationType.KINSHIP_LEXEME,
+                    language="kk",
+                    rule_id="kk.extraction_anchor.audited_kinship_lexeme.v1",
+                )
             )
+    return list(dict.fromkeys(candidates))
+
+
+def _lexical_annotations(
+    transcript: TranscriptEnvelope,
+) -> list[ExtractionLexicalAnnotation]:
+    return [
+        ExtractionLexicalAnnotation(
+            annotation_id=f"annotation_{index:03d}",
+            segment_id=candidate.segment_id,
+            surface=candidate.surface,
+            start_char=candidate.start_char,
+            end_char=candidate.end_char,
+            annotation_type=candidate.annotation_type,
+            language=candidate.language,
+            rule_id=candidate.rule_id,
         )
-    return annotations
+        for index, candidate in enumerate(_lexical_candidates(transcript), start=1)
+    ]
 
 
 def _known_person_anchors(
@@ -177,27 +197,34 @@ def _known_person_anchors(
     cleaned: CleanerResult,
     known_people: list[KnownPerson],
 ) -> list[_AnchorCandidate]:
-    readable_by_id = {segment.segment_id: segment.text for segment in cleaned.readable_segments}
+    readable_by_id = {
+        segment.segment_id: segment.text for segment in cleaned.readable_segments
+    }
     anchors: list[_AnchorCandidate] = []
     for person in known_people:
         for segment in transcript.segments:
             for source_layer, text in (
                 (EvidenceSourceLayer.RAW_TRANSCRIPT, segment.text),
-                (EvidenceSourceLayer.READABLE_TRANSCRIPT, readable_by_id[segment.segment_id]),
+                (
+                    EvidenceSourceLayer.READABLE_TRANSCRIPT,
+                    readable_by_id[segment.segment_id],
+                ),
             ):
                 for surface in _known_person_surfaces(person):
-                    for match in find_known_name_matches(text, surface):
+                    for name_match in find_known_name_matches(text, surface):
                         anchors.append(
                             _AnchorCandidate(
-                                surface=match.token,
-                                normalized=normalize_text(match.token),
+                                surface=name_match.token,
+                                normalized=normalize_text(name_match.token),
                                 segment_id=segment.segment_id,
                                 source_layer=source_layer,
-                                start_char=match.start if match.start >= 0 else None,
-                                end_char=match.end if match.end > 0 else None,
+                                start_char=name_match.start
+                                if name_match.start >= 0
+                                else None,
+                                end_char=name_match.end if name_match.end > 0 else None,
                                 anchor_kind=MentionAnchorKind.KNOWN_PERSON,
                                 known_person_id=person.person_id,
-                                rule_ids=(match.rule_id,),
+                                rule_ids=(name_match.rule_id,),
                             )
                         )
     return anchors
@@ -233,38 +260,44 @@ def _speaker_anchors(
     ]
 
 
-def _name_candidate_anchors(
-    *,
-    cleaned: CleanerResult,
-    annotations: list[ExtractionLexicalAnnotation],
-) -> list[_AnchorCandidate]:
-    kinship_segments = {
-        annotation.segment_id
-        for annotation in annotations
-        if annotation.annotation_type is LexicalAnnotationType.KINSHIP_LEXEME
+def _kinship_token_indexes(text: str) -> set[int]:
+    tokens = tokenize(text)
+    indexes = {
+        index
+        for index, token in enumerate(tokens)
+        if token.normalized in _KAZAKH_KINSHIP_LEXEMES
     }
+    spans = [
+        (match.start, match.end)
+        for match in [
+            *russian.find_kinship_matches(text),
+            *english.find_kinship_matches(text),
+        ]
+    ]
+    indexes.update(
+        index
+        for index, token in enumerate(tokens)
+        if any(token.start < end and token.end > start for start, end in spans)
+    )
+    return indexes
+
+
+def _name_candidate_anchors(cleaned: CleanerResult) -> list[_AnchorCandidate]:
     anchors: list[_AnchorCandidate] = []
     for segment in cleaned.readable_segments:
-        if segment.segment_id not in kinship_segments:
-            continue
         tokens = tokenize(segment.text)
-        kinship_indexes = {
-            index
-            for index, token in enumerate(tokens)
-            if token.normalized in _KAZAKH_KINSHIP_LEXEMES
-            or russian.find_kinship_matches(token.surface)
-            or english.find_kinship_matches(token.surface)
-        }
+        kinship_indexes = _kinship_token_indexes(segment.text)
+        if not kinship_indexes:
+            continue
         for index, token in enumerate(tokens):
             if not token.surface[:1].isupper():
                 continue
-            if len(token.normalized) < 2 or token.normalized in _NAME_CANDIDATE_EXCLUSIONS:
+            if (
+                len(token.normalized) < 2
+                or token.normalized in _NAME_CANDIDATE_EXCLUSIONS
+            ):
                 continue
-            nearest_kinship = min(
-                (abs(index - kinship_index) for kinship_index in kinship_indexes),
-                default=999,
-            )
-            if nearest_kinship > 4:
+            if min(abs(index - kinship_index) for kinship_index in kinship_indexes) > 4:
                 continue
             anchors.append(
                 _AnchorCandidate(
@@ -282,6 +315,19 @@ def _name_candidate_anchors(
     return anchors
 
 
+def _deduplicate_anchors(candidates: list[_AnchorCandidate]) -> list[_AnchorCandidate]:
+    unique: dict[tuple[str, str, str, str | None], _AnchorCandidate] = {}
+    for candidate in candidates:
+        key = (
+            candidate.anchor_kind.value,
+            candidate.segment_id,
+            candidate.normalized,
+            candidate.known_person_id,
+        )
+        unique.setdefault(key, candidate)
+    return list(unique.values())
+
+
 def build_extraction_anchor_bundle(
     *,
     transcript: TranscriptEnvelope,
@@ -290,30 +336,21 @@ def build_extraction_anchor_bundle(
     known_people: list[KnownPerson],
 ) -> ExtractionAnchorBundle:
     annotations = _lexical_annotations(transcript)
-    raw_anchors = [
-        *_known_person_anchors(
-            transcript=transcript,
-            cleaned=cleaned,
-            known_people=known_people,
-        ),
-        *_speaker_anchors(
-            speaker_name=speaker_name,
-            known_people=known_people,
-            annotations=annotations,
-        ),
-        *_name_candidate_anchors(cleaned=cleaned, annotations=annotations),
-    ]
-
-    unique: dict[tuple[str, str, str, str | None], _AnchorCandidate] = {}
-    for candidate in raw_anchors:
-        key = (
-            candidate.anchor_kind.value,
-            candidate.segment_id,
-            candidate.normalized,
-            candidate.known_person_id,
-        )
-        unique.setdefault(key, candidate)
-
+    candidates = _deduplicate_anchors(
+        [
+            *_known_person_anchors(
+                transcript=transcript,
+                cleaned=cleaned,
+                known_people=known_people,
+            ),
+            *_speaker_anchors(
+                speaker_name=speaker_name,
+                known_people=known_people,
+                annotations=annotations,
+            ),
+            *_name_candidate_anchors(cleaned),
+        ]
+    )
     mention_anchors = [
         ExtractionMentionAnchor(
             anchor_id=f"anchor_{index:03d}",
@@ -327,7 +364,7 @@ def build_extraction_anchor_bundle(
             known_person_id=candidate.known_person_id,
             rule_ids=list(candidate.rule_ids),
         )
-        for index, candidate in enumerate(unique.values(), start=1)
+        for index, candidate in enumerate(candidates, start=1)
     ]
     return ExtractionAnchorBundle(
         allowed_segment_ids=[segment.segment_id for segment in transcript.segments],
