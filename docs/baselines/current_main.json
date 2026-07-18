@@ -3,7 +3,7 @@
   "manifest_path": "benchmarks/manifest.json",
   "pipeline_versions": {
     "pipeline": "mura-core-v0.3.0",
-    "schema": "domain-v1",
+    "domain_schema": "domain-v1",
     "cleaner_prompt": "cleaner-v1",
     "extractor_prompt": "extractor-v1",
     "evidence_rules": "relationship-evidence-v1",
