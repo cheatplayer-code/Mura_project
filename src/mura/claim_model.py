@@ -487,7 +487,7 @@ def _materialize_item(
             evidence_ids=valid_evidence_ids,
             valid_evidence_ids=set(evidence_by_id),
         )
-    return cast(ObjectT, item.model_copy(update=update)), issues
+    return item.model_copy(update=update), issues
 
 
 def _claim_ref_index(
@@ -537,10 +537,7 @@ def _attach_conflict_ids(
     mapping: dict[tuple[ClaimObjectType, str], list[str]],
 ) -> list[ObjectT]:
     return [
-        cast(
-            ObjectT,
-            item.model_copy(update={"conflict_ids": mapping.get(_object_identity(item), [])}),
-        )
+        item.model_copy(update={"conflict_ids": mapping.get(_object_identity(item), [])})
         for item in items
     ]
 
@@ -655,7 +652,7 @@ def materialize_extraction_contract_v2(
 
     people: list[PersonMention] = []
     for person in result.people_mentions:
-        item, item_issues = _materialize_item(
+        materialized_person, item_issues = _materialize_item(
             person,
             evidence_class=_infer_person_evidence_class(
                 person,
@@ -670,12 +667,12 @@ def materialize_extraction_contract_v2(
             extractor_activity_id=extractor_activity_id,
             sanitizer_activity_id=sanitizer_activity_id,
         )
-        people.append(item)
+        people.append(materialized_person)
         issues.extend(item_issues)
 
     relationships: list[RelationshipClaim] = []
     for relationship in result.relationship_claims:
-        item, item_issues = _materialize_item(
+        materialized_relationship, item_issues = _materialize_item(
             relationship,
             evidence_class=_infer_relationship_evidence_class(
                 relationship,
@@ -692,7 +689,7 @@ def materialize_extraction_contract_v2(
             extractor_activity_id=extractor_activity_id,
             sanitizer_activity_id=sanitizer_activity_id,
         )
-        relationships.append(item)
+        relationships.append(materialized_relationship)
         issues.extend(item_issues)
 
     events, event_issues = _materialize_generic_items(
