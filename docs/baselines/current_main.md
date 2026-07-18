@@ -10,33 +10,32 @@ Manifest: `benchmarks/manifest.json`
 | cleaner_prompt | `cleaner-v1` |
 | domain_schema | `domain-v2` |
 | evaluator | `core-evaluator-v1` |
-| evidence_rules | `claim-evidence-v2+multilingual-v1` |
+| evidence_rules | `claim-evidence-v2+bounded-coreference-v1` |
 | extractor_prompt | `extractor-v2` |
-| pipeline | `mura-core-v0.6.0` |
-| resolver | `mention-resolver-v1` |
+| pipeline | `mura-core-v0.7.0` |
+| resolver | `mention-resolver-v1+bounded-coreference-v1` |
 
 ## Aggregate metrics
 
 - Cases: **6**
 - Person mentions: P=1.000, R=1.000, F1=1.000 (TP=14, FP=0, FN=0)
-- Relationships: P=1.000, R=0.667, F1=0.800 (TP=4, FP=0, FN=2)
-- Expected quarantine: P=1.000, R=1.000, F1=1.000 (TP=3, FP=0, FN=0)
-- Relationship direction accuracy: 1.000 (4/4)
-- Provenance completeness: 1.000 (18/18)
+- Relationships: P=1.000, R=1.000, F1=1.000 (TP=6, FP=0, FN=0)
+- Expected quarantine: P=1.000, R=1.000, F1=1.000 (TP=1, FP=0, FN=0)
+- Relationship direction accuracy: 1.000 (6/6)
+- Provenance completeness: 1.000 (20/20)
 - Unknown segment references: **0**
 - Self relationships: **0**
 
-## PR 16 improvements
+## PR 17 bounded-coreference improvements
 
-1. Russian inflected first-person possessive `мою` now produces a bounded speaker-anchored parent-child signal.
-2. The ambiguous phrase `Его сын` is quarantined unless a valid `CoreferenceLink` is supplied.
-3. Relationship precision rises from 0.750 to 1.000 while the fixed benchmark recall rises from 0.500 to 0.667.
-4. Expected-quarantine precision and recall are both 1.000 after removing a contradictory gold label from the Russian speaker-anchor case.
+1. Singular `оның / его / his` relationships may be retained only when the bounded discourse window contains exactly one compatible antecedent.
+2. Kazakh plural `олардың` resolves to an explicitly coordinated married pair and retains both parent-child claims.
+3. Competing candidates such as `Ерлан встретил Болата. Его сын Нурлан.` still produce reviewable ambiguity instead of an accepted edge.
+4. Context-resolved relationships retain evidence class D and remain ineligible for automatic graph materialization.
+5. Model-proposed resolved links cannot authorize a claim unless deterministic discourse or human review independently supports the antecedent.
 
-## Remaining baseline failure
+## Scope and limitations
 
-Kazakh plural antecedent `олардың` is still not linked to the coordinated pair from the previous segment, so two valid parent-child relationships remain quarantined. This is intentionally reserved for bounded discourse and coreference in PR 17.
+This baseline measures the deterministic validation layer against fixed extraction candidates. It does not measure live DeepSeek candidate generation or ASR quality.
 
-## Scope
-
-This baseline measures the deterministic validation layer against fixed extraction candidates. It intentionally does not call GigaAM or DeepSeek, so it does not measure ASR quality or live candidate-generation quality. PR 16 adds bounded Russian, English, and code-switching rules without resolving third-person antecedents.
+The perfect score applies only to the six declared regression cases. The resolver is intentionally bounded to the current segment and one immediately preceding segment; it does not solve arbitrary long-document coreference, implicit event participants, or cross-recording identity resolution.

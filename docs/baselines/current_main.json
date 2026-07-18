@@ -2,12 +2,12 @@
   "report_schema_version": "evaluation-report-v1",
   "manifest_path": "benchmarks/manifest.json",
   "pipeline_versions": {
-    "pipeline": "mura-core-v0.6.0",
+    "pipeline": "mura-core-v0.7.0",
     "domain_schema": "domain-v2",
     "cleaner_prompt": "cleaner-v1",
     "extractor_prompt": "extractor-v2",
-    "evidence_rules": "claim-evidence-v2+multilingual-v1",
-    "resolver": "mention-resolver-v1",
+    "evidence_rules": "claim-evidence-v2+bounded-coreference-v1",
+    "resolver": "mention-resolver-v1+bounded-coreference-v1",
     "evaluator": "core-evaluator-v1",
     "benchmark_schema": "benchmark-v1"
   },
@@ -82,7 +82,7 @@
       "accepted_relationship_ids": [],
       "quarantined_relationship_ids": ["relationship_001"],
       "extraction_issue_count": 1,
-      "evidence_closure_relationships": 0
+      "evidence_closure_relationships": 1
     },
     {
       "case_id": "kk_plural_antecedent_children",
@@ -91,16 +91,16 @@
       "language": "kk",
       "construction_tags": ["plural_antecedent", "cross_segment", "parent_child"],
       "person_mentions": {"true_positive": 3, "false_positive": 0, "false_negative": 0, "precision": 1.0, "recall": 1.0, "f1": 1.0},
-      "relationships": {"true_positive": 0, "false_positive": 0, "false_negative": 2, "precision": 1.0, "recall": 0.0, "f1": 0.0},
-      "quarantined_relationships": {"true_positive": 2, "false_positive": 0, "false_negative": 0, "precision": 1.0, "recall": 1.0, "f1": 1.0},
-      "relationship_direction_accuracy": {"numerator": 0, "denominator": 0, "value": 1.0},
-      "provenance_completeness": {"numerator": 3, "denominator": 3, "value": 1.0},
+      "relationships": {"true_positive": 2, "false_positive": 0, "false_negative": 0, "precision": 1.0, "recall": 1.0, "f1": 1.0},
+      "quarantined_relationships": {"true_positive": 0, "false_positive": 0, "false_negative": 0, "precision": 1.0, "recall": 1.0, "f1": 1.0},
+      "relationship_direction_accuracy": {"numerator": 2, "denominator": 2, "value": 1.0},
+      "provenance_completeness": {"numerator": 5, "denominator": 5, "value": 1.0},
       "unknown_segment_references": 0,
       "self_relationships": 0,
-      "accepted_relationship_ids": [],
-      "quarantined_relationship_ids": ["relationship_001", "relationship_002"],
-      "extraction_issue_count": 2,
-      "evidence_closure_relationships": 0
+      "accepted_relationship_ids": ["relationship_001", "relationship_002"],
+      "quarantined_relationship_ids": [],
+      "extraction_issue_count": 0,
+      "evidence_closure_relationships": 2
     },
     {
       "case_id": "en_explicit_possessive_spouse",
@@ -124,10 +124,10 @@
   "summary": {
     "case_count": 6,
     "person_mentions": {"true_positive": 14, "false_positive": 0, "false_negative": 0, "precision": 1.0, "recall": 1.0, "f1": 1.0},
-    "relationships": {"true_positive": 4, "false_positive": 0, "false_negative": 2, "precision": 1.0, "recall": 0.666667, "f1": 0.8},
-    "quarantined_relationships": {"true_positive": 3, "false_positive": 0, "false_negative": 0, "precision": 1.0, "recall": 1.0, "f1": 1.0},
-    "relationship_direction_accuracy": {"numerator": 4, "denominator": 4, "value": 1.0},
-    "provenance_completeness": {"numerator": 18, "denominator": 18, "value": 1.0},
+    "relationships": {"true_positive": 6, "false_positive": 0, "false_negative": 0, "precision": 1.0, "recall": 1.0, "f1": 1.0},
+    "quarantined_relationships": {"true_positive": 1, "false_positive": 0, "false_negative": 0, "precision": 1.0, "recall": 1.0, "f1": 1.0},
+    "relationship_direction_accuracy": {"numerator": 6, "denominator": 6, "value": 1.0},
+    "provenance_completeness": {"numerator": 20, "denominator": 20, "value": 1.0},
     "unknown_segment_references": 0,
     "self_relationships": 0
   }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from mura.coreference import augment_bounded_coreference
 from mura.domain.models import (
     ExtractionResult,
     PersonMention,
@@ -100,8 +101,8 @@ def _complete_relationship(
         if speaker_referenced and has_overlap:
             continue
 
-        # Only the supplied speaker can be resolved from first-person forms. Ambiguous
-        # third-person possessive pronouns stay unresolved unless evidence names the endpoint.
+        # Only the supplied speaker can be resolved from first-person forms. Third-person
+        # endpoints require a trusted CoreferenceLink created by the bounded resolver.
         if not is_speaker:
             continue
 
@@ -125,17 +126,19 @@ def complete_relationship_evidence(
     result: ExtractionResult,
     transcript: TranscriptEnvelope,
 ) -> tuple[ExtractionResult, int]:
-    """Add minimal speaker identity evidence without changing relationship semantics.
+    """Complete only deterministic speaker and bounded discourse evidence.
 
-    First-person forms can be resolved deterministically to the supplied speaker. Ambiguous
-    third-person pronouns are never resolved by merely appending a person's identity segment.
-    The function never changes endpoint IDs, roles, relationship type, confidence, assertion
-    mode, or verification status.
+    First-person forms may resolve to the supplied speaker. Third-person possessives are handled
+    by the bounded resolver, which considers only the current segment and one preceding segment.
+    A singular form requires one candidate; a plural form requires one explicit pair. Ambiguous
+    links are retained for review but never authorize a relationship.
     """
 
+    augmentation = augment_bounded_coreference(result, transcript)
+    result = augmentation.result
     people_by_id = {person.mention_id: person for person in result.people_mentions}
     completed: list[RelationshipClaim] = []
-    changed_count = 0
+    changed_count = augmentation.changed_relationship_count
 
     for relationship in result.relationship_claims:
         updated, changed = _complete_relationship(
@@ -147,7 +150,10 @@ def complete_relationship_evidence(
         completed.append(updated)
         changed_count += int(changed)
 
-    if not changed_count:
-        return result, 0
+    if not any(
+        updated is not original
+        for updated, original in zip(completed, result.relationship_claims, strict=True)
+    ):
+        return result, changed_count
 
     return result.model_copy(update={"relationship_claims": completed}), changed_count

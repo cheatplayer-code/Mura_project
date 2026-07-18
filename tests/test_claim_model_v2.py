@@ -155,7 +155,7 @@ def test_invalid_model_evidence_is_quarantined_and_replaced() -> None:
     validate_extraction_result(transcript, result)
 
 
-def test_resolved_coreference_retains_a_context_resolved_claim() -> None:
+def test_deterministic_coreference_replaces_model_only_authorization() -> None:
     transcript = _transcript(
         ("seg_001", "Ерлан инженер."),
         ("seg_002", "Оның ұлы Нұрлан."),
@@ -238,7 +238,16 @@ def test_resolved_coreference_retains_a_context_resolved_claim() -> None:
     assert len(result.relationship_claims) == 1
     relationship = result.relationship_claims[0]
     assert relationship.evidence_class is EvidenceClass.D_CONTEXT_RESOLVED
-    assert relationship.coreference_link_ids == ["coreference_001"]
+    assert "coreference_001" not in relationship.coreference_link_ids
+    assert len(relationship.coreference_link_ids) == 1
+    attached_link = next(
+        link
+        for link in result.coreference_links
+        if link.coreference_id == relationship.coreference_link_ids[0]
+    )
+    assert attached_link.method is CoreferenceMethod.DETERMINISTIC_DISCOURSE
+    assert attached_link.status is CoreferenceStatus.RESOLVED
+    assert attached_link.antecedent_mention_ids == ["mention_erlan"]
     assert not is_auto_acceptable_evidence_class(relationship.evidence_class)
     validate_extraction_result(transcript, result)
 

@@ -8,6 +8,8 @@ from mura.deepseek.client import DeepSeekUsage
 from mura.deepseek.service import DeepSeekPipelineService
 from mura.domain.models import (
     CleanerResult,
+    CoreferenceStatus,
+    EvidenceClass,
     ExtractionResult,
     PersonMention,
     RawSegment,
@@ -82,14 +84,19 @@ def _extraction(object_mention_id: str = "mention_nurgali") -> ExtractionResult:
     )
 
 
-def test_relationship_evidence_closure_keeps_ambiguous_pronoun_unresolved() -> None:
+def test_relationship_evidence_closure_resolves_unique_preceding_person() -> None:
     transcript = _transcript()
     completed, changed_count = complete_relationship_evidence(_extraction(), transcript)
 
-    assert changed_count == 0
-    assert completed.relationship_claims[0].source_segment_ids == ["seg_002"]
-    with pytest.raises(ContractValidationError, match="no evidence overlap with mention_sapar"):
-        validate_extraction_result(transcript, completed)
+    assert changed_count == 1
+    relationship = completed.relationship_claims[0]
+    assert relationship.source_segment_ids == ["seg_001", "seg_002"]
+    assert relationship.evidence_ids
+    assert len(relationship.coreference_link_ids) == 1
+    link = completed.coreference_links[0]
+    assert link.status is CoreferenceStatus.RESOLVED
+    assert link.antecedent_mention_ids == ["mention_sapar"]
+    validate_extraction_result(transcript, completed)
 
 
 def test_relationship_evidence_closure_does_not_hide_unknown_endpoint() -> None:
@@ -124,7 +131,7 @@ class EvidenceGapClient:
         )
 
 
-def test_extractor_quarantines_ambiguous_third_person_relationship() -> None:
+def test_extractor_accepts_unique_bounded_third_person_relationship() -> None:
     transcript = _transcript()
     cleaned = CleanerResult(
         readable_segments=[
@@ -148,16 +155,13 @@ def test_extractor_quarantines_ambiguous_third_person_relationship() -> None:
 
     assert client.calls == 1
     assert usage["repair_attempted"] is False
-    assert usage["evidence_closure_relationships"] == 0
-    assert result.relationship_claims == []
+    assert usage["evidence_closure_relationships"] == 1
+    assert len(result.relationship_claims) == 1
+    assert result.relationship_claims[0].evidence_class is EvidenceClass.D_CONTEXT_RESOLVED
     assert usage["relationship_metrics"] == {
         "candidates": 1,
-        "accepted": 0,
-        "quarantined": 1,
-        "acceptance_rate": 0.0,
+        "accepted": 1,
+        "quarantined": 0,
+        "acceptance_rate": 1.0,
     }
-    relationship_issue = usage["extraction_issues"][0]
-    assert relationship_issue["object_id"] == "relationship_005"
-    assert relationship_issue["context"]["evidence_analysis"]["unsupported_endpoint_ids"] == [
-        "mention_sapar"
-    ]
+    assert usage["extraction_issues"] == []

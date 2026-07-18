@@ -29,14 +29,14 @@ def test_current_main_baseline_is_reproducible() -> None:
     assert summary.person_mentions.false_negative == 0
     assert summary.person_mentions.f1 == 1.0
 
-    assert summary.relationships.true_positive == 4
+    assert summary.relationships.true_positive == 6
     assert summary.relationships.false_positive == 0
-    assert summary.relationships.false_negative == 2
+    assert summary.relationships.false_negative == 0
     assert summary.relationships.precision == 1.0
-    assert summary.relationships.recall == 0.666667
-    assert summary.relationships.f1 == 0.8
+    assert summary.relationships.recall == 1.0
+    assert summary.relationships.f1 == 1.0
 
-    assert summary.quarantined_relationships.true_positive == 3
+    assert summary.quarantined_relationships.true_positive == 1
     assert summary.quarantined_relationships.false_positive == 0
     assert summary.quarantined_relationships.false_negative == 0
     assert summary.quarantined_relationships.precision == 1.0
@@ -44,8 +44,9 @@ def test_current_main_baseline_is_reproducible() -> None:
     assert summary.quarantined_relationships.f1 == 1.0
 
     assert summary.relationship_direction_accuracy.value == 1.0
-    assert summary.relationship_direction_accuracy.denominator == 4
+    assert summary.relationship_direction_accuracy.denominator == 6
     assert summary.provenance_completeness.value == 1.0
+    assert summary.provenance_completeness.denominator == 20
     assert summary.unknown_segment_references == 0
     assert summary.self_relationships == 0
 
@@ -57,7 +58,7 @@ def test_generated_report_matches_frozen_baseline() -> None:
     assert generated == frozen
 
 
-def test_baseline_records_pr16_improvements_and_remaining_coreference_gap() -> None:
+def test_baseline_records_bounded_coreference_and_ambiguity_safety() -> None:
     report = run_benchmark(MANIFEST)
     cases = {case.case_id: case for case in report.cases}
 
@@ -72,12 +73,13 @@ def test_baseline_records_pr16_improvements_and_remaining_coreference_gap() -> N
     assert ambiguous_pronoun.relationships.false_positive == 0
 
     plural_antecedent = cases["kk_plural_antecedent_children"]
-    assert plural_antecedent.accepted_relationship_ids == []
-    assert plural_antecedent.quarantined_relationship_ids == [
+    assert plural_antecedent.accepted_relationship_ids == [
         "relationship_001",
         "relationship_002",
     ]
-    assert plural_antecedent.relationships.false_negative == 2
+    assert plural_antecedent.quarantined_relationship_ids == []
+    assert plural_antecedent.relationships.true_positive == 2
+    assert plural_antecedent.relationships.false_negative == 0
 
 
 def test_markdown_report_contains_versions_and_limitations() -> None:
@@ -85,5 +87,5 @@ def test_markdown_report_contains_versions_and_limitations() -> None:
     markdown = render_markdown_report(report)
 
     assert "# Mura ML Core Baseline" in markdown
-    assert "mura-core-v0.6.0" in markdown
+    assert "mura-core-v0.7.0" in markdown
     assert "does not measure live DeepSeek candidate generation" in markdown
