@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Any, Protocol
 
 from mura.domain.models import PersonMention, RelationshipClaim, RelationshipRole, RelationshipType
 from mura.linguistics import english, kazakh, russian
-from mura.linguistics.common import normalize_text, tokenize
+from mura.linguistics.common import ScriptBucket, detect_script, normalize_text, tokenize
 
 
 class _Frame(Protocol):
@@ -106,19 +107,84 @@ class LinguisticRelationshipSignal:
         }
 
 
+_NameFinder = Callable[[str, str], list[Any]]
+_KAZAKH_CONTEXT_TOKENS = frozenset(
+    {
+        "мен",
+        "менің",
+        "біз",
+        "біздің",
+        "ол",
+        "оның",
+        "олар",
+        "олардың",
+        "және",
+        "үйленді",
+        "әкем",
+        "анам",
+        "шешем",
+        "ұлым",
+        "ұлымыз",
+        "қызым",
+        "қызымыз",
+        "балам",
+        "баламыз",
+        "ағам",
+        "әпкем",
+        "інім",
+        "сіңлім",
+        "қарындасым",
+        "әйелім",
+        "күйеуім",
+        "әкесі",
+        "анасы",
+        "шешесі",
+        "ұлы",
+        "қызы",
+        "баласы",
+        "ағасы",
+        "әпкесі",
+        "інісі",
+        "сіңлісі",
+        "қарындасы",
+        "әйелі",
+        "күйеуі",
+    }
+)
+_KAZAKH_SPECIFIC_CHARACTERS = frozenset("әғқңөұүһі")
+
+
 def _person_surfaces(person: PersonMention) -> list[str]:
     values = [person.name, *person.aliases]
     values.extend(variant.surface for variant in person.name_variants)
     return list(dict.fromkeys(value for value in values if value))
 
 
-def find_known_name_matches(text: str, surface: str) -> list[LinguisticNameMatch]:
-    matches: list[LinguisticNameMatch] = []
-    for language, finder in (
+def _text_prefers_kazakh(text: str) -> bool:
+    normalized = normalize_text(text)
+    if set(normalized).intersection(_KAZAKH_SPECIFIC_CHARACTERS):
+        return True
+    return any(token.normalized in _KAZAKH_CONTEXT_TOKENS for token in tokenize(text))
+
+
+def _name_finders(text: str, surface: str) -> tuple[tuple[str, _NameFinder], ...]:
+    script = detect_script(surface)
+    if script is ScriptBucket.LATIN:
+        return (("en", english.find_known_name_matches),)
+    if script is ScriptBucket.CYRILLIC:
+        if _text_prefers_kazakh(text):
+            return (("kk", kazakh.find_known_name_matches),)
+        return (("ru", russian.find_known_name_matches),)
+    return (
         ("kk", kazakh.find_known_name_matches),
         ("ru", russian.find_known_name_matches),
         ("en", english.find_known_name_matches),
-    ):
+    )
+
+
+def find_known_name_matches(text: str, surface: str) -> list[LinguisticNameMatch]:
+    matches: list[LinguisticNameMatch] = []
+    for language, finder in _name_finders(text, surface):
         for candidate in finder(text, surface):
             matches.append(
                 LinguisticNameMatch(
