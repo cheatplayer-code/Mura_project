@@ -74,6 +74,7 @@ select = ["E", "F", "I", "B", "UP", "RUF"]
 "tests/test_kazakh_linguistics.py" = ["RUF001"]
 "tests/test_multilingual_coreference_guards.py" = ["RUF001"]
 "tests/test_multilingual_linguistic_integration.py" = ["RUF001"]
+"tests/test_multilingual_routing.py" = ["RUF001"]
 "tests/test_russian_linguistics.py" = ["RUF001"]
 
 [tool.mypy]
