@@ -10,31 +10,15 @@ from mura.domain.models import (
     TranscriptEnvelope,
 )
 from mura.linguistics.common import normalize_text
-from mura.linguistics.kazakh import (
+from mura.linguistics.multilingual import (
     contains_known_name_surface,
     find_known_name_matches,
     find_relationship_signals,
     find_speaker_anchor_matches,
+    find_third_person_possessive_markers,
     find_uncertainty_markers,
     signal_matches_relationship,
 )
-
-_NON_KAZAKH_FIRST_PERSON_TOKENS = {
-    "я",
-    "мы",
-    "мой",
-    "моя",
-    "моё",
-    "мои",
-    "моего",
-    "моей",
-    "наш",
-    "наша",
-    "наше",
-    "наши",
-    "нашего",
-    "нашей",
-}
 
 _AUTO_ACCEPTABLE_CLASSES = {
     EvidenceClass.A_EXPLICIT,
@@ -68,10 +52,7 @@ def person_name_surfaces(person: PersonMention) -> list[str]:
 
 
 def has_first_person_reference(text: str) -> bool:
-    if find_speaker_anchor_matches(text):
-        return True
-    tokens = set(normalize_evidence(text).split())
-    return bool(tokens.intersection(_NON_KAZAKH_FIRST_PERSON_TOKENS))
+    return bool(find_speaker_anchor_matches(text))
 
 
 def joined_segment_text(segment_ids: list[str], transcript: TranscriptEnvelope) -> str:
@@ -137,9 +118,14 @@ class RelationshipEvidenceAnalysis:
     evidence_class: str
     auto_accept_eligible: bool
     coreference_link_ids: list[str]
+    linguistic_relationship_signals: list[dict[str, str]]
     kazakh_relationship_signals: list[dict[str, str]]
+    russian_relationship_signals: list[dict[str, str]]
+    english_relationship_signals: list[dict[str, str]]
+    code_switching_relationship_signals: list[dict[str, str]]
     role_consistent: bool | None
-    uncertainty_markers: list[dict[str, str]]
+    third_person_possessive_markers: list[dict[str, Any]]
+    uncertainty_markers: list[dict[str, Any]]
     linguistic_rule_ids: list[str]
 
     def to_dict(self) -> dict[str, Any]:
@@ -173,9 +159,32 @@ def analyze_relationship_evidence(
     speakers = speaker_mentions(people, speaker_name)
     speaker_ids = {person.mention_id for person in speakers}
     speaker_anchors = find_speaker_anchor_matches(source_text)
-    first_person = bool(speaker_anchors) or has_first_person_reference(source_text)
+    first_person = bool(speaker_anchors)
 
+    signals = find_relationship_signals(source_text, people, speaker_name)
     endpoint_ids = [relationship.subject_mention_id, relationship.object_mention_id]
+    endpoint_set = set(endpoint_ids)
+    endpoint_signals = [
+        signal
+        for signal in signals
+        if {signal.subject_mention_id, signal.object_mention_id} == endpoint_set
+    ]
+    matching_signals = [
+        signal for signal in endpoint_signals if signal_matches_relationship(signal, relationship)
+    ]
+    conflicting_signals = [
+        signal for signal in endpoint_signals if not signal_matches_relationship(signal, relationship)
+    ]
+    third_person_markers = find_third_person_possessive_markers(source_text)
+    unresolved_third_person = bool(third_person_markers) and not relationship.coreference_link_ids
+
+    if unresolved_third_person or conflicting_signals:
+        role_consistent: bool | None = False
+    elif matching_signals:
+        role_consistent = True
+    else:
+        role_consistent = None
+
     supported = [
         mention_id
         for mention_id in endpoint_ids
@@ -183,7 +192,6 @@ def analyze_relationship_evidence(
     ]
     unsupported = [mention_id for mention_id in endpoint_ids if mention_id not in supported]
 
-    endpoint_set = set(endpoint_ids)
     if not unsupported and first_person and endpoint_set.intersection(speaker_ids):
         evidence_class = EvidenceClass.C_SPEAKER_ANCHORED
     elif endpoint_set.issubset(exact_ids):
@@ -197,28 +205,17 @@ def analyze_relationship_evidence(
     else:
         evidence_class = EvidenceClass.U_UNCERTAIN
 
-    signals = find_relationship_signals(source_text, people, speaker_name)
-    endpoint_signals = [
-        signal
-        for signal in signals
-        if {
-            signal.subject_mention_id,
-            signal.object_mention_id,
-        }
-        == endpoint_set
-    ]
-    role_consistent = (
-        any(signal_matches_relationship(signal, relationship) for signal in endpoint_signals)
-        if endpoint_signals
-        else None
-    )
-    uncertainty_markers = find_uncertainty_markers(source_text)
+    speaker_endpoint_is_implicit = bool(endpoint_set.intersection(speaker_ids) - exact_ids)
+    speaker_signal_requirement_met = not speaker_endpoint_is_implicit or role_consistent is True
 
+    uncertainty_markers = find_uncertainty_markers(source_text)
     rule_ids = set(_name_rule_ids(source_text, people))
     rule_ids.update(anchor.rule_id for anchor in speaker_anchors)
     rule_ids.update(signal.rule_id for signal in signals)
+    rule_ids.update(marker.rule_id for marker in third_person_markers)
     rule_ids.update(marker.rule_id for marker in uncertainty_markers)
 
+    signal_dicts = [signal.to_dict() for signal in signals]
     subject = mention_by_id.get(relationship.subject_mention_id)
     object_person = mention_by_id.get(relationship.object_mention_id)
     return RelationshipEvidenceAnalysis(
@@ -243,11 +240,20 @@ def analyze_relationship_evidence(
         unsupported_endpoint_ids=unsupported,
         evidence_class=evidence_class.value,
         auto_accept_eligible=(
-            evidence_class in _AUTO_ACCEPTABLE_CLASSES and role_consistent is not False
+            evidence_class in _AUTO_ACCEPTABLE_CLASSES
+            and role_consistent is not False
+            and speaker_signal_requirement_met
         ),
         coreference_link_ids=list(relationship.coreference_link_ids),
-        kazakh_relationship_signals=[signal.to_dict() for signal in signals],
+        linguistic_relationship_signals=signal_dicts,
+        kazakh_relationship_signals=[item for item in signal_dicts if item["language"] == "kk"],
+        russian_relationship_signals=[item for item in signal_dicts if item["language"] == "ru"],
+        english_relationship_signals=[item for item in signal_dicts if item["language"] == "en"],
+        code_switching_relationship_signals=[
+            item for item in signal_dicts if item["language"] == "mixed"
+        ],
         role_consistent=role_consistent,
+        third_person_possessive_markers=[marker.to_dict() for marker in third_person_markers],
         uncertainty_markers=[marker.to_dict() for marker in uncertainty_markers],
         linguistic_rule_ids=sorted(rule_ids),
     )
