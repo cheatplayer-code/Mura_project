@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import asdict
 from typing import Any, TypeVar
 
@@ -128,6 +129,17 @@ class DeepSeekPipelineService:
         acceptance_rate = (
             accepted_relationships / relationship_candidates if relationship_candidates else None
         )
+        evidence_class_counts = Counter(
+            item.evidence_class.value
+            for item in [
+                *result.people_mentions,
+                *result.relationship_claims,
+                *result.events,
+                *result.descriptions,
+                *result.stories,
+                *result.unresolved_questions,
+            ]
+        )
         return result, {
             **self._usage_dict(usage),
             "repair_attempted": False,
@@ -139,6 +151,14 @@ class DeepSeekPipelineService:
                 "accepted": accepted_relationships,
                 "quarantined": quarantined_relationships,
                 "acceptance_rate": acceptance_rate,
+            },
+            "claim_contract": {
+                "schema_version": result.schema_version,
+                "evidence_spans": len(result.evidence_spans),
+                "provenance_activities": len(result.provenance_activities),
+                "coreference_links": len(result.coreference_links),
+                "conflict_sets": len(result.conflict_sets),
+                "evidence_class_counts": dict(sorted(evidence_class_counts.items())),
             },
         }
 
