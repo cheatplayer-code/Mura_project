@@ -45,7 +45,11 @@ def _object_id(raw: object, field_name: str) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-def _list_value(raw: dict[str, Any], key: str, issues: list[ExtractionIssue]) -> list[object]:
+def _list_value(
+    raw: dict[str, Any],
+    key: str,
+    issues: list[ExtractionIssue],
+) -> list[object]:
     value = raw.get(key, [])
     if isinstance(value, list):
         return value
@@ -54,7 +58,10 @@ def _list_value(raw: dict[str, Any], key: str, issues: list[ExtractionIssue]) ->
             object_type=key,
             object_id=None,
             stage="schema",
-            detail=f"top-level field {key!r} must be a list; received {type(value).__name__}",
+            detail=(
+                f"top-level field {key!r} must be a list; "
+                f"received {type(value).__name__}"
+            ),
             context={"received_value": value},
         )
     )
@@ -189,13 +196,18 @@ def sanitize_extraction_output(
                     object_type="metadata",
                     object_id=key,
                     stage="schema",
-                    detail=f"model returned {actual!r}; authoritative value {expected!r} was used",
+                    detail=(
+                        f"model returned {actual!r}; "
+                        f"authoritative value {expected!r} was used"
+                    ),
                     context={"model_value": actual, "authoritative_value": expected},
                 )
             )
 
     raw_languages = raw.get("languages", [])
-    if isinstance(raw_languages, list) and all(isinstance(item, str) for item in raw_languages):
+    if isinstance(raw_languages, list) and all(
+        isinstance(item, str) for item in raw_languages
+    ):
         languages = list(dict.fromkeys(raw_languages))
     else:
         languages = []
@@ -294,7 +306,10 @@ def sanitize_extraction_output(
         selected_stories=stories,
         selected_questions=questions,
     )
-    preliminary, evidence_closure_count = complete_relationship_evidence(preliminary, transcript)
+    preliminary, evidence_closure_count = complete_relationship_evidence(
+        preliminary,
+        transcript,
+    )
     relationships = preliminary.relationship_claims
 
     def relationship_issue_context(item: RelationshipClaim) -> dict[str, Any]:
