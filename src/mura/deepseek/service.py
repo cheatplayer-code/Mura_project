@@ -6,17 +6,29 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+from mura.deepseek.anchors import ExtractionAnchorBundle, build_extraction_anchor_bundle
 from mura.deepseek.client import DeepSeekClient, DeepSeekError, DeepSeekUsage
 from mura.deepseek.prompts import (
     CLEANER_REPAIR_SYSTEM_PROMPT,
     CLEANER_SYSTEM_PROMPT,
+    EXTRACTION_REPAIR_SYSTEM_PROMPT,
     EXTRACTOR_SYSTEM_PROMPT,
 )
-from mura.domain.models import CleanerResult, ExtractionResult, TranscriptEnvelope
+from mura.domain.models import CleanerResult, ExtractionResult, KnownPerson, TranscriptEnvelope
 from mura.extraction_sanitizer import sanitize_extraction_output
 from mura.validation import ContractValidationError, validate_cleaner_result
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
+_FATAL_EXTRACTION_COLLECTIONS = frozenset(
+    {
+        "people_mentions",
+        "relationship_claims",
+        "events",
+        "descriptions",
+        "stories",
+        "unresolved_questions",
+    }
+)
 
 
 class DeepSeekPipelineService:
@@ -90,34 +102,203 @@ class DeepSeekPipelineService:
         cleaned: CleanerResult,
         speaker_id: str,
         speaker_name: str,
-        known_people: list[dict[str, Any]] | None = None,
+        known_people: list[KnownPerson] | None = None,
     ) -> tuple[ExtractionResult, dict[str, Any]]:
-        payload = {
-            "recording_id": transcript.recording_id,
-            "speaker": {"speaker_id": speaker_id, "speaker_name": speaker_name},
-            "known_people": known_people or [],
-            "output_schema": ExtractionResult.model_json_schema(),
-            "raw_segments": [segment.model_dump() for segment in transcript.segments],
-            "readable_segments": [segment.model_dump() for segment in cleaned.readable_segments],
-            "detected_corrections": [
-                correction.model_dump() for correction in cleaned.detected_corrections
-            ],
-            "uncertain_fragments": [
-                fragment.model_dump() for fragment in cleaned.uncertain_fragments
-            ],
-            "full_readable_text": cleaned.full_readable_text,
-        }
+        resolved_known_people = known_people or []
+        anchors = build_extraction_anchor_bundle(
+            transcript=transcript,
+            cleaned=cleaned,
+            speaker_name=speaker_name,
+            known_people=resolved_known_people,
+        )
+        payload = self._extraction_payload(
+            transcript=transcript,
+            cleaned=cleaned,
+            speaker_id=speaker_id,
+            speaker_name=speaker_name,
+            known_people=resolved_known_people,
+            anchors=anchors,
+        )
         raw, usage = self.client.request_json(
             system_prompt=EXTRACTOR_SYSTEM_PROMPT,
             payload=payload,
             max_tokens=16_000,
         )
-        result, extraction_issues, evidence_closure_count = sanitize_extraction_output(
+        initial_usage = self._usage_dict(usage)
+        repair_attempted = False
+        initial_validation_error: str | None = None
+        try:
+            result, extraction_issues, evidence_closure_count = sanitize_extraction_output(
+                raw=raw,
+                transcript=transcript,
+                speaker_id=speaker_id,
+                speaker_name=speaker_name,
+            )
+        except (ValidationError, ContractValidationError) as exc:
+            initial_validation_error = str(exc)
+            result, extraction_issues, evidence_closure_count, usage = self._repair_extraction(
+                transcript=transcript,
+                cleaned=cleaned,
+                speaker_id=speaker_id,
+                speaker_name=speaker_name,
+                known_people=resolved_known_people,
+                anchors=anchors,
+                invalid_output=raw,
+                validation_error=initial_validation_error,
+            )
+            repair_attempted = True
+        else:
+            if self._requires_extraction_repair(
+                raw=raw,
+                result=result,
+                extraction_issues=extraction_issues,
+            ):
+                initial_validation_error = self._repair_reason(extraction_issues)
+                result, extraction_issues, evidence_closure_count, usage = self._repair_extraction(
+                    transcript=transcript,
+                    cleaned=cleaned,
+                    speaker_id=speaker_id,
+                    speaker_name=speaker_name,
+                    known_people=resolved_known_people,
+                    anchors=anchors,
+                    invalid_output=raw,
+                    validation_error=initial_validation_error,
+                )
+                repair_attempted = True
+
+        usage_payload = self._extraction_usage(
             raw=raw,
+            usage=usage,
+            result=result,
+            extraction_issues=extraction_issues,
+            evidence_closure_count=evidence_closure_count,
+            anchors=anchors,
+            repair_attempted=repair_attempted,
+        )
+        if repair_attempted:
+            usage_payload["initial_usage"] = initial_usage
+            usage_payload["initial_validation_error"] = initial_validation_error
+        return result, usage_payload
+
+    @staticmethod
+    def _extraction_payload(
+        *,
+        transcript: TranscriptEnvelope,
+        cleaned: CleanerResult,
+        speaker_id: str,
+        speaker_name: str,
+        known_people: list[KnownPerson],
+        anchors: ExtractionAnchorBundle,
+    ) -> dict[str, Any]:
+        return {
+            "recording_id": transcript.recording_id,
+            "speaker": {"speaker_id": speaker_id, "speaker_name": speaker_name},
+            "known_people": [person.model_dump(mode="json") for person in known_people],
+            "anchor_contract": anchors.model_dump(mode="json"),
+            "output_schema": ExtractionResult.model_json_schema(),
+            "raw_segments": [segment.model_dump(mode="json") for segment in transcript.segments],
+            "readable_segments": [
+                segment.model_dump(mode="json") for segment in cleaned.readable_segments
+            ],
+            "detected_corrections": [
+                correction.model_dump(mode="json") for correction in cleaned.detected_corrections
+            ],
+            "uncertain_fragments": [
+                fragment.model_dump(mode="json") for fragment in cleaned.uncertain_fragments
+            ],
+            "full_readable_text": cleaned.full_readable_text,
+        }
+
+    def _repair_extraction(
+        self,
+        *,
+        transcript: TranscriptEnvelope,
+        cleaned: CleanerResult,
+        speaker_id: str,
+        speaker_name: str,
+        known_people: list[KnownPerson],
+        anchors: ExtractionAnchorBundle,
+        invalid_output: dict[str, Any],
+        validation_error: str,
+    ) -> tuple[ExtractionResult, list[dict[str, Any]], int, DeepSeekUsage]:
+        repair_payload = {
+            **self._extraction_payload(
+                transcript=transcript,
+                cleaned=cleaned,
+                speaker_id=speaker_id,
+                speaker_name=speaker_name,
+                known_people=known_people,
+                anchors=anchors,
+            ),
+            "validation_error": validation_error,
+            "invalid_output": invalid_output,
+        }
+        repaired_raw, repair_usage = self.client.request_json(
+            system_prompt=EXTRACTION_REPAIR_SYSTEM_PROMPT,
+            payload=repair_payload,
+            max_tokens=16_000,
+            attempts=2,
+        )
+        result, issues, closure_count = sanitize_extraction_output(
+            raw=repaired_raw,
             transcript=transcript,
             speaker_id=speaker_id,
             speaker_name=speaker_name,
         )
+        return result, issues, closure_count, repair_usage
+
+    @staticmethod
+    def _requires_extraction_repair(
+        *,
+        raw: dict[str, Any],
+        result: ExtractionResult,
+        extraction_issues: list[dict[str, Any]],
+    ) -> bool:
+        accepted_objects = sum(
+            len(items)
+            for items in (
+                result.people_mentions,
+                result.relationship_claims,
+                result.events,
+                result.descriptions,
+                result.stories,
+                result.unresolved_questions,
+            )
+        )
+        if accepted_objects:
+            return False
+        fatal_schema_issue = any(
+            issue.get("stage") == "schema"
+            and issue.get("object_type") in _FATAL_EXTRACTION_COLLECTIONS
+            and issue.get("object_id") is None
+            for issue in extraction_issues
+        )
+        model_attempted_content = any(
+            raw.get(key) not in (None, []) for key in _FATAL_EXTRACTION_COLLECTIONS
+        )
+        return fatal_schema_issue and model_attempted_content
+
+    @staticmethod
+    def _repair_reason(extraction_issues: list[dict[str, Any]]) -> str:
+        details = [
+            str(issue.get("detail"))
+            for issue in extraction_issues
+            if issue.get("stage") == "schema"
+            and issue.get("object_type") in _FATAL_EXTRACTION_COLLECTIONS
+        ]
+        return "; ".join(details) or "fatal extraction collection schema failure"
+
+    def _extraction_usage(
+        self,
+        *,
+        raw: dict[str, Any],
+        usage: DeepSeekUsage,
+        result: ExtractionResult,
+        extraction_issues: list[dict[str, Any]],
+        evidence_closure_count: int,
+        anchors: ExtractionAnchorBundle,
+        repair_attempted: bool,
+    ) -> dict[str, Any]:
         raw_relationships = raw.get("relationship_claims", [])
         relationship_candidates = (
             len(raw_relationships) if isinstance(raw_relationships, list) else 0
@@ -140,9 +321,9 @@ class DeepSeekPipelineService:
                 *result.unresolved_questions,
             ]
         )
-        return result, {
+        return {
             **self._usage_dict(usage),
-            "repair_attempted": False,
+            "repair_attempted": repair_attempted,
             "evidence_closure_relationships": evidence_closure_count,
             "quarantined_items": len(extraction_issues),
             "extraction_issues": extraction_issues,
@@ -151,6 +332,12 @@ class DeepSeekPipelineService:
                 "accepted": accepted_relationships,
                 "quarantined": quarantined_relationships,
                 "acceptance_rate": acceptance_rate,
+            },
+            "anchor_contract": {
+                "schema_version": anchors.schema_version,
+                "allowed_segments": len(anchors.allowed_segment_ids),
+                "mention_anchors": len(anchors.mention_anchors),
+                "lexical_annotations": len(anchors.lexical_annotations),
             },
             "claim_contract": {
                 "schema_version": result.schema_version,
