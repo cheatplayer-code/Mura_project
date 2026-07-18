@@ -99,9 +99,8 @@ def _complete_relationship(
         if speaker_referenced and has_overlap:
             continue
 
-        # Only the supplied speaker may be resolved deterministically from first-person forms.
-        # A third-person pronoun such as "оның" or "его" stays unresolved unless the model
-        # already cited a segment that explicitly names that endpoint.
+        # Only the supplied speaker can be resolved from first-person forms. Ambiguous
+        # third-person possessive pronouns stay unresolved unless evidence names the endpoint.
         if not is_speaker:
             continue
 
