@@ -3,8 +3,6 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any
 
-from pydantic import Field, model_validator
-
 from mura.domain.models import (
     PersonCategory,
     RelationshipRole,
@@ -12,6 +10,7 @@ from mura.domain.models import (
     StrictModel,
     TranscriptEnvelope,
 )
+from pydantic import Field, model_validator
 
 
 class LanguageBucket(StrEnum):
@@ -57,9 +56,7 @@ class GoldRelationship(StrictModel):
         }
         role_pair = (self.subject_role, self.object_role)
         if role_pair not in allowed_pairs[self.relationship_type]:
-            raise ValueError(
-                f"invalid role pair {role_pair!r} for {self.relationship_type.value}"
-            )
+            raise ValueError(f"invalid role pair {role_pair!r} for {self.relationship_type.value}")
         if self.subject_person_key == self.object_person_key:
             raise ValueError("gold relationship must connect two different people")
         return self
@@ -78,9 +75,7 @@ class BenchmarkGold(StrictModel):
             raise ValueError("gold person keys must be unique")
         if len(relationship_keys) != len(set(relationship_keys)):
             raise ValueError("gold relationship keys must be unique")
-        if len(self.quarantined_relationship_ids) != len(
-            set(self.quarantined_relationship_ids)
-        ):
+        if len(self.quarantined_relationship_ids) != len(set(self.quarantined_relationship_ids)):
             raise ValueError("gold quarantined relationship IDs must be unique")
         return self
 
@@ -100,9 +95,7 @@ class BenchmarkCase(StrictModel):
     def validate_recording_identity(self) -> BenchmarkCase:
         raw_recording_id = self.raw_extraction.get("recording_id")
         if raw_recording_id != self.transcript.recording_id:
-            raise ValueError(
-                "raw_extraction.recording_id must match transcript.recording_id"
-            )
+            raise ValueError("raw_extraction.recording_id must match transcript.recording_id")
         return self
 
 
