@@ -3,8 +3,16 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
+from enum import StrEnum
 
 _WORD_RE = re.compile(r"[^\W_]+", flags=re.UNICODE)
+
+
+class ScriptBucket(StrEnum):
+    CYRILLIC = "cyrillic"
+    LATIN = "latin"
+    MIXED = "mixed"
+    OTHER = "other"
 
 
 @dataclass(frozen=True)
@@ -31,6 +39,25 @@ def tokenize(value: str) -> list[TextToken]:
         )
         for match in _WORD_RE.finditer(value)
     ]
+
+
+def detect_script(value: str) -> ScriptBucket:
+    scripts: set[ScriptBucket] = set()
+    for character in unicodedata.normalize("NFKC", value):
+        if not character.isalpha():
+            continue
+        name = unicodedata.name(character, "")
+        if "CYRILLIC" in name:
+            scripts.add(ScriptBucket.CYRILLIC)
+        elif "LATIN" in name:
+            scripts.add(ScriptBucket.LATIN)
+        else:
+            scripts.add(ScriptBucket.OTHER)
+    if not scripts:
+        return ScriptBucket.OTHER
+    if len(scripts) == 1:
+        return next(iter(scripts))
+    return ScriptBucket.MIXED
 
 
 def contains_normalized_phrase(text: str, phrase: str) -> bool:

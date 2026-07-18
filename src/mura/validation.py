@@ -9,6 +9,7 @@ from mura.domain.models import (
     CleanerResult,
     CoreferenceStatus,
     CorrectionKind,
+    EvidenceClass,
     ExtractionResult,
     PersonMention,
     RelationshipClaim,
@@ -246,29 +247,38 @@ def validate_extraction_result(transcript: TranscriptEnvelope, result: Extractio
             object_name=object_name,
         )
 
+        antecedents = _resolved_coreference_antecedents(
+            relationship,
+            result=result,
+            valid_segments=valid_segments,
+            mention_set=mention_set,
+        )
         evidence = analyze_relationship_evidence(
             relationship=relationship,
             transcript=transcript,
             people=result.people_mentions,
             speaker_name=result.speaker_name,
+            resolved_coreference_antecedent_ids=antecedents,
         )
         unsupported = set(evidence.unsupported_endpoint_ids)
-        if unsupported:
-            antecedents = _resolved_coreference_antecedents(
-                relationship,
-                result=result,
-                valid_segments=valid_segments,
-                mention_set=mention_set,
+        if unsupported and not unsupported.issubset(antecedents):
+            raise ContractValidationError(
+                f"{relationship.relationship_id} has unsupported relationship endpoints: "
+                f"{evidence.unsupported_endpoint_ids}"
             )
-            if not unsupported.issubset(antecedents):
-                raise ContractValidationError(
-                    f"{relationship.relationship_id} has unsupported relationship endpoints: "
-                    f"{evidence.unsupported_endpoint_ids}"
-                )
         if evidence.role_consistent is False:
             raise ContractValidationError(
-                f"{relationship.relationship_id} contradicts deterministic Kazakh kinship "
-                f"direction: {evidence.kazakh_relationship_signals}"
+                f"{relationship.relationship_id} contradicts deterministic multilingual "
+                f"kinship evidence: {evidence.linguistic_relationship_signals}; "
+                f"possessive_markers={evidence.third_person_possessive_markers}"
+            )
+        if (
+            evidence.evidence_class == EvidenceClass.C_SPEAKER_ANCHORED.value
+            and evidence.role_consistent is not True
+        ):
+            raise ContractValidationError(
+                f"{relationship.relationship_id} uses an implicit speaker endpoint without a "
+                "deterministic kinship signal"
             )
 
     for event in result.events:
