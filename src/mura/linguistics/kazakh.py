@@ -12,55 +12,16 @@ from mura.domain.models import (
 from mura.linguistics.common import normalize_text, tokenize
 
 _CASE_SUFFIXES = frozenset(
-    {
-        "ның",
-        "нің",
-        "дың",
-        "дің",
-        "тың",
-        "тің",
-        "ға",
-        "ге",
-        "қа",
-        "ке",
-        "да",
-        "де",
-        "та",
-        "те",
-        "дан",
-        "ден",
-        "тан",
-        "тен",
-        "нан",
-        "нен",
-        "ды",
-        "ді",
-        "ты",
-        "ті",
-        "мен",
-        "бен",
-        "пен",
-    }
+    (
+        "ның нің дың дің тың тің ға ге қа ке да де та те "
+        "дан ден тан тен нан нен ды ді ты ті мен бен пен"
+    ).split()
 )
-_GENITIVE_SUFFIXES = frozenset({"ның", "нің", "дың", "дің", "тың", "тің"})
-
+_GENITIVE_SUFFIXES = frozenset("ның нің дың дің тың тің".split())
 _UNAMBIGUOUS_FIRST_PERSON_FORMS = frozenset(
-    {
-        "менің",
-        "маған",
-        "мені",
-        "менде",
-        "менен",
-        "біз",
-        "біздің",
-        "бізге",
-        "бізді",
-        "бізде",
-        "бізден",
-    }
+    "менің маған мені менде менен біз біздің бізге бізді бізде бізден".split()
 )
 _FIRST_PERSON_LEFT_CONTEXT = frozenset({"ал", "бірақ", "сосын", "кейін"})
-
 _UNCERTAINTY_MARKERS = (
     "мүмкін",
     "шамамен",
@@ -139,175 +100,61 @@ class KazakhRelationshipSignal:
         }
 
 
+def _frame(
+    relationship_type: RelationshipType,
+    possessor_role: RelationshipRole,
+    relative_role: RelationshipRole,
+) -> KinshipFrame:
+    return KinshipFrame(relationship_type, possessor_role, relative_role)
+
+
+_PARENT = RelationshipRole.PARENT
+_CHILD = RelationshipRole.CHILD
+_OLDER = RelationshipRole.OLDER_SIBLING
+_YOUNGER = RelationshipRole.YOUNGER_SIBLING
+_SIBLING = RelationshipRole.SIBLING
+_SPOUSE = RelationshipRole.SPOUSE
+_PARENT_CHILD = RelationshipType.PARENT_CHILD
+_SIBLING_TYPE = RelationshipType.SIBLING
+_SPOUSE_TYPE = RelationshipType.SPOUSE
+
 _SPEAKER_KINSHIP_FRAMES: dict[str, KinshipFrame] = {
-    "әкем": KinshipFrame(
-        RelationshipType.PARENT_CHILD,
-        RelationshipRole.CHILD,
-        RelationshipRole.PARENT,
-    ),
-    "анам": KinshipFrame(
-        RelationshipType.PARENT_CHILD,
-        RelationshipRole.CHILD,
-        RelationshipRole.PARENT,
-    ),
-    "шешем": KinshipFrame(
-        RelationshipType.PARENT_CHILD,
-        RelationshipRole.CHILD,
-        RelationshipRole.PARENT,
-    ),
-    "ұлым": KinshipFrame(
-        RelationshipType.PARENT_CHILD,
-        RelationshipRole.PARENT,
-        RelationshipRole.CHILD,
-    ),
-    "ұлымыз": KinshipFrame(
-        RelationshipType.PARENT_CHILD,
-        RelationshipRole.PARENT,
-        RelationshipRole.CHILD,
-    ),
-    "қызым": KinshipFrame(
-        RelationshipType.PARENT_CHILD,
-        RelationshipRole.PARENT,
-        RelationshipRole.CHILD,
-    ),
-    "қызымыз": KinshipFrame(
-        RelationshipType.PARENT_CHILD,
-        RelationshipRole.PARENT,
-        RelationshipRole.CHILD,
-    ),
-    "балам": KinshipFrame(
-        RelationshipType.PARENT_CHILD,
-        RelationshipRole.PARENT,
-        RelationshipRole.CHILD,
-    ),
-    "баламыз": KinshipFrame(
-        RelationshipType.PARENT_CHILD,
-        RelationshipRole.PARENT,
-        RelationshipRole.CHILD,
-    ),
-    "ағам": KinshipFrame(
-        RelationshipType.SIBLING,
-        RelationshipRole.YOUNGER_SIBLING,
-        RelationshipRole.OLDER_SIBLING,
-    ),
-    "әпкем": KinshipFrame(
-        RelationshipType.SIBLING,
-        RelationshipRole.YOUNGER_SIBLING,
-        RelationshipRole.OLDER_SIBLING,
-    ),
-    "інім": KinshipFrame(
-        RelationshipType.SIBLING,
-        RelationshipRole.OLDER_SIBLING,
-        RelationshipRole.YOUNGER_SIBLING,
-    ),
-    "сіңлім": KinshipFrame(
-        RelationshipType.SIBLING,
-        RelationshipRole.OLDER_SIBLING,
-        RelationshipRole.YOUNGER_SIBLING,
-    ),
-    "қарындасым": KinshipFrame(
-        RelationshipType.SIBLING,
-        RelationshipRole.OLDER_SIBLING,
-        RelationshipRole.YOUNGER_SIBLING,
-    ),
-    "бауырым": KinshipFrame(
-        RelationshipType.SIBLING,
-        RelationshipRole.SIBLING,
-        RelationshipRole.SIBLING,
-    ),
-    "әйелім": KinshipFrame(
-        RelationshipType.SPOUSE,
-        RelationshipRole.SPOUSE,
-        RelationshipRole.SPOUSE,
-    ),
-    "күйеуім": KinshipFrame(
-        RelationshipType.SPOUSE,
-        RelationshipRole.SPOUSE,
-        RelationshipRole.SPOUSE,
-    ),
-    "жолдасым": KinshipFrame(
-        RelationshipType.SPOUSE,
-        RelationshipRole.SPOUSE,
-        RelationshipRole.SPOUSE,
-    ),
+    "әкем": _frame(_PARENT_CHILD, _CHILD, _PARENT),
+    "анам": _frame(_PARENT_CHILD, _CHILD, _PARENT),
+    "шешем": _frame(_PARENT_CHILD, _CHILD, _PARENT),
+    "ұлым": _frame(_PARENT_CHILD, _PARENT, _CHILD),
+    "ұлымыз": _frame(_PARENT_CHILD, _PARENT, _CHILD),
+    "қызым": _frame(_PARENT_CHILD, _PARENT, _CHILD),
+    "қызымыз": _frame(_PARENT_CHILD, _PARENT, _CHILD),
+    "балам": _frame(_PARENT_CHILD, _PARENT, _CHILD),
+    "баламыз": _frame(_PARENT_CHILD, _PARENT, _CHILD),
+    "ағам": _frame(_SIBLING_TYPE, _YOUNGER, _OLDER),
+    "әпкем": _frame(_SIBLING_TYPE, _YOUNGER, _OLDER),
+    "інім": _frame(_SIBLING_TYPE, _OLDER, _YOUNGER),
+    "сіңлім": _frame(_SIBLING_TYPE, _OLDER, _YOUNGER),
+    "қарындасым": _frame(_SIBLING_TYPE, _OLDER, _YOUNGER),
+    "бауырым": _frame(_SIBLING_TYPE, _SIBLING, _SIBLING),
+    "әйелім": _frame(_SPOUSE_TYPE, _SPOUSE, _SPOUSE),
+    "күйеуім": _frame(_SPOUSE_TYPE, _SPOUSE, _SPOUSE),
+    "жолдасым": _frame(_SPOUSE_TYPE, _SPOUSE, _SPOUSE),
 }
 
 _NAMED_POSSESSOR_FRAMES: dict[str, KinshipFrame] = {
-    "әкесі": KinshipFrame(
-        RelationshipType.PARENT_CHILD,
-        RelationshipRole.CHILD,
-        RelationshipRole.PARENT,
-    ),
-    "анасы": KinshipFrame(
-        RelationshipType.PARENT_CHILD,
-        RelationshipRole.CHILD,
-        RelationshipRole.PARENT,
-    ),
-    "шешесі": KinshipFrame(
-        RelationshipType.PARENT_CHILD,
-        RelationshipRole.CHILD,
-        RelationshipRole.PARENT,
-    ),
-    "ұлы": KinshipFrame(
-        RelationshipType.PARENT_CHILD,
-        RelationshipRole.PARENT,
-        RelationshipRole.CHILD,
-    ),
-    "қызы": KinshipFrame(
-        RelationshipType.PARENT_CHILD,
-        RelationshipRole.PARENT,
-        RelationshipRole.CHILD,
-    ),
-    "баласы": KinshipFrame(
-        RelationshipType.PARENT_CHILD,
-        RelationshipRole.PARENT,
-        RelationshipRole.CHILD,
-    ),
-    "ағасы": KinshipFrame(
-        RelationshipType.SIBLING,
-        RelationshipRole.YOUNGER_SIBLING,
-        RelationshipRole.OLDER_SIBLING,
-    ),
-    "әпкесі": KinshipFrame(
-        RelationshipType.SIBLING,
-        RelationshipRole.YOUNGER_SIBLING,
-        RelationshipRole.OLDER_SIBLING,
-    ),
-    "інісі": KinshipFrame(
-        RelationshipType.SIBLING,
-        RelationshipRole.OLDER_SIBLING,
-        RelationshipRole.YOUNGER_SIBLING,
-    ),
-    "сіңлісі": KinshipFrame(
-        RelationshipType.SIBLING,
-        RelationshipRole.OLDER_SIBLING,
-        RelationshipRole.YOUNGER_SIBLING,
-    ),
-    "қарындасы": KinshipFrame(
-        RelationshipType.SIBLING,
-        RelationshipRole.OLDER_SIBLING,
-        RelationshipRole.YOUNGER_SIBLING,
-    ),
-    "бауыры": KinshipFrame(
-        RelationshipType.SIBLING,
-        RelationshipRole.SIBLING,
-        RelationshipRole.SIBLING,
-    ),
-    "әйелі": KinshipFrame(
-        RelationshipType.SPOUSE,
-        RelationshipRole.SPOUSE,
-        RelationshipRole.SPOUSE,
-    ),
-    "күйеуі": KinshipFrame(
-        RelationshipType.SPOUSE,
-        RelationshipRole.SPOUSE,
-        RelationshipRole.SPOUSE,
-    ),
-    "жолдасы": KinshipFrame(
-        RelationshipType.SPOUSE,
-        RelationshipRole.SPOUSE,
-        RelationshipRole.SPOUSE,
-    ),
+    "әкесі": _frame(_PARENT_CHILD, _CHILD, _PARENT),
+    "анасы": _frame(_PARENT_CHILD, _CHILD, _PARENT),
+    "шешесі": _frame(_PARENT_CHILD, _CHILD, _PARENT),
+    "ұлы": _frame(_PARENT_CHILD, _PARENT, _CHILD),
+    "қызы": _frame(_PARENT_CHILD, _PARENT, _CHILD),
+    "баласы": _frame(_PARENT_CHILD, _PARENT, _CHILD),
+    "ағасы": _frame(_SIBLING_TYPE, _YOUNGER, _OLDER),
+    "әпкесі": _frame(_SIBLING_TYPE, _YOUNGER, _OLDER),
+    "інісі": _frame(_SIBLING_TYPE, _OLDER, _YOUNGER),
+    "сіңлісі": _frame(_SIBLING_TYPE, _OLDER, _YOUNGER),
+    "қарындасы": _frame(_SIBLING_TYPE, _OLDER, _YOUNGER),
+    "бауыры": _frame(_SIBLING_TYPE, _SIBLING, _SIBLING),
+    "әйелі": _frame(_SPOUSE_TYPE, _SPOUSE, _SPOUSE),
+    "күйеуі": _frame(_SPOUSE_TYPE, _SPOUSE, _SPOUSE),
+    "жолдасы": _frame(_SPOUSE_TYPE, _SPOUSE, _SPOUSE),
 }
 
 
@@ -326,7 +173,7 @@ def _split_known_name_token(token: str, surface: str) -> tuple[bool, str | None]
     if len(normalized_surface) < 3 or not token.startswith(normalized_surface):
         return False, None
     suffix = token[len(normalized_surface) :]
-    return (suffix in _CASE_SUFFIXES), (suffix if suffix in _CASE_SUFFIXES else None)
+    return suffix in _CASE_SUFFIXES, suffix if suffix in _CASE_SUFFIXES else None
 
 
 def find_known_name_matches(text: str, surface: str) -> list[KazakhNameMatch]:
@@ -354,22 +201,23 @@ def find_known_name_matches(text: str, surface: str) -> list[KazakhNameMatch]:
     matches: list[KazakhNameMatch] = []
     for token in tokenize(text):
         matched, suffix = _split_known_name_token(token.normalized, normalized_surface)
-        if not matched:
-            continue
-        matches.append(
-            KazakhNameMatch(
-                surface=surface,
-                token=token.surface,
-                normalized_token=token.normalized,
-                start=token.start,
-                end=token.end,
-                suffix=suffix,
-                exact=suffix is None,
-                rule_id=(
-                    "kk.name.exact.v1" if suffix is None else "kk.name.known_case_suffix.v1"
-                ),
+        if matched:
+            matches.append(
+                KazakhNameMatch(
+                    surface=surface,
+                    token=token.surface,
+                    normalized_token=token.normalized,
+                    start=token.start,
+                    end=token.end,
+                    suffix=suffix,
+                    exact=suffix is None,
+                    rule_id=(
+                        "kk.name.exact.v1"
+                        if suffix is None
+                        else "kk.name.known_case_suffix.v1"
+                    ),
+                )
             )
-        )
     return matches
 
 
@@ -411,18 +259,17 @@ def find_speaker_anchor_matches(text: str) -> list[SpeakerAnchorMatch]:
             )
 
         for base in _SPEAKER_KINSHIP_FRAMES:
-            if not _matches_possessed_form(token.normalized, base):
-                continue
-            matches.append(
-                SpeakerAnchorMatch(
-                    surface=token.surface,
-                    start=token.start,
-                    end=token.end,
-                    anchor_kind="possessed_kinship",
-                    rule_id="kk.speaker.possessive_kinship.v1",
+            if _matches_possessed_form(token.normalized, base):
+                matches.append(
+                    SpeakerAnchorMatch(
+                        surface=token.surface,
+                        start=token.start,
+                        end=token.end,
+                        anchor_kind="possessed_kinship",
+                        rule_id="kk.speaker.possessive_kinship.v1",
+                    )
                 )
-            )
-            break
+                break
     return matches
 
 
@@ -439,7 +286,7 @@ def find_uncertainty_markers(text: str) -> list[MarkerMatch]:
             rule_id="kk.uncertainty.lexical_marker.v1",
         )
         for marker in _UNCERTAINTY_MARKERS
-        if f" {marker} " in f" {normalized} "
+        if f" {normalize_text(marker)} " in f" {normalized} "
     ]
 
 
@@ -459,12 +306,17 @@ def _person_name_matches(
     return result
 
 
-def _speaker_mentions(people: list[PersonMention], speaker_name: str) -> list[PersonMention]:
+def _speaker_mentions(
+    people: list[PersonMention], speaker_name: str
+) -> list[PersonMention]:
     normalized_speaker = normalize_text(speaker_name)
     return [
         person
         for person in people
-        if any(normalize_text(surface) == normalized_speaker for surface in _person_surfaces(person))
+        if any(
+            normalize_text(surface) == normalized_speaker
+            for surface in _person_surfaces(person)
+        )
     ]
 
 
@@ -476,23 +328,18 @@ def _unique_nearby_target(
     excluded_ids: set[str],
     max_distance: int = 80,
 ) -> str | None:
-    candidates: list[tuple[int, str]] = []
-    for mention_id, matches in matches_by_person.items():
-        if mention_id in excluded_ids:
-            continue
-        distances = [
-            min(abs(match.start - anchor_end), abs(anchor_start - match.end))
+    candidate_ids = {
+        mention_id
+        for mention_id, matches in matches_by_person.items()
+        if mention_id not in excluded_ids
+        and any(
+            match.start >= 0
+            and min(abs(match.start - anchor_end), abs(anchor_start - match.end))
+            <= max_distance
             for match in matches
-            if match.start >= 0
-        ]
-        if distances and min(distances) <= max_distance:
-            candidates.append((min(distances), mention_id))
-    if not candidates:
-        return None
-    candidates.sort()
-    best_distance = candidates[0][0]
-    best_ids = {mention_id for distance, mention_id in candidates if distance == best_distance}
-    return next(iter(best_ids)) if len(best_ids) == 1 else None
+        )
+    }
+    return next(iter(candidate_ids)) if len(candidate_ids) == 1 else None
 
 
 def _canonical_signal(
@@ -503,26 +350,26 @@ def _canonical_signal(
     source_surface: str,
     rule_id: str,
 ) -> KazakhRelationshipSignal:
-    if frame.relationship_type is RelationshipType.PARENT_CHILD:
-        if frame.possessor_role is RelationshipRole.PARENT:
-            subject_id, subject_role = possessor_id, RelationshipRole.PARENT
-            object_id, object_role = relative_id, RelationshipRole.CHILD
+    if frame.relationship_type is _PARENT_CHILD:
+        if frame.possessor_role is _PARENT:
+            subject_id, subject_role = possessor_id, _PARENT
+            object_id, object_role = relative_id, _CHILD
         else:
-            subject_id, subject_role = relative_id, RelationshipRole.PARENT
-            object_id, object_role = possessor_id, RelationshipRole.CHILD
-    elif frame.relationship_type is RelationshipType.SIBLING:
-        if frame.possessor_role is RelationshipRole.OLDER_SIBLING:
-            subject_id, subject_role = possessor_id, RelationshipRole.OLDER_SIBLING
-            object_id, object_role = relative_id, RelationshipRole.YOUNGER_SIBLING
-        elif frame.relative_role is RelationshipRole.OLDER_SIBLING:
-            subject_id, subject_role = relative_id, RelationshipRole.OLDER_SIBLING
-            object_id, object_role = possessor_id, RelationshipRole.YOUNGER_SIBLING
+            subject_id, subject_role = relative_id, _PARENT
+            object_id, object_role = possessor_id, _CHILD
+    elif frame.relationship_type is _SIBLING_TYPE:
+        if frame.possessor_role is _OLDER:
+            subject_id, subject_role = possessor_id, _OLDER
+            object_id, object_role = relative_id, _YOUNGER
+        elif frame.relative_role is _OLDER:
+            subject_id, subject_role = relative_id, _OLDER
+            object_id, object_role = possessor_id, _YOUNGER
         else:
-            subject_id, subject_role = possessor_id, RelationshipRole.SIBLING
-            object_id, object_role = relative_id, RelationshipRole.SIBLING
+            subject_id, subject_role = possessor_id, _SIBLING
+            object_id, object_role = relative_id, _SIBLING
     else:
-        subject_id, subject_role = possessor_id, RelationshipRole.SPOUSE
-        object_id, object_role = relative_id, RelationshipRole.SPOUSE
+        subject_id, subject_role = possessor_id, _SPOUSE
+        object_id, object_role = relative_id, _SPOUSE
 
     return KazakhRelationshipSignal(
         relationship_type=frame.relationship_type,
@@ -571,12 +418,15 @@ def find_relationship_signals(
 
     for possessor in people:
         possessor_matches = matches_by_person.get(possessor.mention_id, [])
-        genitive_matches = [match for match in possessor_matches if match.suffix in _GENITIVE_SUFFIXES]
+        genitive_matches = [
+            match for match in possessor_matches if match.suffix in _GENITIVE_SUFFIXES
+        ]
         for possessor_match in genitive_matches:
             following_tokens = [
                 token
                 for token in tokens
-                if token.start >= possessor_match.end and token.start - possessor_match.end <= 40
+                if token.start >= possessor_match.end
+                and token.start - possessor_match.end <= 40
             ]
             for token in following_tokens[:4]:
                 frame = _NAMED_POSSESSOR_FRAMES.get(token.normalized)
@@ -594,9 +444,7 @@ def find_relationship_signals(
                             possessor_id=possessor.mention_id,
                             relative_id=target_id,
                             frame=frame,
-                            source_surface=(
-                                f"{possessor_match.token} {token.surface}"
-                            ),
+                            source_surface=f"{possessor_match.token} {token.surface}",
                             rule_id="kk.relationship.named_genitive_kinship.v1",
                         )
                     )
@@ -621,7 +469,7 @@ def signal_matches_relationship(
 ) -> bool:
     if signal.relationship_type is not relationship.relationship_type:
         return False
-    if signal.relationship_type is RelationshipType.SPOUSE:
+    if signal.relationship_type is _SPOUSE_TYPE:
         return {
             signal.subject_mention_id,
             signal.object_mention_id,
