@@ -158,7 +158,9 @@ def find_known_name_matches(text: str, surface: str) -> list[EnglishNameMatch]:
         possessive = (
             index + size < len(tokens)
             and tokens[index + size].normalized == "s"
-            and text[window[-1].end : tokens[index + size].end].lstrip().startswith(("'", "’"))
+            and text[window[-1].end : tokens[index + size].end]
+            .lstrip()
+            .startswith(("'", "’"))
         )
         matches.append(
             EnglishNameMatch(
@@ -252,7 +254,10 @@ def _speaker_mentions(people: list[PersonMention], speaker_name: str) -> list[Pe
     return [
         person
         for person in people
-        if any(normalize_text(surface) == normalized_speaker for surface in _person_surfaces(person))
+        if any(
+            normalize_text(surface) == normalized_speaker
+            for surface in _person_surfaces(person)
+        )
     ]
 
 
