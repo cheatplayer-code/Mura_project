@@ -205,8 +205,7 @@ def _unknown_segment_reference_count(
         *extraction.unresolved_questions,
     ]
     return sum(
-        len(set(getattr(item, "source_segment_ids", [])) - valid_segment_ids)
-        for item in objects
+        len(set(getattr(item, "source_segment_ids", [])) - valid_segment_ids) for item in objects
     )
 
 
@@ -221,12 +220,9 @@ def score_case(
 ) -> CaseEvaluation:
     mention_to_gold = _mention_to_gold_keys(extraction, case.gold)
     actual_relationship_keys = [
-        _actual_relationship_key(item, mention_to_gold)
-        for item in extraction.relationship_claims
+        _actual_relationship_key(item, mention_to_gold) for item in extraction.relationship_claims
     ]
-    gold_relationship_keys = [
-        _gold_relationship_key(item) for item in case.gold.relationships
-    ]
+    gold_relationship_keys = [_gold_relationship_key(item) for item in case.gold.relationships]
 
     gold_base_keys = {_base_relationship_key(item) for item in gold_relationship_keys}
     direction_denominator = 0
@@ -291,16 +287,10 @@ def aggregate_case_metrics(cases: list[CaseEvaluation]) -> BenchmarkSummary:
             sum(metric.false_negative for metric in metrics),
         )
 
-    direction_numerator = sum(
-        case.relationship_direction_accuracy.numerator for case in cases
-    )
-    direction_denominator = sum(
-        case.relationship_direction_accuracy.denominator for case in cases
-    )
+    direction_numerator = sum(case.relationship_direction_accuracy.numerator for case in cases)
+    direction_denominator = sum(case.relationship_direction_accuracy.denominator for case in cases)
     provenance_numerator = sum(case.provenance_completeness.numerator for case in cases)
-    provenance_denominator = sum(
-        case.provenance_completeness.denominator for case in cases
-    )
+    provenance_denominator = sum(case.provenance_completeness.denominator for case in cases)
 
     return BenchmarkSummary(
         case_count=len(cases),
@@ -315,8 +305,6 @@ def aggregate_case_metrics(cases: list[CaseEvaluation]) -> BenchmarkSummary:
             provenance_numerator,
             provenance_denominator,
         ),
-        unknown_segment_references=sum(
-            case.unknown_segment_references for case in cases
-        ),
+        unknown_segment_references=sum(case.unknown_segment_references for case in cases),
         self_relationships=sum(case.self_relationships for case in cases),
     )
