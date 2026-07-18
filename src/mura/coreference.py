@@ -203,8 +203,7 @@ def _nearest_kinship(
     candidates = [
         match
         for match in _kinship_matches(text)
-        if match.start >= anaphor.end
-        and match.start - anaphor.end <= _KINSHIP_WINDOW_CHARS
+        if match.start >= anaphor.end and match.start - anaphor.end <= _KINSHIP_WINDOW_CHARS
     ]
     if not candidates:
         return None
@@ -243,9 +242,7 @@ def _preceding_candidates(
     local = {
         item.mention_id
         for item in occurrences_by_segment[segment.segment_id]
-        if item.end <= anaphor.start
-        and item.start >= lower_bound
-        and item.mention_id != target_id
+        if item.end <= anaphor.start and item.start >= lower_bound and item.mention_id != target_id
     }
     if local:
         return sorted(local), segment.segment_id
@@ -633,9 +630,7 @@ def augment_bounded_coreference(
                                 transcript,
                             ),
                             "evidence_ids": list(
-                                dict.fromkeys(
-                                    [*relationship.evidence_ids, *generated_evidence_ids]
-                                )
+                                dict.fromkeys([*relationship.evidence_ids, *generated_evidence_ids])
                             ),
                             "coreference_link_ids": list(
                                 dict.fromkeys([*relationship.coreference_link_ids, link_id])
