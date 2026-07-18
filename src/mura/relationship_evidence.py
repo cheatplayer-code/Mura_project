@@ -11,6 +11,7 @@ from mura.domain.models import (
 )
 from mura.linguistics.common import normalize_text
 from mura.linguistics.multilingual import (
+    LinguisticRelationshipSignal,
     contains_known_name_surface,
     find_known_name_matches,
     find_relationship_signals,
@@ -143,6 +144,38 @@ def _name_rule_ids(source_text: str, people: list[PersonMention]) -> list[str]:
     return sorted(rule_ids)
 
 
+def _signal_specificity(signal: LinguisticRelationshipSignal) -> tuple[int, int]:
+    normalized = normalize_evidence(signal.source_surface)
+    tokens = normalized.split()
+    return len(tokens), len(normalized)
+
+
+def _prefer_specific_endpoint_signals(
+    signals: list[LinguisticRelationshipSignal],
+) -> list[LinguisticRelationshipSignal]:
+    grouped: dict[
+        tuple[str, str, frozenset[str]],
+        list[LinguisticRelationshipSignal],
+    ] = {}
+    for signal in signals:
+        key = (
+            signal.language,
+            signal.relationship_type.value,
+            frozenset({signal.subject_mention_id, signal.object_mention_id}),
+        )
+        grouped.setdefault(key, []).append(signal)
+
+    selected: list[LinguisticRelationshipSignal] = []
+    for candidates in grouped.values():
+        strongest = max(_signal_specificity(candidate) for candidate in candidates)
+        selected.extend(
+            candidate
+            for candidate in candidates
+            if _signal_specificity(candidate) == strongest
+        )
+    return selected
+
+
 def analyze_relationship_evidence(
     *,
     relationship: RelationshipClaim,
@@ -164,7 +197,9 @@ def analyze_relationship_evidence(
     speaker_anchors = find_speaker_anchor_matches(source_text)
     first_person = bool(speaker_anchors)
 
-    signals = find_relationship_signals(source_text, people, speaker_name)
+    signals = _prefer_specific_endpoint_signals(
+        find_relationship_signals(source_text, people, speaker_name)
+    )
     endpoint_ids = [relationship.subject_mention_id, relationship.object_mention_id]
     endpoint_set = set(endpoint_ids)
     endpoint_signals = [
