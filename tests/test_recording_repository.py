@@ -34,9 +34,7 @@ def _result() -> PipelineResult:
     return PipelineResult(
         transcript=transcript,
         cleaned_transcript=CleanerResult(
-            readable_segments=[
-                ReadableSegment(segment_id="seg_001", text="Менің атым Күләш.")
-            ],
+            readable_segments=[ReadableSegment(segment_id="seg_001", text="Менің атым Күләш.")],
             full_readable_text="Менің атым Күләш.",
         ),
         extraction=ExtractionResult(
