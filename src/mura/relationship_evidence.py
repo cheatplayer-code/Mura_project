@@ -62,10 +62,7 @@ def explicitly_named_people(
     return [
         person
         for person in people
-        if any(
-            contains_surface(source_text, surface)
-            for surface in [person.name, *person.aliases]
-        )
+        if any(contains_surface(source_text, surface) for surface in [person.name, *person.aliases])
     ]
 
 
