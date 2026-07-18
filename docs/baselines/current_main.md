@@ -8,12 +8,12 @@ Manifest: `benchmarks/manifest.json`
 |---|---|
 | benchmark_schema | `benchmark-v1` |
 | cleaner_prompt | `cleaner-v1` |
+| domain_schema | `domain-v1` |
 | evaluator | `core-evaluator-v1` |
 | evidence_rules | `relationship-evidence-v1` |
 | extractor_prompt | `extractor-v1` |
 | pipeline | `mura-core-v0.3.0` |
 | resolver | `mention-resolver-v1` |
-| schema | `domain-v1` |
 
 ## Aggregate metrics
 
