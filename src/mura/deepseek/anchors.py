@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 
 from pydantic import Field
@@ -58,6 +59,19 @@ class ExtractionAnchorBundle(StrictModel):
     lexical_annotations: list[ExtractionLexicalAnnotation] = Field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class _AnchorCandidate:
+    surface: str
+    normalized: str
+    segment_id: str
+    source_layer: EvidenceSourceLayer
+    start_char: int | None
+    end_char: int | None
+    anchor_kind: MentionAnchorKind
+    known_person_id: str | None
+    rule_ids: tuple[str, ...]
+
+
 _KAZAKH_KINSHIP_LEXEMES = frozenset(
     (
         "әкем анам шешем ұлым ұлымыз қызым қызымыз балам баламыз ағам әпкем інім "
@@ -82,16 +96,12 @@ def _known_speaker_person_id(known_people: list[KnownPerson], speaker_name: str)
     matches = [
         person.person_id
         for person in known_people
-        if any(normalize_text(surface) == normalized_speaker for surface in _known_person_surfaces(person))
+        if any(
+            normalize_text(surface) == normalized_speaker
+            for surface in _known_person_surfaces(person)
+        )
     ]
     return matches[0] if len(matches) == 1 else None
-
-
-def _offsets(text: str, token: str) -> tuple[int | None, int | None]:
-    start = text.casefold().find(token.casefold())
-    if start < 0:
-        return None, None
-    return start, start + len(token)
 
 
 def _lexical_annotations(transcript: TranscriptEnvelope) -> list[ExtractionLexicalAnnotation]:
@@ -143,21 +153,22 @@ def _lexical_annotations(transcript: TranscriptEnvelope) -> list[ExtractionLexic
             )
 
     unique = list(dict.fromkeys(raw))
-    return [
-        ExtractionLexicalAnnotation(
-            annotation_id=f"annotation_{index:03d}",
-            segment_id=segment_id,
-            surface=surface,
-            start_char=start,
-            end_char=end,
-            annotation_type=annotation_type,
-            language=language,
-            rule_id=rule_id,
+    annotations: list[ExtractionLexicalAnnotation] = []
+    for index, item in enumerate(unique, start=1):
+        segment_id, surface, start, end, annotation_type, language, rule_id = item
+        annotations.append(
+            ExtractionLexicalAnnotation(
+                annotation_id=f"annotation_{index:03d}",
+                segment_id=segment_id,
+                surface=surface,
+                start_char=start,
+                end_char=end,
+                annotation_type=annotation_type,
+                language=language,
+                rule_id=rule_id,
+            )
         )
-        for index, (segment_id, surface, start, end, annotation_type, language, rule_id) in enumerate(
-            unique, start=1
-        )
-    ]
+    return annotations
 
 
 def _known_person_anchors(
@@ -165,11 +176,9 @@ def _known_person_anchors(
     transcript: TranscriptEnvelope,
     cleaned: CleanerResult,
     known_people: list[KnownPerson],
-) -> list[tuple[str, str, str, EvidenceSourceLayer, int | None, int | None, str, list[str]]]:
+) -> list[_AnchorCandidate]:
     readable_by_id = {segment.segment_id: segment.text for segment in cleaned.readable_segments}
-    anchors: list[
-        tuple[str, str, str, EvidenceSourceLayer, int | None, int | None, str, list[str]]
-    ] = []
+    anchors: list[_AnchorCandidate] = []
     for person in known_people:
         for segment in transcript.segments:
             for source_layer, text in (
@@ -178,18 +187,17 @@ def _known_person_anchors(
             ):
                 for surface in _known_person_surfaces(person):
                     for match in find_known_name_matches(text, surface):
-                        start = match.start if match.start >= 0 else None
-                        end = match.end if match.end > 0 else None
                         anchors.append(
-                            (
-                                match.token,
-                                normalize_text(match.token),
-                                segment.segment_id,
-                                source_layer,
-                                start,
-                                end,
-                                person.person_id,
-                                [match.rule_id],
+                            _AnchorCandidate(
+                                surface=match.token,
+                                normalized=normalize_text(match.token),
+                                segment_id=segment.segment_id,
+                                source_layer=source_layer,
+                                start_char=match.start if match.start >= 0 else None,
+                                end_char=match.end if match.end > 0 else None,
+                                anchor_kind=MentionAnchorKind.KNOWN_PERSON,
+                                known_person_id=person.person_id,
+                                rule_ids=(match.rule_id,),
                             )
                         )
     return anchors
@@ -197,11 +205,10 @@ def _known_person_anchors(
 
 def _speaker_anchors(
     *,
-    transcript: TranscriptEnvelope,
     speaker_name: str,
     known_people: list[KnownPerson],
     annotations: list[ExtractionLexicalAnnotation],
-) -> list[tuple[str, str, str, EvidenceSourceLayer, int | None, int | None, str | None, list[str]]]:
+) -> list[_AnchorCandidate]:
     speaker_person_id = _known_speaker_person_id(known_people, speaker_name)
     segment_ids = list(
         dict.fromkeys(
@@ -210,18 +217,17 @@ def _speaker_anchors(
             if annotation.annotation_type is LexicalAnnotationType.SPEAKER_ANCHOR
         )
     )
-    if not segment_ids:
-        return []
     return [
-        (
-            speaker_name,
-            normalize_text(speaker_name),
-            segment_id,
-            EvidenceSourceLayer.RAW_TRANSCRIPT,
-            None,
-            None,
-            speaker_person_id,
-            ["extraction.anchor.supplied_speaker.v1"],
+        _AnchorCandidate(
+            surface=speaker_name,
+            normalized=normalize_text(speaker_name),
+            segment_id=segment_id,
+            source_layer=EvidenceSourceLayer.RAW_TRANSCRIPT,
+            start_char=None,
+            end_char=None,
+            anchor_kind=MentionAnchorKind.SPEAKER,
+            known_person_id=speaker_person_id,
+            rule_ids=("extraction.anchor.supplied_speaker.v1",),
         )
         for segment_id in segment_ids
     ]
@@ -231,13 +237,13 @@ def _name_candidate_anchors(
     *,
     cleaned: CleanerResult,
     annotations: list[ExtractionLexicalAnnotation],
-) -> list[tuple[str, str, str, EvidenceSourceLayer, int, int, None, list[str]]]:
+) -> list[_AnchorCandidate]:
     kinship_segments = {
         annotation.segment_id
         for annotation in annotations
         if annotation.annotation_type is LexicalAnnotationType.KINSHIP_LEXEME
     }
-    anchors: list[tuple[str, str, str, EvidenceSourceLayer, int, int, None, list[str]]] = []
+    anchors: list[_AnchorCandidate] = []
     for segment in cleaned.readable_segments:
         if segment.segment_id not in kinship_segments:
             continue
@@ -254,18 +260,23 @@ def _name_candidate_anchors(
                 continue
             if len(token.normalized) < 2 or token.normalized in _NAME_CANDIDATE_EXCLUSIONS:
                 continue
-            if not kinship_indexes or min(abs(index - kinship_index) for kinship_index in kinship_indexes) > 4:
+            nearest_kinship = min(
+                (abs(index - kinship_index) for kinship_index in kinship_indexes),
+                default=999,
+            )
+            if nearest_kinship > 4:
                 continue
             anchors.append(
-                (
-                    token.surface,
-                    token.normalized,
-                    segment.segment_id,
-                    EvidenceSourceLayer.READABLE_TRANSCRIPT,
-                    token.start,
-                    token.end,
-                    None,
-                    ["extraction.anchor.capitalized_near_kinship.v1"],
+                _AnchorCandidate(
+                    surface=token.surface,
+                    normalized=token.normalized,
+                    segment_id=segment.segment_id,
+                    source_layer=EvidenceSourceLayer.READABLE_TRANSCRIPT,
+                    start_char=token.start,
+                    end_char=token.end,
+                    anchor_kind=MentionAnchorKind.NAME_CANDIDATE,
+                    known_person_id=None,
+                    rule_ids=("extraction.anchor.capitalized_near_kinship.v1",),
                 )
             )
     return anchors
@@ -286,7 +297,6 @@ def build_extraction_anchor_bundle(
             known_people=known_people,
         ),
         *_speaker_anchors(
-            transcript=transcript,
             speaker_name=speaker_name,
             known_people=known_people,
             annotations=annotations,
@@ -294,56 +304,30 @@ def build_extraction_anchor_bundle(
         *_name_candidate_anchors(cleaned=cleaned, annotations=annotations),
     ]
 
-    unique: dict[tuple[str, str, str, str | None], tuple[object, ...]] = {}
-    for item in raw_anchors:
-        surface, normalized, segment_id, source_layer, start, end, known_person_id, rule_ids = item
-        anchor_kind = (
-            MentionAnchorKind.SPEAKER
-            if rule_ids == ["extraction.anchor.supplied_speaker.v1"]
-            else MentionAnchorKind.KNOWN_PERSON
-            if known_person_id is not None
-            else MentionAnchorKind.NAME_CANDIDATE
+    unique: dict[tuple[str, str, str, str | None], _AnchorCandidate] = {}
+    for candidate in raw_anchors:
+        key = (
+            candidate.anchor_kind.value,
+            candidate.segment_id,
+            candidate.normalized,
+            candidate.known_person_id,
         )
-        key = (anchor_kind.value, str(segment_id), str(normalized), known_person_id)
-        unique.setdefault(
-            key,
-            (
-                surface,
-                normalized,
-                segment_id,
-                source_layer,
-                start,
-                end,
-                anchor_kind,
-                known_person_id,
-                rule_ids,
-            ),
-        )
+        unique.setdefault(key, candidate)
 
     mention_anchors = [
         ExtractionMentionAnchor(
             anchor_id=f"anchor_{index:03d}",
-            surface=str(surface),
-            normalized=str(normalized),
-            segment_id=str(segment_id),
-            source_layer=source_layer,
-            start_char=start,
-            end_char=end,
-            anchor_kind=anchor_kind,
-            known_person_id=known_person_id,
-            rule_ids=rule_ids,
+            surface=candidate.surface,
+            normalized=candidate.normalized,
+            segment_id=candidate.segment_id,
+            source_layer=candidate.source_layer,
+            start_char=candidate.start_char,
+            end_char=candidate.end_char,
+            anchor_kind=candidate.anchor_kind,
+            known_person_id=candidate.known_person_id,
+            rule_ids=list(candidate.rule_ids),
         )
-        for index, (
-            surface,
-            normalized,
-            segment_id,
-            source_layer,
-            start,
-            end,
-            anchor_kind,
-            known_person_id,
-            rule_ids,
-        ) in enumerate(unique.values(), start=1)
+        for index, candidate in enumerate(unique.values(), start=1)
     ]
     return ExtractionAnchorBundle(
         allowed_segment_ids=[segment.segment_id for segment in transcript.segments],
