@@ -6,11 +6,16 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+from mura.claim_model import materialize_extraction_contract_v2
 from mura.domain.models import (
+    ConflictSet,
+    CoreferenceLink,
+    EvidenceSpan,
     ExtractionResult,
     FamilyEvent,
     PersonDescription,
     PersonMention,
+    ProvenanceActivity,
     RelationshipClaim,
     Story,
     TranscriptEnvelope,
@@ -104,7 +109,6 @@ def _parse_items(
                 )
             )
             continue
-
         seen_ids.add(resolved_id)
         parsed.append(item)
 
@@ -117,6 +121,10 @@ def _base_result(
     speaker_id: str,
     speaker_name: str,
     languages: list[str],
+    activities: list[ProvenanceActivity] | None = None,
+    evidence: list[EvidenceSpan] | None = None,
+    coreference_links: list[CoreferenceLink] | None = None,
+    conflicts: list[ConflictSet] | None = None,
     people: list[PersonMention] | None = None,
     relationships: list[RelationshipClaim] | None = None,
     events: list[FamilyEvent] | None = None,
@@ -125,10 +133,15 @@ def _base_result(
     questions: list[UnresolvedQuestion] | None = None,
 ) -> ExtractionResult:
     return ExtractionResult(
+        schema_version="extraction-v1",
         recording_id=recording_id,
         speaker_id=speaker_id,
         speaker_name=speaker_name,
         languages=languages,
+        provenance_activities=activities or [],
+        evidence_spans=evidence or [],
+        coreference_links=coreference_links or [],
+        conflict_sets=conflicts or [],
         people_mentions=people or [],
         relationship_claims=relationships or [],
         events=events or [],
@@ -178,7 +191,8 @@ def sanitize_extraction_output(
     speaker_id: str,
     speaker_name: str,
 ) -> tuple[ExtractionResult, list[dict[str, Any]], int]:
-    """Return valid unreviewed claims while quarantining malformed individual objects."""
+    """Return valid claims with authoritative v2 provenance and object-level quarantine."""
+
     issues: list[ExtractionIssue] = []
 
     for key, expected in (
@@ -215,6 +229,34 @@ def sanitize_extraction_output(
             )
         )
 
+    activities = _parse_items(
+        raw_items=_list_value(raw, "provenance_activities", issues),
+        model_type=ProvenanceActivity,
+        object_type="provenance_activity",
+        id_field="activity_id",
+        issues=issues,
+    )
+    evidence = _parse_items(
+        raw_items=_list_value(raw, "evidence_spans", issues),
+        model_type=EvidenceSpan,
+        object_type="evidence",
+        id_field="evidence_id",
+        issues=issues,
+    )
+    coreference_links = _parse_items(
+        raw_items=_list_value(raw, "coreference_links", issues),
+        model_type=CoreferenceLink,
+        object_type="coreference",
+        id_field="coreference_id",
+        issues=issues,
+    )
+    conflicts = _parse_items(
+        raw_items=_list_value(raw, "conflict_sets", issues),
+        model_type=ConflictSet,
+        object_type="conflict",
+        id_field="conflict_id",
+        issues=issues,
+    )
     people = _parse_items(
         raw_items=_list_value(raw, "people_mentions", issues),
         model_type=PersonMention,
@@ -275,6 +317,10 @@ def sanitize_extraction_output(
             speaker_id=speaker_id,
             speaker_name=speaker_name,
             languages=languages,
+            activities=activities,
+            evidence=evidence,
+            coreference_links=coreference_links,
+            conflicts=conflicts,
             people=selected_people,
             relationships=selected_relationships,
             events=selected_events,
@@ -383,6 +429,17 @@ def sanitize_extraction_output(
         selected_descriptions=valid_descriptions,
         selected_stories=valid_stories,
         selected_questions=valid_questions,
+    )
+    result, claim_model_issues = materialize_extraction_contract_v2(result, transcript)
+    issues.extend(
+        ExtractionIssue(
+            object_type=issue.object_type,
+            object_id=issue.object_id,
+            stage=issue.stage,
+            detail=issue.detail,
+            context=issue.context,
+        )
+        for issue in claim_model_issues
     )
     validate_extraction_result(transcript, result)
     return result, [issue.to_dict() for issue in issues], evidence_closure_count
