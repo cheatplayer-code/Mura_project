@@ -74,12 +74,19 @@ def _complete_relationship(
         explicitly_named = any(
             contains_surface(source_text, surface) for surface in [person.name, *person.aliases]
         )
-        speaker_referenced = _is_speaker(person, speaker_name) and has_first_person_reference(
-            source_text
-        )
-        has_overlap = bool(source_set.intersection(person.source_segment_ids))
+        if explicitly_named:
+            continue
 
-        if explicitly_named or (speaker_referenced and has_overlap):
+        is_speaker = _is_speaker(person, speaker_name)
+        speaker_referenced = is_speaker and has_first_person_reference(source_text)
+        has_overlap = bool(source_set.intersection(person.source_segment_ids))
+        if speaker_referenced and has_overlap:
+            continue
+
+        # Only the supplied speaker may be resolved deterministically from first-person forms.
+        # A third-person pronoun such as "оның" or "его" stays unresolved unless the model
+        # already cited a segment that explicitly names that endpoint.
+        if not is_speaker:
             continue
 
         identity_segment = _best_identity_segment(person, transcript)
@@ -102,12 +109,12 @@ def complete_relationship_evidence(
     result: ExtractionResult,
     transcript: TranscriptEnvelope,
 ) -> tuple[ExtractionResult, int]:
-    """Add minimal endpoint identity evidence without changing relationship semantics.
+    """Add minimal speaker identity evidence without changing relationship semantics.
 
-    The extractor may cite a kinship statement that uses a pronoun or first-person form while the
-    canonical name was established elsewhere. This function adds at most one identity-bearing
-    segment per missing endpoint. It never changes endpoint IDs, roles, relationship type,
-    confidence, assertion mode, or verification status.
+    First-person forms can be resolved deterministically to the supplied speaker. Ambiguous
+    third-person pronouns are never resolved by merely appending a person's identity segment.
+    The function never changes endpoint IDs, roles, relationship type, confidence, assertion
+    mode, or verification status.
     """
     people_by_id = {person.mention_id: person for person in result.people_mentions}
     completed: list[RelationshipClaim] = []
