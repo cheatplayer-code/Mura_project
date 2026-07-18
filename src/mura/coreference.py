@@ -48,6 +48,15 @@ class _AnaphorOccurrence:
 
 
 @dataclass(frozen=True)
+class _KinshipOccurrence:
+    surface: str
+    start: int
+    end: int
+    language: str
+    frame: _KinshipFrame
+
+
+@dataclass(frozen=True)
 class CoreferenceAugmentation:
     result: ExtractionResult
     changed_relationship_count: int
@@ -98,7 +107,8 @@ def _ordered_segment_ids(segment_ids: list[str], transcript: TranscriptEnvelope)
     ordered = [
         segment.segment_id for segment in transcript.segments if segment.segment_id in requested
     ]
-    ordered.extend(item for item in segment_ids if item not in set(ordered))
+    seen = set(ordered)
+    ordered.extend(item for item in segment_ids if item not in seen)
     return list(dict.fromkeys(ordered))
 
 
@@ -140,36 +150,68 @@ def _anaphors(text: str) -> list[_AnaphorOccurrence]:
     return matches
 
 
-def _kinship_matches(text: str) -> list[tuple[str, object]]:
-    matches: list[tuple[str, object]] = [
-        *(("kk", item) for item in kazakh.find_kinship_matches(text)),
-        *(("ru", item) for item in russian.find_kinship_matches(text)),
-        *(("en", item) for item in english.find_kinship_matches(text)),
+def _kazakh_kinship_matches(text: str) -> list[_KinshipOccurrence]:
+    frames = getattr(kazakh, "_NAMED_POSSESSOR_FRAMES")
+    return [
+        _KinshipOccurrence(
+            surface=token.surface,
+            start=token.start,
+            end=token.end,
+            language="kk",
+            frame=frames[token.normalized],
+        )
+        for token in tokenize(text)
+        if token.normalized in frames
     ]
-    unique: dict[tuple[int, int, str], tuple[str, object]] = {}
-    for language, match in matches:
-        start = int(getattr(match, "start"))
-        end = int(getattr(match, "end"))
-        key = (start, end, str(getattr(match, "surface")))
-        existing = unique.get(key)
-        if existing is None or existing[0] != language:
-            unique[key] = (language, match)
+
+
+def _kinship_matches(text: str) -> list[_KinshipOccurrence]:
+    matches = [
+        *_kazakh_kinship_matches(text),
+        *(
+            _KinshipOccurrence(
+                surface=item.surface,
+                start=item.start,
+                end=item.end,
+                language="ru",
+                frame=item.frame,
+            )
+            for item in russian.find_kinship_matches(text)
+        ),
+        *(
+            _KinshipOccurrence(
+                surface=item.surface,
+                start=item.start,
+                end=item.end,
+                language="en",
+                frame=item.frame,
+            )
+            for item in english.find_kinship_matches(text)
+        ),
+    ]
+    unique: dict[tuple[int, int, str], _KinshipOccurrence] = {}
+    for match in matches:
+        key = (match.start, match.end, match.surface)
+        unique.setdefault(key, match)
     return list(unique.values())
 
 
-def _nearest_kinship(text: str, anaphor: _AnaphorOccurrence) -> tuple[str, object] | None:
+def _nearest_kinship(
+    text: str,
+    anaphor: _AnaphorOccurrence,
+) -> _KinshipOccurrence | None:
     candidates = [
-        (language, match)
-        for language, match in _kinship_matches(text)
-        if int(getattr(match, "start")) >= anaphor.end
-        and int(getattr(match, "start")) - anaphor.end <= _KINSHIP_WINDOW_CHARS
+        match
+        for match in _kinship_matches(text)
+        if match.start >= anaphor.end
+        and match.start - anaphor.end <= _KINSHIP_WINDOW_CHARS
     ]
     if not candidates:
         return None
     candidates.sort(
         key=lambda item: (
-            int(getattr(item[1], "start")) - anaphor.end,
-            -(int(getattr(item[1], "end")) - int(getattr(item[1], "start"))),
+            item.start - anaphor.end,
+            -(item.end - item.start),
         )
     )
     return candidates[0]
@@ -223,11 +265,13 @@ def _has_coordinator_between(
     occurrences: list[_NameOccurrence],
     candidate_ids: list[str],
 ) -> bool:
-    selected = [item for item in occurrences if item.mention_id in set(candidate_ids)]
+    candidate_set = set(candidate_ids)
+    selected = [item for item in occurrences if item.mention_id in candidate_set]
     if len({item.mention_id for item in selected}) != 2:
         return False
-    first = min(selected, key=lambda item: item.start)
-    second = max(selected, key=lambda item: item.end)
+    selected.sort(key=lambda item: (item.start, item.end))
+    first = selected[0]
+    second = selected[-1]
     between = text[first.end : second.start]
     return bool({token.normalized for token in tokenize(between)}.intersection(_COORDINATORS))
 
@@ -479,12 +523,7 @@ def augment_bounded_coreference(
             kinship = _nearest_kinship(segment.text, anaphor)
             if kinship is None:
                 continue
-            _, kinship_match = kinship
-            frame = getattr(kinship_match, "frame")
-            target_id = _unique_target(
-                occurrences,
-                kinship_end=int(getattr(kinship_match, "end")),
-            )
+            target_id = _unique_target(occurrences, kinship_end=kinship.end)
             if target_id is None:
                 continue
 
@@ -513,7 +552,7 @@ def augment_bounded_coreference(
                 relationships=relationships,
                 candidate_ids=candidate_ids,
                 target_id=target_id,
-                frame=frame,
+                frame=kinship.frame,
                 anaphor_segment_id=segment.segment_id,
             )
             if not matching:
@@ -580,6 +619,7 @@ def augment_bounded_coreference(
             generated_link_count += 1
 
             matching_ids = {item.relationship_id for item in matching}
+            generated_evidence_ids = [item.evidence_id for item in generated_evidence]
             updated_relationships: list[RelationshipClaim] = []
             for relationship in relationships:
                 if relationship.relationship_id not in matching_ids:
@@ -591,6 +631,11 @@ def augment_bounded_coreference(
                             "source_segment_ids": _ordered_segment_ids(
                                 [*relationship.source_segment_ids, *source_segment_ids],
                                 transcript,
+                            ),
+                            "evidence_ids": list(
+                                dict.fromkeys(
+                                    [*relationship.evidence_ids, *generated_evidence_ids]
+                                )
                             ),
                             "coreference_link_ids": list(
                                 dict.fromkeys([*relationship.coreference_link_ids, link_id])
