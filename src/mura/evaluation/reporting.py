@@ -51,22 +51,13 @@ def render_markdown_report(report: BenchmarkReport) -> str:
             f"- Cases: **{summary.case_count}**",
             f"- Person mentions: {_format_prf(summary.person_mentions)}",
             f"- Relationships: {_format_prf(summary.relationships)}",
-            (
-                "- Expected quarantine: "
-                f"{_format_prf(summary.quarantined_relationships)}"
-            ),
+            (f"- Expected quarantine: {_format_prf(summary.quarantined_relationships)}"),
             (
                 "- Relationship direction accuracy: "
                 f"{_format_ratio(summary.relationship_direction_accuracy)}"
             ),
-            (
-                "- Provenance completeness: "
-                f"{_format_ratio(summary.provenance_completeness)}"
-            ),
-            (
-                "- Unknown segment references: "
-                f"**{summary.unknown_segment_references}**"
-            ),
+            (f"- Provenance completeness: {_format_ratio(summary.provenance_completeness)}"),
+            (f"- Unknown segment references: **{summary.unknown_segment_references}**"),
             f"- Self relationships: **{summary.self_relationships}**",
             "",
             "## Cases",
