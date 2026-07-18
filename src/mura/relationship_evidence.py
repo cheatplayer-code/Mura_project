@@ -176,7 +176,9 @@ def analyze_relationship_evidence(
         signal for signal in endpoint_signals if signal_matches_relationship(signal, relationship)
     ]
     conflicting_signals = [
-        signal for signal in endpoint_signals if not signal_matches_relationship(signal, relationship)
+        signal
+        for signal in endpoint_signals
+        if not signal_matches_relationship(signal, relationship)
     ]
     third_person_markers = find_third_person_possessive_markers(source_text)
     resolved_endpoint_antecedents = endpoint_set.intersection(resolved_antecedents)
