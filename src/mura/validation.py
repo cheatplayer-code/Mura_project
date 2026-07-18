@@ -9,6 +9,7 @@ from mura.domain.models import (
     CleanerResult,
     CoreferenceStatus,
     CorrectionKind,
+    EvidenceClass,
     ExtractionResult,
     PersonMention,
     RelationshipClaim,
@@ -267,8 +268,17 @@ def validate_extraction_result(transcript: TranscriptEnvelope, result: Extractio
                 )
         if evidence.role_consistent is False:
             raise ContractValidationError(
-                f"{relationship.relationship_id} contradicts deterministic Kazakh kinship "
-                f"direction: {evidence.kazakh_relationship_signals}"
+                f"{relationship.relationship_id} contradicts deterministic multilingual "
+                f"kinship evidence: {evidence.linguistic_relationship_signals}; "
+                f"possessive_markers={evidence.third_person_possessive_markers}"
+            )
+        if (
+            evidence.evidence_class == EvidenceClass.C_SPEAKER_ANCHORED.value
+            and evidence.role_consistent is not True
+        ):
+            raise ContractValidationError(
+                f"{relationship.relationship_id} uses an implicit speaker endpoint without a "
+                "deterministic kinship signal"
             )
 
     for event in result.events:
