@@ -9,8 +9,7 @@ def _transcript() -> TranscriptEnvelope:
         recording_id="rec_1",
         duration_seconds=30,
         full_text=(
-            "Әкемнің аты Сапар. Сапардың інісі Нұрғали еді. "
-            "Диас баскетбол ойнағанды жақсы көреді."
+            "Әкемнің аты Сапар. Сапардың інісі Нұрғали еді. Диас баскетбол ойнағанды жақсы көреді."
         ),
         segments=[
             RawSegment(
@@ -310,9 +309,7 @@ def test_ambiguous_third_person_endpoint_is_quarantined_with_debug_context() -> 
     assert issue_context["original_candidate"]["subject_mention_id"] == "mention_erlan"
     assert analysis["subject_name"] == "Ерлан"
     assert analysis["object_name"] == "Нұрлан"
-    assert analysis["explicit_people"] == [
-        {"mention_id": "mention_nurlan", "name": "Нұрлан"}
-    ]
+    assert analysis["explicit_people"] == [{"mention_id": "mention_nurlan", "name": "Нұрлан"}]
     assert analysis["first_person_reference"] is False
     assert analysis["unsupported_endpoint_ids"] == ["mention_erlan"]
     assert analysis["source_text"] == "оның ұлы нұрлан"
