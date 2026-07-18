@@ -38,9 +38,15 @@ def _resolve_dataset_path(manifest_path: Path, dataset_path: str) -> Path:
     return manifest_path.parent / candidate
 
 
+def _display_path(path: Path) -> str:
+    try:
+        return path.relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
 def run_benchmark(manifest_path: str | Path) -> BenchmarkReport:
-    requested_manifest_path = Path(manifest_path)
-    resolved_manifest_path = requested_manifest_path.resolve()
+    resolved_manifest_path = Path(manifest_path).resolve()
     manifest = load_manifest(resolved_manifest_path)
     evaluations: list[CaseEvaluation] = []
 
@@ -78,7 +84,7 @@ def run_benchmark(manifest_path: str | Path) -> BenchmarkReport:
 
     return BenchmarkReport(
         report_schema_version="evaluation-report-v1",
-        manifest_path=requested_manifest_path.as_posix(),
+        manifest_path=_display_path(resolved_manifest_path),
         pipeline_versions=get_pipeline_versions().model_dump(mode="json"),
         cases=evaluations,
         summary=aggregate_case_metrics(evaluations),
