@@ -389,7 +389,7 @@ def find_relationship_signals(
     if len(speakers) == 1:
         speaker = speakers[0]
         for token in tokens:
-            for base, frame in _SPEAKER_KINSHIP_FRAMES.items():
+            for base, speaker_frame in _SPEAKER_KINSHIP_FRAMES.items():
                 if not _matches_possessed_form(token.normalized, base):
                     continue
                 target_id = _unique_nearby_target(
@@ -403,7 +403,7 @@ def find_relationship_signals(
                         _canonical_signal(
                             possessor_id=speaker.mention_id,
                             relative_id=target_id,
-                            frame=frame,
+                            frame=speaker_frame,
                             source_surface=token.surface,
                             rule_id="kk.relationship.speaker_possessive_kinship.v1",
                         )
@@ -422,8 +422,8 @@ def find_relationship_signals(
                 if token.start >= possessor_match.end and token.start - possessor_match.end <= 40
             ]
             for token in following_tokens[:4]:
-                frame = _NAMED_POSSESSOR_FRAMES.get(token.normalized)
-                if frame is None:
+                named_frame = _NAMED_POSSESSOR_FRAMES.get(token.normalized)
+                if named_frame is None:
                     continue
                 target_id = _unique_nearby_target(
                     anchor_start=token.start,
@@ -436,7 +436,7 @@ def find_relationship_signals(
                         _canonical_signal(
                             possessor_id=possessor.mention_id,
                             relative_id=target_id,
-                            frame=frame,
+                            frame=named_frame,
                             source_surface=f"{possessor_match.token} {token.surface}",
                             rule_id="kk.relationship.named_genitive_kinship.v1",
                         )
