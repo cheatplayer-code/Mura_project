@@ -26,9 +26,14 @@ from mura.relationship_evidence import person_name_surfaces
 
 
 class _KinshipFrame(Protocol):
-    relationship_type: RelationshipType
-    possessor_role: RelationshipRole
-    relative_role: RelationshipRole
+    @property
+    def relationship_type(self) -> RelationshipType: ...
+
+    @property
+    def possessor_role(self) -> RelationshipRole: ...
+
+    @property
+    def relative_role(self) -> RelationshipRole: ...
 
 
 @dataclass(frozen=True)
