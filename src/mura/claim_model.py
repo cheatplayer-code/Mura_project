@@ -8,7 +8,6 @@ from mura.domain.models import (
     AssertionMode,
     ClaimObjectType,
     ClaimProvenance,
-    ClaimReference,
     ConflictSet,
     CoreferenceLink,
     CoreferenceStatus,
@@ -18,13 +17,17 @@ from mura.domain.models import (
     EvidenceSourceLayer,
     EvidenceSpan,
     ExtractionResult,
+    FamilyEvent,
     NameVariant,
     NameVariantType,
+    PersonDescription,
     PersonMention,
     ProvenanceActivity,
     ProvenanceStage,
     RelationshipClaim,
+    Story,
     TranscriptEnvelope,
+    UnresolvedQuestion,
 )
 from mura.relationship_evidence import (
     analyze_relationship_evidence,
@@ -246,18 +249,17 @@ def _mention_ids_for_object(
 ) -> list[str]:
     if object_type is ClaimObjectType.PERSON_MENTION:
         return [object_id]
-    if object_type is ClaimObjectType.RELATIONSHIP:
-        return [
-            cast(str, getattr(item, "subject_mention_id")),
-            cast(str, getattr(item, "object_mention_id")),
-        ]
-    if object_type is ClaimObjectType.EVENT:
-        return list(cast(list[str], getattr(item, "participant_mention_ids")))
-    if object_type is ClaimObjectType.DESCRIPTION:
-        return [cast(str, getattr(item, "person_mention_id"))]
-    if object_type is ClaimObjectType.STORY:
-        return list(cast(list[str], getattr(item, "person_mention_ids")))
-    return list(cast(list[str], getattr(item, "related_mention_ids")))
+    if isinstance(item, RelationshipClaim):
+        return [item.subject_mention_id, item.object_mention_id]
+    if isinstance(item, FamilyEvent):
+        return list(item.participant_mention_ids)
+    if isinstance(item, PersonDescription):
+        return [item.person_mention_id]
+    if isinstance(item, Story):
+        return list(item.person_mention_ids)
+    if isinstance(item, UnresolvedQuestion):
+        return list(item.related_mention_ids)
+    raise ValueError(f"unsupported evidence-backed object {type(item).__name__}")
 
 
 def _generated_evidence(
@@ -301,7 +303,11 @@ def _weakest_evidence_class(
     evidence_by_id: dict[str, EvidenceSpan],
     fallback: EvidenceClass,
 ) -> EvidenceClass:
-    classes = [evidence_by_id[item].evidence_class for item in evidence_ids if item in evidence_by_id]
+    classes = [
+        evidence_by_id[item].evidence_class
+        for item in evidence_ids
+        if item in evidence_by_id
+    ]
     if not classes:
         return fallback
     return max(classes, key=_EVIDENCE_CLASS_RANK.__getitem__)
@@ -322,7 +328,9 @@ def _materialize_name_variants(
         ]
         if not candidate_segments:
             continue
-        candidate_evidence = [item for item in candidate.evidence_ids if item in valid_evidence_ids]
+        candidate_evidence = [
+            item for item in candidate.evidence_ids if item in valid_evidence_ids
+        ]
         updated = candidate.model_copy(
             update={
                 "source_segment_ids": candidate_segments,
@@ -529,7 +537,10 @@ def _filter_conflicts(
     return accepted, issues
 
 
-def _attach_conflict_ids(items: list[ObjectT], mapping: dict[tuple[ClaimObjectType, str], list[str]]) -> list[ObjectT]:
+def _attach_conflict_ids(
+    items: list[ObjectT],
+    mapping: dict[tuple[ClaimObjectType, str], list[str]],
+) -> list[ObjectT]:
     return [
         cast(
             ObjectT,
@@ -827,7 +838,9 @@ def validate_extraction_contract_v2(
                 f"{object_type.value} {object_id} references unknown evidence: "
                 f"{sorted(unknown_evidence)}"
             )
-        evidence_segments = {evidence_by_id[item_id].segment_id for item_id in item.evidence_ids}
+        evidence_segments = {
+            evidence_by_id[item_id].segment_id for item_id in item.evidence_ids
+        }
         if not evidence_segments.issubset(item.source_segment_ids):
             raise ValueError(
                 f"{object_type.value} {object_id} evidence is outside source_segment_ids"
@@ -844,7 +857,11 @@ def validate_extraction_contract_v2(
         provenance = item.provenance
         if provenance.recording_id != result.recording_id:
             raise ValueError(f"{object_type.value} {object_id} has wrong provenance recording")
-        if provenance.speaker_id != result.speaker_id or provenance.speaker_name != result.speaker_name:
+        narrator_mismatch = (
+            provenance.speaker_id != result.speaker_id
+            or provenance.speaker_name != result.speaker_name
+        )
+        if narrator_mismatch:
             raise ValueError(f"{object_type.value} {object_id} has wrong narrator provenance")
         if provenance.generated_by_activity_id not in activity_ids:
             raise ValueError(
