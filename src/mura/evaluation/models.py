@@ -3,6 +3,8 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any
 
+from pydantic import Field, model_validator
+
 from mura.domain.models import (
     PersonCategory,
     RelationshipRole,
@@ -10,7 +12,6 @@ from mura.domain.models import (
     StrictModel,
     TranscriptEnvelope,
 )
-from pydantic import Field, model_validator
 
 
 class LanguageBucket(StrEnum):
