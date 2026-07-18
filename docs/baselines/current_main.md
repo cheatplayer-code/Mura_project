@@ -10,9 +10,9 @@ Manifest: `benchmarks/manifest.json`
 | cleaner_prompt | `cleaner-v1` |
 | domain_schema | `domain-v2` |
 | evaluator | `core-evaluator-v1` |
-| evidence_rules | `claim-evidence-v2` |
+| evidence_rules | `claim-evidence-v2+kazakh-v1` |
 | extractor_prompt | `extractor-v2` |
-| pipeline | `mura-core-v0.4.0` |
+| pipeline | `mura-core-v0.5.0` |
 | resolver | `mention-resolver-v1` |
 
 ## Aggregate metrics
@@ -34,4 +34,4 @@ Manifest: `benchmarks/manifest.json`
 
 ## Scope
 
-This baseline measures the deterministic validation layer against fixed extraction candidates. It intentionally does not call GigaAM or DeepSeek, so it does not measure ASR quality or live candidate-generation quality. PR 14 changes the claim contract and provenance model but intentionally leaves these linguistic and discourse failures for PRs 15–17.
+This baseline measures the deterministic validation layer against fixed extraction candidates. It intentionally does not call GigaAM or DeepSeek, so it does not measure ASR quality or live candidate-generation quality. PR 15 adds a bounded Kazakh linguistic rule pack while intentionally leaving Russian inflection and cross-segment coreference for PRs 16–17.

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-import unicodedata
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -11,8 +9,17 @@ from mura.domain.models import (
     RelationshipClaim,
     TranscriptEnvelope,
 )
+from mura.linguistics.common import normalize_text
+from mura.linguistics.kazakh import (
+    contains_known_name_surface,
+    find_known_name_matches,
+    find_relationship_signals,
+    find_speaker_anchor_matches,
+    find_uncertainty_markers,
+    signal_matches_relationship,
+)
 
-_FIRST_PERSON_TOKENS = {
+_NON_KAZAKH_FIRST_PERSON_TOKENS = {
     "я",
     "мы",
     "мой",
@@ -27,40 +34,6 @@ _FIRST_PERSON_TOKENS = {
     "наши",
     "нашего",
     "нашей",
-    "мен",
-    "менің",
-    "біз",
-    "біздің",
-}
-
-_KAZAKH_NAME_SUFFIXES = {
-    "ның",
-    "нің",
-    "дың",
-    "дің",
-    "тың",
-    "тің",
-    "ға",
-    "ге",
-    "қа",
-    "ке",
-    "да",
-    "де",
-    "та",
-    "те",
-    "дан",
-    "ден",
-    "тан",
-    "тен",
-    "нан",
-    "нен",
-    "ды",
-    "ді",
-    "ты",
-    "ті",
-    "мен",
-    "бен",
-    "пен",
 }
 
 _AUTO_ACCEPTABLE_CLASSES = {
@@ -71,9 +44,7 @@ _AUTO_ACCEPTABLE_CLASSES = {
 
 
 def normalize_evidence(value: str) -> str:
-    value = unicodedata.normalize("NFKC", value).casefold()
-    value = re.sub(r"[^\w]+", " ", value, flags=re.UNICODE)
-    return " ".join(value.replace("_", " ").split())
+    return normalize_text(value)
 
 
 def contains_exact_surface(text: str, surface: str) -> bool:
@@ -85,24 +56,9 @@ def contains_exact_surface(text: str, surface: str) -> bool:
 
 
 def contains_surface(text: str, surface: str) -> bool:
-    normalized_text = normalize_evidence(text)
-    normalized_surface = normalize_evidence(surface)
-    if not normalized_surface:
-        return False
-
-    surface_tokens = normalized_surface.split()
-    if len(surface_tokens) != 1:
-        return f" {normalized_surface} " in f" {normalized_text} "
-
-    surface_token = surface_tokens[0]
-    for token in normalized_text.split():
-        if token == surface_token:
-            return True
-        if len(surface_token) < 3 or not token.startswith(surface_token):
-            continue
-        if token[len(surface_token) :] in _KAZAKH_NAME_SUFFIXES:
-            return True
-    return False
+    if contains_exact_surface(text, surface):
+        return True
+    return contains_known_name_surface(text, surface)
 
 
 def person_name_surfaces(person: PersonMention) -> list[str]:
@@ -112,8 +68,10 @@ def person_name_surfaces(person: PersonMention) -> list[str]:
 
 
 def has_first_person_reference(text: str) -> bool:
+    if find_speaker_anchor_matches(text):
+        return True
     tokens = set(normalize_evidence(text).split())
-    return bool(tokens.intersection(_FIRST_PERSON_TOKENS))
+    return bool(tokens.intersection(_NON_KAZAKH_FIRST_PERSON_TOKENS))
 
 
 def joined_segment_text(segment_ids: list[str], transcript: TranscriptEnvelope) -> str:
@@ -173,14 +131,29 @@ class RelationshipEvidenceAnalysis:
     morphological_people: list[dict[str, str]]
     speaker_mention_ids: list[str]
     first_person_reference: bool
+    speaker_anchor_matches: list[dict[str, Any]]
     supported_endpoint_ids: list[str]
     unsupported_endpoint_ids: list[str]
     evidence_class: str
     auto_accept_eligible: bool
     coreference_link_ids: list[str]
+    kazakh_relationship_signals: list[dict[str, str]]
+    role_consistent: bool | None
+    uncertainty_markers: list[dict[str, str]]
+    linguistic_rule_ids: list[str]
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def _name_rule_ids(source_text: str, people: list[PersonMention]) -> list[str]:
+    rule_ids = {
+        match.rule_id
+        for person in people
+        for surface in person_name_surfaces(person)
+        for match in find_known_name_matches(source_text, surface)
+    }
+    return sorted(rule_ids)
 
 
 def analyze_relationship_evidence(
@@ -199,7 +172,8 @@ def analyze_relationship_evidence(
     morphological = [person for person in explicit if person.mention_id not in exact_ids]
     speakers = speaker_mentions(people, speaker_name)
     speaker_ids = {person.mention_id for person in speakers}
-    first_person = has_first_person_reference(source_text)
+    speaker_anchors = find_speaker_anchor_matches(source_text)
+    first_person = bool(speaker_anchors) or has_first_person_reference(source_text)
 
     endpoint_ids = [relationship.subject_mention_id, relationship.object_mention_id]
     supported = [
@@ -210,10 +184,10 @@ def analyze_relationship_evidence(
     unsupported = [mention_id for mention_id in endpoint_ids if mention_id not in supported]
 
     endpoint_set = set(endpoint_ids)
-    if endpoint_set.issubset(exact_ids):
-        evidence_class = EvidenceClass.A_EXPLICIT
-    elif not unsupported and first_person and endpoint_set.intersection(speaker_ids):
+    if not unsupported and first_person and endpoint_set.intersection(speaker_ids):
         evidence_class = EvidenceClass.C_SPEAKER_ANCHORED
+    elif endpoint_set.issubset(exact_ids):
+        evidence_class = EvidenceClass.A_EXPLICIT
     elif not unsupported:
         evidence_class = EvidenceClass.B_MORPHOLOGICALLY_EXPLICIT
     elif relationship.coreference_link_ids:
@@ -222,6 +196,28 @@ def analyze_relationship_evidence(
         evidence_class = EvidenceClass.E_INFERRED
     else:
         evidence_class = EvidenceClass.U_UNCERTAIN
+
+    signals = find_relationship_signals(source_text, people, speaker_name)
+    endpoint_signals = [
+        signal
+        for signal in signals
+        if {
+            signal.subject_mention_id,
+            signal.object_mention_id,
+        }
+        == endpoint_set
+    ]
+    role_consistent = (
+        any(signal_matches_relationship(signal, relationship) for signal in endpoint_signals)
+        if endpoint_signals
+        else None
+    )
+    uncertainty_markers = find_uncertainty_markers(source_text)
+
+    rule_ids = set(_name_rule_ids(source_text, people))
+    rule_ids.update(anchor.rule_id for anchor in speaker_anchors)
+    rule_ids.update(signal.rule_id for signal in signals)
+    rule_ids.update(marker.rule_id for marker in uncertainty_markers)
 
     subject = mention_by_id.get(relationship.subject_mention_id)
     object_person = mention_by_id.get(relationship.object_mention_id)
@@ -242,9 +238,16 @@ def analyze_relationship_evidence(
         ],
         speaker_mention_ids=sorted(speaker_ids),
         first_person_reference=first_person,
+        speaker_anchor_matches=[anchor.to_dict() for anchor in speaker_anchors],
         supported_endpoint_ids=supported,
         unsupported_endpoint_ids=unsupported,
         evidence_class=evidence_class.value,
-        auto_accept_eligible=evidence_class in _AUTO_ACCEPTABLE_CLASSES,
+        auto_accept_eligible=(
+            evidence_class in _AUTO_ACCEPTABLE_CLASSES and role_consistent is not False
+        ),
         coreference_link_ids=list(relationship.coreference_link_ids),
+        kazakh_relationship_signals=[signal.to_dict() for signal in signals],
+        role_consistent=role_consistent,
+        uncertainty_markers=[marker.to_dict() for marker in uncertainty_markers],
+        linguistic_rule_ids=sorted(rule_ids),
     )

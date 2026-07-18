@@ -83,5 +83,5 @@ def test_markdown_report_contains_versions_and_limitations() -> None:
     markdown = render_markdown_report(report)
 
     assert "# Mura ML Core Baseline" in markdown
-    assert "mura-core-v0.4.0" in markdown
+    assert "mura-core-v0.5.0" in markdown
     assert "does not measure live DeepSeek candidate generation" in markdown
