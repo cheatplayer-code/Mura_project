@@ -28,6 +28,36 @@ _FIRST_PERSON_TOKENS = {
     "біздің",
 }
 
+_KAZAKH_NAME_SUFFIXES = {
+    "ның",
+    "нің",
+    "дың",
+    "дің",
+    "тың",
+    "тің",
+    "ға",
+    "ге",
+    "қа",
+    "ке",
+    "да",
+    "де",
+    "та",
+    "те",
+    "дан",
+    "ден",
+    "тан",
+    "тен",
+    "нан",
+    "нен",
+    "ды",
+    "ді",
+    "ты",
+    "ті",
+    "мен",
+    "бен",
+    "пен",
+}
+
 
 def normalize_evidence(value: str) -> str:
     value = unicodedata.normalize("NFKC", value).casefold()
@@ -40,7 +70,20 @@ def contains_surface(text: str, surface: str) -> bool:
     normalized_surface = normalize_evidence(surface)
     if not normalized_surface:
         return False
-    return f" {normalized_surface} " in f" {normalized_text} "
+
+    surface_tokens = normalized_surface.split()
+    if len(surface_tokens) != 1:
+        return f" {normalized_surface} " in f" {normalized_text} "
+
+    surface_token = surface_tokens[0]
+    for token in normalized_text.split():
+        if token == surface_token:
+            return True
+        if len(surface_token) < 3 or not token.startswith(surface_token):
+            continue
+        if token[len(surface_token) :] in _KAZAKH_NAME_SUFFIXES:
+            return True
+    return False
 
 
 def has_first_person_reference(text: str) -> bool:
