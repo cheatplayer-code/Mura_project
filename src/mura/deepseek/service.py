@@ -118,7 +118,9 @@ class DeepSeekPipelineService:
             speaker_name=speaker_name,
         )
         raw_relationships = raw.get("relationship_claims", [])
-        relationship_candidates = len(raw_relationships) if isinstance(raw_relationships, list) else 0
+        relationship_candidates = (
+            len(raw_relationships) if isinstance(raw_relationships, list) else 0
+        )
         quarantined_relationships = sum(
             issue.get("object_type") == "relationship" for issue in extraction_issues
         )
