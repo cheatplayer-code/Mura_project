@@ -338,7 +338,7 @@ def test_coreference_contract_rejects_invalid_resolution_states() -> None:
     with pytest.raises(ValidationError, match="at least two candidates"):
         CoreferenceLink(
             coreference_id="coreference_002",
-            anaphor_text="его",
+            anaphor_text="his",
             source_segment_ids=["seg_001"],
             evidence_ids=["evidence_001"],
             status=CoreferenceStatus.AMBIGUOUS,
