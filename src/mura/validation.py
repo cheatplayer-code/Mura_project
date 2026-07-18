@@ -8,11 +8,13 @@ from mura.claim_model import validate_extraction_contract_v2
 from mura.domain.models import (
     CleanerResult,
     CoreferenceStatus,
+    CorrectionKind,
     ExtractionResult,
     PersonMention,
     RelationshipClaim,
     TranscriptEnvelope,
 )
+from mura.linguistics.corrections import has_explicit_correction_cue
 from mura.relationship_evidence import (
     analyze_relationship_evidence,
     person_name_surfaces,
@@ -149,6 +151,14 @@ def validate_cleaner_result(transcript: TranscriptEnvelope, result: CleanerResul
     for correction in result.detected_corrections:
         object_name = f"detected correction {correction.original_value!r}"
         _ensure_known_segments(correction.source_segment_ids, valid_ids, object_name)
+        raw_source_text = _joined_segment_text(correction.source_segment_ids, raw_text_by_id)
+        if (
+            correction.kind is CorrectionKind.SPEAKER_SELF_CORRECTION
+            and not has_explicit_correction_cue(raw_source_text)
+        ):
+            raise ContractValidationError(
+                f"{object_name} is marked as speaker_self_correction without an explicit cue"
+            )
         _ensure_evidence_text(
             evidence_text=correction.original_value,
             source_ids=correction.source_segment_ids,
@@ -255,6 +265,11 @@ def validate_extraction_result(transcript: TranscriptEnvelope, result: Extractio
                     f"{relationship.relationship_id} has unsupported relationship endpoints: "
                     f"{evidence.unsupported_endpoint_ids}"
                 )
+        if evidence.role_consistent is False:
+            raise ContractValidationError(
+                f"{relationship.relationship_id} contradicts deterministic Kazakh kinship "
+                f"direction: {evidence.kazakh_relationship_signals}"
+            )
 
     for event in result.events:
         _ensure_known_segments(event.source_segment_ids, valid_segments, event.event_id)
