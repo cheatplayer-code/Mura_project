@@ -102,7 +102,7 @@ def test_legacy_candidate_is_materialized_as_complete_v2_claim_bundle() -> None:
     assert len(result.evidence_spans) == 3
 
     relationship = result.relationship_claims[0]
-    assert relationship.evidence_class is EvidenceClass.A_EXPLICIT
+    assert relationship.evidence_class is EvidenceClass.B_MORPHOLOGICALLY_EXPLICIT
     assert relationship.evidence_ids
     assert relationship.provenance is not None
     assert relationship.provenance.recording_id == transcript.recording_id
