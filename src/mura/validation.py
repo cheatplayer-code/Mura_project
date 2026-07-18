@@ -7,11 +7,16 @@ from collections.abc import Iterable
 from mura.claim_model import validate_extraction_contract_v2
 from mura.domain.models import (
     CleanerResult,
+    CoreferenceStatus,
     ExtractionResult,
     PersonMention,
+    RelationshipClaim,
     TranscriptEnvelope,
 )
-from mura.relationship_evidence import analyze_relationship_evidence
+from mura.relationship_evidence import (
+    analyze_relationship_evidence,
+    person_name_surfaces,
+)
 
 
 class ContractValidationError(ValueError):
@@ -76,7 +81,8 @@ def _explicit_people_in_segments(
     explicit_people: set[str] = set()
     for person in people:
         if any(
-            _contains_evidence(source_text, surface) for surface in [person.name, *person.aliases]
+            _contains_evidence(source_text, surface)
+            for surface in person_name_surfaces(person)
         ):
             explicit_people.add(person.mention_id)
     return explicit_people
@@ -92,6 +98,29 @@ def _ensure_person_evidence_overlap(
         raise ContractValidationError(
             f"{object_name} has no evidence overlap with {person.mention_id}"
         )
+
+
+def _resolved_coreference_antecedents(
+    relationship: RelationshipClaim,
+    *,
+    result: ExtractionResult,
+    valid_segments: set[str],
+    mention_set: set[str],
+) -> set[str]:
+    link_by_id = {item.coreference_id: item for item in result.coreference_links}
+    antecedents: set[str] = set()
+    for link_id in relationship.coreference_link_ids:
+        link = link_by_id.get(link_id)
+        if link is None or link.status is not CoreferenceStatus.RESOLVED:
+            continue
+        if set(link.source_segment_ids) - valid_segments:
+            continue
+        if not set(link.source_segment_ids).issubset(relationship.source_segment_ids):
+            continue
+        if set(link.antecedent_mention_ids) - mention_set:
+            continue
+        antecedents.update(link.antecedent_mention_ids)
+    return antecedents
 
 
 def validate_cleaner_result(transcript: TranscriptEnvelope, result: CleanerResult) -> None:
@@ -214,11 +243,19 @@ def validate_extraction_result(transcript: TranscriptEnvelope, result: Extractio
             people=result.people_mentions,
             speaker_name=result.speaker_name,
         )
-        if evidence.unsupported_endpoint_ids:
-            raise ContractValidationError(
-                f"{relationship.relationship_id} has unsupported relationship endpoints: "
-                f"{evidence.unsupported_endpoint_ids}"
+        unsupported = set(evidence.unsupported_endpoint_ids)
+        if unsupported:
+            antecedents = _resolved_coreference_antecedents(
+                relationship,
+                result=result,
+                valid_segments=valid_segments,
+                mention_set=mention_set,
             )
+            if not unsupported.issubset(antecedents):
+                raise ContractValidationError(
+                    f"{relationship.relationship_id} has unsupported relationship endpoints: "
+                    f"{evidence.unsupported_endpoint_ids}"
+                )
 
     for event in result.events:
         _ensure_known_segments(event.source_segment_ids, valid_segments, event.event_id)
