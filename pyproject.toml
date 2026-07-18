@@ -22,6 +22,9 @@ dependencies = [
   "uvicorn[standard]>=0.35,<1",
 ]
 
+[project.scripts]
+mura-evaluate-core = "mura.evaluation.cli:main"
+
 [project.optional-dependencies]
 kaggle = [
   "torch==2.10.*",
