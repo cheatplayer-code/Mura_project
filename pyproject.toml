@@ -4,19 +4,22 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mura-project"
-version = "0.1.0"
+version = "0.2.0"
 description = "Voice-first family memory archive for Kazakh and Russian stories"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [{name = "Mura team"}]
 dependencies = [
+  "alembic>=1.16,<2",
   "fastapi>=0.116,<1",
-  "uvicorn[standard]>=0.35,<1",
+  "psycopg[binary]>=3.2,<4",
   "python-multipart>=0.0.20,<1",
   "pydantic>=2.11,<3",
   "pydantic-settings>=2.10,<3",
   "requests>=2.32,<3",
+  "sqlalchemy>=2.0.42,<3",
+  "uvicorn[standard]>=0.35,<1",
 ]
 
 [project.optional-dependencies]
