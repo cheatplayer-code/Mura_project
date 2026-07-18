@@ -102,3 +102,9 @@ def test_extractor_quarantines_self_relationship_without_second_llm_call() -> No
     assert usage["quarantined_items"] == 1
     assert usage["extraction_issues"][0]["object_id"] == "relationship_005"
     assert "different mentions" in usage["extraction_issues"][0]["detail"]
+    assert usage["relationship_metrics"] == {
+        "candidates": 1,
+        "accepted": 0,
+        "quarantined": 1,
+        "acceptance_rate": 0.0,
+    }
