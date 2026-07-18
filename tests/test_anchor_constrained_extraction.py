@@ -178,6 +178,35 @@ def test_fatal_collection_shape_gets_one_bounded_repair_with_same_anchors() -> N
     assert usage["relationship_metrics"]["candidates"] == 0
 
 
+def test_isolated_invalid_object_is_quarantined_without_repair() -> None:
+    invalid = _valid_extraction()
+    invalid["people_mentions"] = [
+        {
+            "mention_id": "mention_bad",
+            "name": "",
+            "category": "family_member",
+            "source_segment_ids": ["seg_001"],
+            "confidence": 1.0,
+        }
+    ]
+    client = SequenceClient([invalid])
+    service = DeepSeekPipelineService(client)  # type: ignore[arg-type]
+
+    result, usage = service.extract(
+        transcript=_transcript(),
+        cleaned=_cleaned(),
+        speaker_id="speaker_1",
+        speaker_name="Күләш",
+        known_people=[],
+    )
+
+    assert result.people_mentions == []
+    assert len(client.calls) == 1
+    assert usage["repair_attempted"] is False
+    assert usage["quarantined_items"] == 1
+    assert usage["extraction_issues"][0]["object_id"] == "mention_bad"
+
+
 def test_empty_valid_extraction_does_not_trigger_repair() -> None:
     empty = _valid_extraction()
     empty["people_mentions"] = []
