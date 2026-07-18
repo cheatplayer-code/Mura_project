@@ -11,9 +11,7 @@ def test_script_detection_distinguishes_cyrillic_latin_and_mixed() -> None:
 def test_kazakh_context_does_not_emit_russian_or_english_name_rules() -> None:
     matches = find_known_name_matches("Сапардың інісі Нұрғали.", "Нұрғали")
 
-    assert [(match.language, match.rule_id) for match in matches] == [
-        ("kk", "kk.name.exact.v1")
-    ]
+    assert [(match.language, match.rule_id) for match in matches] == [("kk", "kk.name.exact.v1")]
 
 
 def test_russian_context_uses_russian_name_inflection() -> None:
