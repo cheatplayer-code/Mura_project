@@ -112,6 +112,20 @@ def test_speaker_sibling_term_preserves_age_order() -> None:
     assert signal.object_role is RelationshipRole.YOUNGER_SIBLING
 
 
+def test_speaker_kinship_requires_exactly_one_named_target() -> None:
+    speaker = _person("mention_kulash", "Күләш")
+    bolat = _person("mention_bolat", "Болат")
+    erlan = _person("mention_erlan", "Ерлан")
+
+    signals = find_relationship_signals(
+        "Менің інім Болат немесе Ерлан.",
+        [speaker, bolat, erlan],
+        speaker_name="Күләш",
+    )
+
+    assert signals == []
+
+
 def test_named_genitive_kinship_proves_spouse_relation() -> None:
     erlan = _person("mention_erlan", "Ерлан")
     dinara = _person("mention_dinara", "Динара")
