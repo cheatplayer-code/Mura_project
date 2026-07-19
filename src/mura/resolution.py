@@ -5,6 +5,7 @@ import unicodedata
 from dataclasses import dataclass, field
 
 from mura.domain.models import (
+    EvidenceClass,
     ExtractionResult,
     KnownPerson,
     MentionResolution,
@@ -100,6 +101,11 @@ _STRONG_ALIAS_VARIANTS = {
     NameVariantType.SCRIPT_VARIANT,
     NameVariantType.ASR_VARIANT,
 }
+_GRAPH_ELIGIBLE_EVIDENCE_CLASSES = {
+    EvidenceClass.A_EXPLICIT,
+    EvidenceClass.B_MORPHOLOGICALLY_EXPLICIT,
+    EvidenceClass.C_SPEAKER_ANCHORED,
+}
 
 
 def normalize_name(value: str) -> str:
@@ -166,20 +172,8 @@ def _candidate_name_signals(
             )
         )
 
-    for alias in mention.aliases:
-        normalized = normalize_name(alias)
-        if normalized and normalized in known_surfaces:
-            signals.append(
-                ResolutionSignal(
-                    rule_id="resolution.name.structured_alias.v2",
-                    kind=ResolutionSignalKind.STRUCTURED_ALIAS,
-                    detail=f"extracted alias {alias!r} links to archive person {person.person_id}",
-                    person_id=person.person_id,
-                )
-            )
-
     for variant in mention.name_variants:
-        if variant.variant_type not in _STRONG_ALIAS_VARIANTS:
+        if variant.variant_type not in _STRONG_ALIAS_VARIANTS or not variant.evidence_ids:
             continue
         normalized = normalize_name(variant.surface)
         if normalized and normalized in known_surfaces:
@@ -360,6 +354,8 @@ def _add_graph_signals(
     seed_person_by_mention: dict[str, str],
 ) -> None:
     for relationship in extraction.relationship_claims:
+        if relationship.evidence_class not in _GRAPH_ELIGIBLE_EVIDENCE_CLASSES:
+            continue
         neighbour = _neighbour_id_for(relationship, mention_id)
         if neighbour is None:
             continue
