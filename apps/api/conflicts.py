@@ -1,0 +1,159 @@
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Literal, Protocol, cast
+
+from fastapi import Depends, FastAPI, HTTPException, Query, status
+from pydantic import BaseModel, ConfigDict, Field
+
+from mura.storage.conflict_resolution import (
+    ConflictMutationResult,
+    ConflictNotFoundError,
+    ConflictResolutionError,
+    ConflictResolutionService,
+    ConflictReviewView,
+)
+from mura.storage.database import Database
+
+
+class RuntimeWithDatabase(Protocol):
+    database: Database
+
+
+class ConflictDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reviewer_reference: str = Field(min_length=1, max_length=256)
+    note: str = Field(min_length=1, max_length=4000)
+
+
+class ResolveConflictRequest(ConflictDecisionRequest):
+    preferred_claim_id: str = Field(min_length=1, max_length=64)
+
+
+def _service(runtime: object) -> ConflictResolutionService:
+    typed_runtime = cast(RuntimeWithDatabase, runtime)
+    return ConflictResolutionService(typed_runtime.database)
+
+
+def _not_found(exc: ConflictNotFoundError) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+def _invalid_transition(exc: ConflictResolutionError) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+
+def register_conflict_routes(
+    app: FastAPI,
+    *,
+    get_runtime_dependency: Callable[..., object],
+    core_token_dependency: Callable[..., None],
+) -> None:
+    dependencies = [Depends(core_token_dependency)]
+
+    @app.get(
+        "/v1/families/{family_id}/conflicts",
+        response_model=list[ConflictReviewView],
+        dependencies=dependencies,
+    )
+    def list_family_conflicts(
+        family_id: str,
+        runtime: object = Depends(get_runtime_dependency),
+        conflict_status: Literal["open", "resolved", "dismissed"] | None = Query(
+            default=None,
+            alias="status",
+        ),
+    ) -> list[ConflictReviewView]:
+        return _service(runtime).list_conflicts(
+            family_id=family_id,
+            status=conflict_status,
+        )
+
+    @app.get(
+        "/v1/families/{family_id}/conflicts/{conflict_id}",
+        response_model=ConflictReviewView,
+        dependencies=dependencies,
+    )
+    def get_family_conflict(
+        family_id: str,
+        conflict_id: str,
+        runtime: object = Depends(get_runtime_dependency),
+    ) -> ConflictReviewView:
+        try:
+            return _service(runtime).get_conflict(
+                family_id=family_id,
+                conflict_id=conflict_id,
+            )
+        except ConflictNotFoundError as exc:
+            raise _not_found(exc) from exc
+
+    @app.post(
+        "/v1/families/{family_id}/conflicts/{conflict_id}/resolve",
+        response_model=ConflictMutationResult,
+        dependencies=dependencies,
+    )
+    def resolve_family_conflict(
+        family_id: str,
+        conflict_id: str,
+        request: ResolveConflictRequest,
+        runtime: object = Depends(get_runtime_dependency),
+    ) -> ConflictMutationResult:
+        try:
+            return _service(runtime).resolve(
+                family_id=family_id,
+                conflict_id=conflict_id,
+                preferred_claim_id=request.preferred_claim_id,
+                reviewer_reference=request.reviewer_reference,
+                note=request.note,
+            )
+        except ConflictNotFoundError as exc:
+            raise _not_found(exc) from exc
+        except ConflictResolutionError as exc:
+            raise _invalid_transition(exc) from exc
+
+    @app.post(
+        "/v1/families/{family_id}/conflicts/{conflict_id}/dismiss",
+        response_model=ConflictMutationResult,
+        dependencies=dependencies,
+    )
+    def dismiss_family_conflict(
+        family_id: str,
+        conflict_id: str,
+        request: ConflictDecisionRequest,
+        runtime: object = Depends(get_runtime_dependency),
+    ) -> ConflictMutationResult:
+        try:
+            return _service(runtime).dismiss(
+                family_id=family_id,
+                conflict_id=conflict_id,
+                reviewer_reference=request.reviewer_reference,
+                note=request.note,
+            )
+        except ConflictNotFoundError as exc:
+            raise _not_found(exc) from exc
+        except ConflictResolutionError as exc:
+            raise _invalid_transition(exc) from exc
+
+    @app.post(
+        "/v1/families/{family_id}/conflicts/{conflict_id}/reopen",
+        response_model=ConflictMutationResult,
+        dependencies=dependencies,
+    )
+    def reopen_family_conflict(
+        family_id: str,
+        conflict_id: str,
+        request: ConflictDecisionRequest,
+        runtime: object = Depends(get_runtime_dependency),
+    ) -> ConflictMutationResult:
+        try:
+            return _service(runtime).reopen(
+                family_id=family_id,
+                conflict_id=conflict_id,
+                reviewer_reference=request.reviewer_reference,
+                note=request.note,
+            )
+        except ConflictNotFoundError as exc:
+            raise _not_found(exc) from exc
+        except ConflictResolutionError as exc:
+            raise _invalid_transition(exc) from exc
