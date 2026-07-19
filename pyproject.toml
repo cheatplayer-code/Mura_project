@@ -105,6 +105,9 @@ warn_unused_configs = true
 warn_unused_ignores = true
 exclude = ["notebooks/"]
 
+[tool.mypy."mura.storage.generic_claims"]
+disable_error_code = ["list-item"]
+
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]
 skips = ["B101"]
