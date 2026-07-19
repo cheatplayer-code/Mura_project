@@ -144,7 +144,11 @@ def _score_case(case: EntityResolutionBenchmarkCase) -> EntityResolutionCaseScor
         correct_status += actual.status is expected.status
         if expected.status is ResolutionStatus.RESOLVED:
             gold_resolved += 1
-            if actual.status is ResolutionStatus.RESOLVED and actual.person_id == expected.person_id:
+            identity_matches = (
+                actual.status is ResolutionStatus.RESOLVED
+                and actual.person_id == expected.person_id
+            )
+            if identity_matches:
                 correct_identity += 1
             else:
                 false_splits += 1
