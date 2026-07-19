@@ -61,12 +61,6 @@ addopts = "-q --strict-config --strict-markers"
 target-version = "py311"
 line-length = 100
 
-[tool.ruff.format]
-exclude = [
-  "src/mura/storage/conflict_resolution.py",
-  "tests/test_conflict_resolution.py",
-]
-
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "RUF"]
 
@@ -84,7 +78,6 @@ known-first-party = ["mura"]
 "src/mura/linguistics/multilingual.py" = ["RUF001"]
 "src/mura/linguistics/russian.py" = ["RUF001"]
 "src/mura/relationship_evidence.py" = ["RUF001"]
-"src/mura/storage/conflict_resolution.py" = ["E501", "I001"]
 "tests/test_anchor_constrained_extraction.py" = ["RUF001"]
 "tests/test_bounded_coreference.py" = ["RUF001"]
 "tests/test_entity_resolution_v2.py" = ["RUF001"]
