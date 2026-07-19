@@ -15,7 +15,7 @@ Manifest: `benchmarks/manifest.json`
 | extractor_prompt | `extractor-v3-anchor-constrained` |
 | extractor_repair_prompt | `extractor-repair-v1-anchor-constrained` |
 | materializer | `family-graph-materializer-v1` |
-| pipeline | `mura-core-v0.10.0` |
+| pipeline | `mura-core-v0.9.0` |
 | resolver | `mention-resolver-v2-cross-recording` |
 
 ## Aggregate reasoning metrics
