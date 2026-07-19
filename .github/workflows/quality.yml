@@ -125,5 +125,15 @@ jobs:
           if-no-files-found: warn
           retention-days: 1
 
+      - name: Enforce ML release gates
+        shell: bash
+        run: |
+          set -o pipefail
+          mura-evaluate-core \
+            --manifest benchmarks/release_manifest.json \
+            --release-gates benchmarks/release_gates.json \
+            --json-output benchmark-report.json \
+            --markdown-output benchmark-report.md 2>&1 | tee release-gate-output.txt
+
       - name: Static security scan
         run: bandit -q -r src apps services -ll

@@ -1,0 +1,15 @@
+{
+  "schema_version": "release-gates-v1",
+  "minimum_case_count": 10,
+  "minimum_adversarial_case_count": 4,
+  "minimum_person_f1": 0.95,
+  "minimum_relationship_precision": 0.95,
+  "minimum_relationship_recall": 0.95,
+  "minimum_quarantine_recall": 1.0,
+  "minimum_direction_accuracy": 1.0,
+  "minimum_provenance_completeness": 1.0,
+  "maximum_unknown_segment_references": 0,
+  "maximum_self_relationships": 0,
+  "maximum_adversarial_relationship_false_positives": 0,
+  "maximum_adversarial_quarantine_false_negatives": 0
+}
