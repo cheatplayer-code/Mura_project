@@ -233,9 +233,7 @@ class DeepSeekPipelineService:
         if repair_attempted:
             usage_payload["initial_usage"] = initial_usage
             usage_payload["initial_validation_error"] = initial_validation_error
-            usage_payload["initial_evidence_offset_recovery"] = (
-                initial_evidence_recovery.to_dict()
-            )
+            usage_payload["initial_evidence_offset_recovery"] = initial_evidence_recovery.to_dict()
         return result, usage_payload
 
     @staticmethod
