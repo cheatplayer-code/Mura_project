@@ -2,7 +2,7 @@ from mura.domain.models import ExtractionResult, KnownPerson, PersonMention, Res
 from mura.resolution import resolve_mentions
 
 
-def test_alias_resolves_to_existing_person() -> None:
+def test_unverified_legacy_alias_needs_review() -> None:
     extraction = ExtractionResult(
         recording_id="rec_2",
         speaker_id="speaker_1",
@@ -26,8 +26,9 @@ def test_alias_resolves_to_existing_person() -> None:
         )
     ]
     result = resolve_mentions(extraction, known)
-    assert result[0].status == ResolutionStatus.RESOLVED
-    assert result[0].person_id == "person_erlan"
+    assert result[0].status == ResolutionStatus.NEEDS_REVIEW
+    assert result[0].person_id is None
+    assert result[0].candidate_person_ids == ["person_erlan"]
 
 
 def test_conflicting_relation_needs_review() -> None:
