@@ -88,7 +88,7 @@ def test_markdown_report_contains_versions_and_limitations() -> None:
 
     assert "# Mura ML Core Baseline" in markdown
     assert "mura-core-v0.9.0" in markdown
-    assert "archive-claim-ledger-v1+conflict-decisions-v1" in markdown
-    assert "family-graph-materializer-v2-human-review" in markdown
+    assert "archive-claim-ledger-v1+conflict-decisions-v1+generic-claims-v1" in markdown
+    assert "family-materializer-v3-graph-and-profiles" in markdown
     assert "extractor-v3-anchor-constrained" in markdown
     assert "does not measure live DeepSeek candidate generation" in markdown
