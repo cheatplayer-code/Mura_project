@@ -6,6 +6,7 @@ from typing import Literal, Protocol, cast
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from apps.api.profiles import register_profile_routes
 from mura.storage.conflict_resolution import (
     ConflictMutationResult,
     ConflictNotFoundError,
@@ -157,3 +158,9 @@ def register_conflict_routes(
             raise _not_found(exc) from exc
         except ConflictResolutionError as exc:
             raise _invalid_transition(exc) from exc
+
+    register_profile_routes(
+        app,
+        get_runtime_dependency=get_runtime_dependency,
+        core_token_dependency=core_token_dependency,
+    )
