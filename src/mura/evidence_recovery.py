@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, TypeGuard
 
-from mura.domain.models import TranscriptEnvelope
+from mura.domain.models import EvidenceSourceLayer, TranscriptEnvelope
 
 
 @dataclass(frozen=True)
@@ -14,6 +14,7 @@ class EvidenceOffsetRecoveryMetrics:
     ambiguous_offsets_removed: int = 0
     missing_text_quarantined: int = 0
     unknown_segment_quarantined: int = 0
+    non_raw_evidence_skipped: int = 0
 
     @property
     def repaired_evidence_offsets(self) -> int:
@@ -28,6 +29,7 @@ class EvidenceOffsetRecoveryMetrics:
             "ambiguous_offsets_removed": self.ambiguous_offsets_removed,
             "missing_text_quarantined": self.missing_text_quarantined,
             "unknown_segment_quarantined": self.unknown_segment_quarantined,
+            "non_raw_evidence_skipped": self.non_raw_evidence_skipped,
         }
 
 
@@ -79,6 +81,7 @@ def recover_evidence_offsets(
     ambiguous_offsets_removed = 0
     missing_text_quarantined = 0
     unknown_segment_quarantined = 0
+    non_raw_evidence_skipped = 0
     recovered_evidence: list[object] = []
 
     for candidate in raw_evidence:
@@ -87,6 +90,15 @@ def recover_evidence_offsets(
             continue
 
         recovered_candidate = dict(candidate)
+        source_layer = candidate.get(
+            "source_layer",
+            EvidenceSourceLayer.RAW_TRANSCRIPT.value,
+        )
+        if source_layer != EvidenceSourceLayer.RAW_TRANSCRIPT.value:
+            non_raw_evidence_skipped += 1
+            recovered_evidence.append(recovered_candidate)
+            continue
+
         segment_id = candidate.get("segment_id")
         evidence_text = candidate.get("text")
         if not isinstance(segment_id, str) or segment_id not in segment_text_by_id:
@@ -153,5 +165,6 @@ def recover_evidence_offsets(
         ambiguous_offsets_removed=ambiguous_offsets_removed,
         missing_text_quarantined=missing_text_quarantined,
         unknown_segment_quarantined=unknown_segment_quarantined,
+        non_raw_evidence_skipped=non_raw_evidence_skipped,
     )
     return recovered_raw, metrics
