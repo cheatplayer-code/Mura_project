@@ -127,9 +127,10 @@ def test_postgres_migration_and_atomic_completion(tmp_path: Path) -> None:
     assert rolled_back_job.status == JobStatus.TRANSCRIBING.value
     assert TraceRepository(database).get_job_trace(job_id=job_id) is None
     with database.session_factory() as session:
-        assert session.scalar(
-            select(ArchivePersonRow).where(ArchivePersonRow.person_id == person_id)
-        ) is None
+        assert (
+            session.scalar(select(ArchivePersonRow).where(ArchivePersonRow.person_id == person_id))
+            is None
+        )
 
     with database.session_factory.begin() as session:
         session.add(
