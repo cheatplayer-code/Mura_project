@@ -20,6 +20,7 @@ from mura.domain.models import (
     ReadableSegment,
     TranscriptEnvelope,
 )
+from mura.evidence_recovery import EvidenceOffsetRecoveryMetrics, recover_evidence_offsets
 from mura.extraction_sanitizer import sanitize_extraction_output
 from mura.validation import ContractValidationError, validate_cleaner_result
 
@@ -162,12 +163,13 @@ class DeepSeekPipelineService:
             max_tokens=16_000,
         )
         initial_usage = self._usage_dict(usage)
-        final_raw = raw
+        final_raw, evidence_recovery = recover_evidence_offsets(raw=raw, transcript=transcript)
+        initial_evidence_recovery = evidence_recovery
         repair_attempted = False
         initial_validation_error: str | None = None
         try:
             result, extraction_issues, evidence_closure_count = sanitize_extraction_output(
-                raw=raw,
+                raw=final_raw,
                 transcript=transcript,
                 speaker_id=speaker_id,
                 speaker_name=speaker_name,
@@ -179,6 +181,7 @@ class DeepSeekPipelineService:
                 result,
                 extraction_issues,
                 evidence_closure_count,
+                evidence_recovery,
                 usage,
             ) = self._repair_extraction(
                 transcript=transcript,
@@ -193,7 +196,7 @@ class DeepSeekPipelineService:
             repair_attempted = True
         else:
             if self._requires_extraction_repair(
-                raw=raw,
+                raw=final_raw,
                 result=result,
                 extraction_issues=extraction_issues,
             ):
@@ -203,6 +206,7 @@ class DeepSeekPipelineService:
                     result,
                     extraction_issues,
                     evidence_closure_count,
+                    evidence_recovery,
                     usage,
                 ) = self._repair_extraction(
                     transcript=transcript,
@@ -222,12 +226,14 @@ class DeepSeekPipelineService:
             result=result,
             extraction_issues=extraction_issues,
             evidence_closure_count=evidence_closure_count,
+            evidence_recovery=evidence_recovery,
             anchors=anchors,
             repair_attempted=repair_attempted,
         )
         if repair_attempted:
             usage_payload["initial_usage"] = initial_usage
             usage_payload["initial_validation_error"] = initial_validation_error
+            usage_payload["initial_evidence_offset_recovery"] = initial_evidence_recovery.to_dict()
         return result, usage_payload
 
     @staticmethod
@@ -275,6 +281,7 @@ class DeepSeekPipelineService:
         ExtractionResult,
         list[dict[str, Any]],
         int,
+        EvidenceOffsetRecoveryMetrics,
         DeepSeekUsage,
     ]:
         repair_payload = {
@@ -295,13 +302,17 @@ class DeepSeekPipelineService:
             max_tokens=16_000,
             attempts=2,
         )
-        result, issues, closure_count = sanitize_extraction_output(
+        recovered_raw, evidence_recovery = recover_evidence_offsets(
             raw=repaired_raw,
+            transcript=transcript,
+        )
+        result, issues, closure_count = sanitize_extraction_output(
+            raw=recovered_raw,
             transcript=transcript,
             speaker_id=speaker_id,
             speaker_name=speaker_name,
         )
-        return repaired_raw, result, issues, closure_count, repair_usage
+        return recovered_raw, result, issues, closure_count, evidence_recovery, repair_usage
 
     @staticmethod
     def _requires_extraction_repair(
@@ -352,6 +363,7 @@ class DeepSeekPipelineService:
         result: ExtractionResult,
         extraction_issues: list[dict[str, Any]],
         evidence_closure_count: int,
+        evidence_recovery: EvidenceOffsetRecoveryMetrics,
         anchors: ExtractionAnchorBundle,
         repair_attempted: bool,
     ) -> dict[str, Any]:
@@ -381,6 +393,8 @@ class DeepSeekPipelineService:
             **self._usage_dict(usage),
             "repair_attempted": repair_attempted,
             "evidence_closure_relationships": evidence_closure_count,
+            "repaired_evidence_offsets": evidence_recovery.repaired_evidence_offsets,
+            "evidence_offset_recovery": evidence_recovery.to_dict(),
             "quarantined_items": len(extraction_issues),
             "extraction_issues": extraction_issues,
             "relationship_metrics": {
