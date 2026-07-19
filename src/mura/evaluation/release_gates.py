@@ -282,7 +282,10 @@ def _add_baseline_checks(
             category="regression",
             actual=current.relationships.f1,
             threshold=max(0.0, floor),
-            detail="A common baseline case may not lose relationship F1 beyond the configured budget.",
+            detail=(
+                "A common baseline case may not lose relationship F1 beyond the "
+                "configured budget."
+            ),
         )
         _minimum(
             checks,
@@ -374,15 +377,18 @@ def evaluate_release_gates(
         actual=approved_real_narrators,
         comparator=">=",
         threshold=thresholds.min_approved_real_narrators,
-        detail="Production claims require approved anonymized narratives from independent narrators.",
+        detail=(
+            "Production claims require approved anonymized narratives from independent "
+            "narrators."
+        ),
     )
 
+    missing_required = sorted(
+        item.dataset_id
+        for item in report.dataset_coverage
+        if item.required_for_production and not item.loaded
+    )
     if profile is GateProfile.PRODUCTION:
-        missing_required = sorted(
-            item.dataset_id
-            for item in report.dataset_coverage
-            if item.required_for_production and not item.loaded
-        )
         _check(
             checks,
             check_id="coverage.required_production_datasets",
@@ -440,17 +446,17 @@ def evaluate_release_gates(
         )
 
     failed = [item.check_id for item in checks if not item.passed]
-    production_requirements_passed = all(
-        item.passed
-        for item in checks
-        if item.check_id.startswith("coverage.approved_anonymized")
-        or item.check_id.startswith("coverage.required_production")
+    production_thresholds = config.thresholds_for(GateProfile.PRODUCTION)
+    production_eligible = (
+        not failed
+        and not missing_required
+        and approved_real_narrators >= production_thresholds.min_approved_real_narrators
     )
     return ReleaseGateResult(
         profile=profile,
         passed=not failed,
         checks=checks,
-        production_eligible=production_requirements_passed and not failed,
+        production_eligible=production_eligible,
         failed_check_ids=failed,
     )
 
