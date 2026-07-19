@@ -7,10 +7,16 @@ from pathlib import Path
 from typing import BinaryIO
 
 from mura.asr import ASRClientError, RemoteASRClient
-from mura.domain.models import PipelineRequest
+from mura.domain.models import PipelineRequest, PipelineResult
 from mura.jobs import JobStatus
+from mura.observability import ProcessingTrace, TraceOutcome
 from mura.pipeline import MuraPipeline
 from mura.storage.archive import ArchiveRepository
+from mura.storage.completion import (
+    defer_recording_job,
+    fail_recording_job,
+    finalize_recording_job,
+)
 from mura.storage.conflict_resolution import ConflictResolutionService
 from mura.storage.database import ProcessingJobRow, RecordingRepository
 from mura.storage.generic_claims import persist_generic_claims
@@ -128,16 +134,37 @@ class RecordingJobWorker:
             )
             return
 
+        trace = ProcessingTrace(
+            job_id=job.job_id,
+            recording_id=recording.recording_id,
+            family_id=recording.family_id,
+            attempt=job.attempts + 1,
+        )
+        trace.instant(
+            stage="job",
+            event_name="job_claimed",
+            attributes={"attempt": job.attempts + 1},
+        )
+
         worker = self.repository.current_worker()
         if worker is None or worker.status != "ready":
-            self.repository.defer_job(
-                job.job_id,
+            trace.instant(
+                stage="asr_transcription",
+                event_name="worker_unavailable",
+                outcome=TraceOutcome.DEFERRED,
+                attributes={"error_code": "asr_worker_unavailable"},
+            )
+            defer_recording_job(
+                self.repository.database,
+                job_id=job.job_id,
                 error_code="asr_worker_unavailable",
                 error_detail="no ready ASR worker is registered",
                 retry_after_seconds=self.asr_retry_seconds,
+                trace_events=trace.events,
             )
             return
 
+        trace.start("asr_transcription")
         try:
             transcript = self.asr_client.transcribe(
                 worker_url=worker.url,
@@ -146,28 +173,58 @@ class RecordingJobWorker:
                 content_type=recording.content_type,
             )
         except ASRClientError as exc:
+            outcome = TraceOutcome.DEFERRED if exc.retryable else TraceOutcome.ERROR
+            trace.finish(
+                "asr_transcription",
+                outcome=outcome,
+                event_name="stage_deferred" if exc.retryable else "stage_failed",
+                attributes={
+                    "error_code": (
+                        "asr_temporarily_unavailable" if exc.retryable else "asr_failed"
+                    )
+                },
+            )
             if exc.retryable:
-                self.repository.defer_job(
-                    job.job_id,
+                defer_recording_job(
+                    self.repository.database,
+                    job_id=job.job_id,
                     error_code="asr_temporarily_unavailable",
                     error_detail=str(exc),
                     retry_after_seconds=self.asr_retry_seconds,
+                    trace_events=trace.events,
                 )
             else:
-                self.repository.fail_job(
-                    job.job_id,
+                fail_recording_job(
+                    self.repository.database,
+                    job_id=job.job_id,
                     error_code="asr_failed",
                     error_detail=str(exc),
+                    trace_events=trace.events,
                 )
             return
+
+        trace.finish(
+            "asr_transcription",
+            outcome=TraceOutcome.SUCCESS,
+            attributes={
+                "segment_count": len(transcript.segments),
+                "duration_seconds": transcript.duration_seconds,
+            },
+        )
 
         status_by_stage = {
             "cleaning": JobStatus.CLEANING,
             "extracting": JobStatus.EXTRACTING,
             "resolving": JobStatus.RESOLVING,
         }
+        active_pipeline_stage: str | None = None
 
         def report_stage(stage: str) -> None:
+            nonlocal active_pipeline_stage
+            if active_pipeline_stage is not None:
+                trace.finish(active_pipeline_stage, outcome=TraceOutcome.SUCCESS)
+            active_pipeline_stage = stage
+            trace.start(stage)
             status = status_by_stage.get(stage)
             if status is not None:
                 self.repository.update_job_stage(job.job_id, status, stage)
@@ -176,6 +233,11 @@ class RecordingJobWorker:
             resolution_context = self.archive_repository.build_resolution_context(
                 family_id=recording.family_id,
                 speaker_id=recording.speaker_id,
+            )
+            trace.instant(
+                stage="archive_context",
+                event_name="context_loaded",
+                attributes={"known_person_count": len(resolution_context.profiles)},
             )
             result = self.pipeline.process(
                 PipelineRequest(
@@ -187,11 +249,24 @@ class RecordingJobWorker:
                 stage_callback=report_stage,
                 resolution_context=resolution_context,
             )
+            if active_pipeline_stage is not None:
+                trace.finish(active_pipeline_stage, outcome=TraceOutcome.SUCCESS)
+                active_pipeline_stage = None
+
+            result = result.model_copy(
+                update={
+                    "processing": {
+                        **result.processing,
+                        "trace_id": trace.trace_id,
+                    }
+                }
+            )
             self.repository.update_job_stage(
                 job.job_id,
                 JobStatus.RESOLVING,
                 "persisting_archive",
             )
+            trace.start("archive_persistence")
             with self.repository.database.session_factory.begin() as session:
                 self.conflict_resolution.persist_pipeline_result(
                     session,
@@ -203,12 +278,32 @@ class RecordingJobWorker:
                     recording=recording,
                     result=result,
                 )
-            self.repository.complete_job(job.job_id, result)
+                trace.finish(
+                    "archive_persistence",
+                    outcome=TraceOutcome.INFO,
+                    event_name="transaction_prepared",
+                    attributes=_pipeline_trace_attributes(result),
+                )
+                finalize_recording_job(
+                    session,
+                    job_id=job.job_id,
+                    result=result,
+                    trace_events=trace.events,
+                )
         except Exception as exc:
-            self.repository.fail_job(
-                job.job_id,
+            trace.fail_active_stages(error_code="pipeline_failed")
+            trace.instant(
+                stage="job",
+                event_name="job_failed",
+                outcome=TraceOutcome.ERROR,
+                attributes={"error_code": "pipeline_failed"},
+            )
+            fail_recording_job(
+                self.repository.database,
+                job_id=job.job_id,
                 error_code="pipeline_failed",
                 error_detail=str(exc)[:4000],
+                trace_events=trace.events,
             )
 
     def wait_until_idle(self, timeout_seconds: float = 30.0) -> bool:
@@ -217,3 +312,27 @@ class RecordingJobWorker:
             if not self.process_once():
                 return True
         return False
+
+
+def _pipeline_trace_attributes(result: PipelineResult) -> dict[str, str | int | float | bool | None]:
+    attributes: dict[str, str | int | float | bool | None] = {
+        "pipeline_seconds": result.processing.get("total_seconds"),
+        "people_count": len(result.extraction.people_mentions),
+        "relationship_count": len(result.extraction.relationship_claims),
+        "resolution_count": len(result.resolutions),
+        "question_count": len(result.extraction.unresolved_questions),
+    }
+    for usage_name in ("cleaner_usage", "extractor_usage"):
+        usage = result.processing.get(usage_name)
+        if not isinstance(usage, dict):
+            continue
+        prefix = usage_name.removesuffix("_usage")
+        for source_key, target_key in (
+            ("prompt_tokens", "input_units"),
+            ("completion_tokens", "output_units"),
+            ("total_tokens", "total_units"),
+        ):
+            value = usage.get(source_key)
+            if isinstance(value, (int, float)):
+                attributes[f"{prefix}_{target_key}"] = value
+    return attributes
