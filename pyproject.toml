@@ -61,13 +61,6 @@ addopts = "-q --strict-config --strict-markers"
 target-version = "py311"
 line-length = 100
 
-[tool.ruff.format]
-exclude = [
-  "src/mura/orchestration/recordings.py",
-  "src/mura/storage/completion.py",
-  "tests/test_processing_observability.py",
-]
-
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "RUF"]
 
@@ -84,8 +77,6 @@ known-first-party = ["mura"]
 "src/mura/linguistics/kazakh.py" = ["RUF001"]
 "src/mura/linguistics/multilingual.py" = ["RUF001"]
 "src/mura/linguistics/russian.py" = ["RUF001"]
-"src/mura/observability.py" = ["I001"]
-"src/mura/orchestration/recordings.py" = ["E501"]
 "src/mura/relationship_evidence.py" = ["RUF001"]
 "tests/test_anchor_constrained_extraction.py" = ["RUF001"]
 "tests/test_bounded_coreference.py" = ["RUF001"]
