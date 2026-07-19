@@ -274,9 +274,7 @@ def test_temporal_conflict_requires_preferred_claim_and_reopens(tmp_path: Path) 
         if item.conflict_type == "temporal"
     )
     preferred = next(
-        claim
-        for claim in conflict.claims
-        if claim.payload["normalized_value"] == "1978"
+        claim for claim in conflict.claims if claim.payload["normalized_value"] == "1978"
     )
     resolved = review.resolve(
         family_id="family_1",
