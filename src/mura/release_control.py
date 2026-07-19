@@ -4,7 +4,6 @@ import uuid
 from collections.abc import Sequence
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
 
 from pydantic import Field
 from sqlalchemy import DateTime, Integer, String, Text, select
@@ -12,7 +11,7 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from mura.domain.models import PipelineResult, StrictModel
 from mura.observability import ProcessingTraceEvent
-from mura.storage.database import Base, Database, JSON_VALUE, utcnow
+from mura.storage.database import Base, Database, utcnow
 from mura.versioning import get_pipeline_versions
 
 CURRENT_RELEASE_ID = "mura-core-v1.0.0-rc1"
