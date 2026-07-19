@@ -160,7 +160,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("explanation", sa.Text(), nullable=False),
-        sa.Column("confidence", sa.Float(), nullable=False),
+        sa.Column("confidence", sa.String(length=32), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(
             ["recording_id"],
