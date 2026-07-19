@@ -186,9 +186,7 @@ def register_operations_routes(
         runtime: object = Depends(get_runtime_dependency),
     ) -> RetentionReport:
         try:
-            return RetentionService(_database(runtime)).apply(
-                confirmation=request.confirmation
-            )
+            return RetentionService(_database(runtime)).apply(confirmation=request.confirmation)
         except RetentionConfirmationError as exc:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
