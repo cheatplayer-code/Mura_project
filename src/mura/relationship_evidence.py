@@ -280,7 +280,7 @@ def analyze_relationship_evidence(
         evidence_class=evidence_class.value,
         auto_accept_eligible=(
             evidence_class in _AUTO_ACCEPTABLE_CLASSES
-            and role_consistent is not False
+            and role_consistent is True
             and speaker_signal_requirement_met
         ),
         coreference_link_ids=list(relationship.coreference_link_ids),
