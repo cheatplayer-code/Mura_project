@@ -5,7 +5,7 @@ from datetime import datetime
 from enum import StrEnum
 
 from pydantic import Field
-from sqlalchemy import DateTime, ForeignKey, String, Text, select
+from sqlalchemy import DateTime, ForeignKey, String, Text, delete, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from mura.domain.models import ClaimObjectType, EvidenceClass, PipelineResult, StrictModel
@@ -19,8 +19,9 @@ from mura.storage.archive import (
     _mapped_people,
     _relationship_pair,
     _relationship_signature,
+    _stable_id,
 )
-from mura.storage.database import Base, Database, JSON_VALUE, RecordingRow, utcnow
+from mura.storage.database import JSON_VALUE, Base, Database, RecordingRow, utcnow
 
 _AUTO_MATERIALIZABLE_CLASSES = {
     EvidenceClass.A_EXPLICIT.value,
@@ -175,7 +176,11 @@ class ConflictResolutionService:
         )
 
     @staticmethod
-    def _relationship_claims(session: Session, *, family_id: str) -> list[ArchiveClaimRow]:
+    def _relationship_claims(
+        session: Session,
+        *,
+        family_id: str,
+    ) -> list[ArchiveClaimRow]:
         return list(
             session.scalars(
                 select(ArchiveClaimRow).where(
@@ -221,7 +226,11 @@ class ConflictResolutionService:
         if exact is not None:
             return exact
         return next(
-            (item for item in conflicts if ConflictResolutionService._conflict_pair(session, item) == pair),
+            (
+                item
+                for item in conflicts
+                if ConflictResolutionService._conflict_pair(session, item) == pair
+            ),
             None,
         )
 
@@ -275,7 +284,10 @@ class ConflictResolutionService:
 
     @staticmethod
     def _reconcile_relationship_conflicts(session: Session, *, family_id: str) -> int:
-        claims = ConflictResolutionService._relationship_claims(session, family_id=family_id)
+        claims = ConflictResolutionService._relationship_claims(
+            session,
+            family_id=family_id,
+        )
         for claim in claims:
             claim.status = _base_claim_status(claim)
 
@@ -289,6 +301,7 @@ class ConflictResolutionService:
             signatures = {_relationship_signature(candidate) for candidate in candidates}
             if len(signatures) <= 1:
                 continue
+
             claim_ids = sorted(candidate.claim_id for candidate in candidates)
             conflict = ConflictResolutionService._find_existing_conflict(
                 session,
@@ -298,7 +311,7 @@ class ConflictResolutionService:
             )
             if conflict is None:
                 conflict = ArchiveConflictRow(
-                    conflict_id=f"conflict_{uuid.uuid4().hex}",
+                    conflict_id=_stable_id("conflict", family_id, *claim_ids),
                     family_id=family_id,
                     conflict_type="relationship",
                     status="open",
@@ -345,8 +358,9 @@ class ConflictResolutionService:
                     previous_status=previous_status,
                     resulting_status="open",
                     reviewer_reference="system:archive-ingestion",
-                    note="conflict reopened because the preferred claim is no longer available",
+                    note="conflict reopened because the preferred claim is unavailable",
                 )
+
             ConflictResolutionService._apply_conflict_state(session, conflict=conflict)
             current_conflicts.append(conflict)
 
@@ -354,10 +368,13 @@ class ConflictResolutionService:
 
     @staticmethod
     def _rebuild_graph(session: Session, *, family_id: str) -> int:
-        session.query(FamilyGraphEdgeRow).filter(
-            FamilyGraphEdgeRow.family_id == family_id
-        ).delete(synchronize_session=False)
-        claims = ConflictResolutionService._relationship_claims(session, family_id=family_id)
+        session.execute(
+            delete(FamilyGraphEdgeRow).where(FamilyGraphEdgeRow.family_id == family_id)
+        )
+        claims = ConflictResolutionService._relationship_claims(
+            session,
+            family_id=family_id,
+        )
         eligible = [
             claim
             for claim in claims
@@ -371,7 +388,7 @@ class ConflictResolutionService:
             relationship_type, subject_id, subject_role, object_id, object_role = values
             session.add(
                 FamilyGraphEdgeRow(
-                    edge_id=f"edge_{uuid.uuid5(uuid.NAMESPACE_URL, family_id + ':' + ':'.join(values)).hex}",
+                    edge_id=_stable_id("edge", family_id, *values),
                     family_id=family_id,
                     relationship_type=relationship_type,
                     subject_person_id=subject_id,
@@ -383,7 +400,13 @@ class ConflictResolutionService:
             )
         return len(grouped)
 
-    def _get_conflict(self, session: Session, *, family_id: str, conflict_id: str) -> ArchiveConflictRow:
+    @staticmethod
+    def _get_conflict(
+        session: Session,
+        *,
+        family_id: str,
+        conflict_id: str,
+    ) -> ArchiveConflictRow:
         conflict = session.get(ArchiveConflictRow, conflict_id)
         if conflict is None or conflict.family_id != family_id:
             raise ConflictNotFoundError("conflict not found in family archive")
@@ -399,13 +422,18 @@ class ConflictResolutionService:
         note: str,
     ) -> ConflictMutationResult:
         with self.database.session_factory.begin() as session:
-            conflict = self._get_conflict(session, family_id=family_id, conflict_id=conflict_id)
+            conflict = self._get_conflict(
+                session,
+                family_id=family_id,
+                conflict_id=conflict_id,
+            )
             if preferred_claim_id not in conflict.claim_ids:
                 raise ConflictResolutionError("preferred claim must belong to the conflict")
             preferred = session.get(ArchiveClaimRow, preferred_claim_id)
             if preferred is None or not _claim_is_grounded(preferred):
-                raise ConflictResolutionError("preferred claim is not eligible for materialization")
-            previous_status = conflict.status
+                raise ConflictResolutionError(
+                    "preferred claim is not eligible for materialization"
+                )
             if (
                 conflict.status == "resolved"
                 and conflict.preferred_claim_id == preferred_claim_id
@@ -417,6 +445,8 @@ class ConflictResolutionService:
                     conflict=self._view(session, conflict),
                     graph_edges=graph_edges,
                 )
+
+            previous_status = conflict.status
             conflict.status = "resolved"
             conflict.preferred_claim_id = preferred_claim_id
             conflict.resolution_note = note
@@ -434,7 +464,10 @@ class ConflictResolutionService:
             self._apply_conflict_state(session, conflict=conflict)
             graph_edges = self._rebuild_graph(session, family_id=family_id)
             session.flush()
-            return ConflictMutationResult(conflict=self._view(session, conflict), graph_edges=graph_edges)
+            return ConflictMutationResult(
+                conflict=self._view(session, conflict),
+                graph_edges=graph_edges,
+            )
 
     def dismiss(
         self,
@@ -445,7 +478,19 @@ class ConflictResolutionService:
         note: str,
     ) -> ConflictMutationResult:
         with self.database.session_factory.begin() as session:
-            conflict = self._get_conflict(session, family_id=family_id, conflict_id=conflict_id)
+            conflict = self._get_conflict(
+                session,
+                family_id=family_id,
+                conflict_id=conflict_id,
+            )
+            if conflict.status == "dismissed" and conflict.resolution_note == note:
+                graph_edges = self._rebuild_graph(session, family_id=family_id)
+                session.flush()
+                return ConflictMutationResult(
+                    conflict=self._view(session, conflict),
+                    graph_edges=graph_edges,
+                )
+
             previous_status = conflict.status
             conflict.status = "dismissed"
             conflict.preferred_claim_id = None
@@ -463,7 +508,10 @@ class ConflictResolutionService:
             self._apply_conflict_state(session, conflict=conflict)
             graph_edges = self._rebuild_graph(session, family_id=family_id)
             session.flush()
-            return ConflictMutationResult(conflict=self._view(session, conflict), graph_edges=graph_edges)
+            return ConflictMutationResult(
+                conflict=self._view(session, conflict),
+                graph_edges=graph_edges,
+            )
 
     def reopen(
         self,
@@ -474,9 +522,14 @@ class ConflictResolutionService:
         note: str,
     ) -> ConflictMutationResult:
         with self.database.session_factory.begin() as session:
-            conflict = self._get_conflict(session, family_id=family_id, conflict_id=conflict_id)
+            conflict = self._get_conflict(
+                session,
+                family_id=family_id,
+                conflict_id=conflict_id,
+            )
             if conflict.status == "open":
                 raise ConflictResolutionError("conflict is already open")
+
             previous_status = conflict.status
             conflict.status = "open"
             conflict.preferred_claim_id = None
@@ -494,7 +547,10 @@ class ConflictResolutionService:
             self._apply_conflict_state(session, conflict=conflict)
             graph_edges = self._rebuild_graph(session, family_id=family_id)
             session.flush()
-            return ConflictMutationResult(conflict=self._view(session, conflict), graph_edges=graph_edges)
+            return ConflictMutationResult(
+                conflict=self._view(session, conflict),
+                graph_edges=graph_edges,
+            )
 
     def list_conflicts(
         self,
@@ -503,15 +559,23 @@ class ConflictResolutionService:
         status: str | None = None,
     ) -> list[ConflictReviewView]:
         with self.database.session_factory() as session:
-            statement = select(ArchiveConflictRow).where(ArchiveConflictRow.family_id == family_id)
+            statement = select(ArchiveConflictRow).where(
+                ArchiveConflictRow.family_id == family_id
+            )
             if status is not None:
                 statement = statement.where(ArchiveConflictRow.status == status)
-            conflicts = list(session.scalars(statement.order_by(ArchiveConflictRow.updated_at.desc())))
+            conflicts = list(
+                session.scalars(statement.order_by(ArchiveConflictRow.updated_at.desc()))
+            )
             return [self._view(session, conflict) for conflict in conflicts]
 
     def get_conflict(self, *, family_id: str, conflict_id: str) -> ConflictReviewView:
         with self.database.session_factory() as session:
-            conflict = self._get_conflict(session, family_id=family_id, conflict_id=conflict_id)
+            conflict = self._get_conflict(
+                session,
+                family_id=family_id,
+                conflict_id=conflict_id,
+            )
             return self._view(session, conflict)
 
     @staticmethod
