@@ -125,5 +125,36 @@ jobs:
           if-no-files-found: warn
           retention-days: 1
 
+      - name: Evaluate release benchmark
+        id: release_gate
+        shell: bash
+        run: |
+          set -o pipefail
+          mura-evaluate-core \
+            --manifest benchmarks/manifest.json \
+            --json-output artifacts/release-benchmark.json \
+            --markdown-output artifacts/release-benchmark.md \
+            --gate-config benchmarks/release_gates.json \
+            --gate-profile pull_request \
+            --baseline docs/baselines/current_main.json \
+            --entity-resolution-dataset benchmarks/entity_resolution_v1.json \
+            --gate-output artifacts/release-gate.json \
+            --gate-markdown-output artifacts/release-gate.md \
+            2>&1 | tee release-gate-output.txt
+
+      - name: Upload release evaluation
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-evaluation
+          path: |
+            artifacts/release-benchmark.json
+            artifacts/release-benchmark.md
+            artifacts/release-gate.json
+            artifacts/release-gate.md
+            release-gate-output.txt
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Static security scan
         run: bandit -q -r src apps services -ll
