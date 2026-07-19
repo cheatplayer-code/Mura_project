@@ -61,6 +61,12 @@ addopts = "-q --strict-config --strict-markers"
 target-version = "py311"
 line-length = 100
 
+[tool.ruff.format]
+exclude = [
+  "src/mura/storage/generic_claims.py",
+  "tests/test_generic_profiles.py",
+]
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "RUF"]
 
