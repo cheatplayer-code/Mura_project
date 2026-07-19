@@ -5,7 +5,8 @@ from collections.abc import Callable
 
 from mura.deepseek.service import DeepSeekPipelineService
 from mura.domain.models import PipelineRequest, PipelineResult
-from mura.resolution import resolve_mentions
+from mura.entity_resolution import EntityResolutionContext, legacy_resolution_context
+from mura.resolution import resolve_mentions_with_report
 from mura.versioning import get_pipeline_versions
 
 StageCallback = Callable[[str], None]
@@ -20,6 +21,7 @@ class MuraPipeline:
         request: PipelineRequest,
         *,
         stage_callback: StageCallback | None = None,
+        resolution_context: EntityResolutionContext | None = None,
     ) -> PipelineResult:
         started = time.perf_counter()
         self._report(stage_callback, "cleaning")
@@ -37,17 +39,19 @@ class MuraPipeline:
             known_people=request.known_people,
         )
         self._report(stage_callback, "resolving")
-        resolutions = resolve_mentions(extraction, request.known_people)
+        resolved_context = resolution_context or legacy_resolution_context(request.known_people)
+        resolution_run = resolve_mentions_with_report(extraction, resolved_context)
 
         return PipelineResult(
             transcript=request.transcript,
             cleaned_transcript=cleaned,
             extraction=extraction,
-            resolutions=resolutions,
+            resolutions=resolution_run.resolutions,
             processing={
                 "total_seconds": round(time.perf_counter() - started, 3),
                 "cleaner_usage": cleaner_usage,
                 "extractor_usage": extractor_usage,
+                "entity_resolution": resolution_run.model_dump(mode="json"),
                 "versions": get_pipeline_versions().model_dump(mode="json"),
             },
         )
