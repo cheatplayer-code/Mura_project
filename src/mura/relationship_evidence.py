@@ -73,10 +73,7 @@ def _resolved_coreference_signal(
                 "object_mention_id": object_id,
                 "object_role": object_role.value,
                 "source_surface": f"{anaphor.surface} {kinship.surface}",
-                "rule_id": (
-                    f"{kinship.language}.relationship."
-                    "resolved_possessive_coreference.v1"
-                ),
+                "rule_id": (f"{kinship.language}.relationship.resolved_possessive_coreference.v1"),
             }
             if coreference._relationship_matches_edge(relationship, edge):
                 return signal, True
