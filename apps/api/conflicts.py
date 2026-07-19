@@ -10,10 +10,10 @@ from mura.storage.conflict_resolution import (
     ConflictMutationResult,
     ConflictNotFoundError,
     ConflictResolutionError,
-    ConflictResolutionService,
     ConflictReviewView,
 )
 from mura.storage.database import Database
+from mura.storage.generic_review import UnifiedConflictReviewService
 
 
 class RuntimeWithDatabase(Protocol):
@@ -31,9 +31,9 @@ class ResolveConflictRequest(ConflictDecisionRequest):
     preferred_claim_id: str = Field(min_length=1, max_length=64)
 
 
-def _service(runtime: object) -> ConflictResolutionService:
+def _service(runtime: object) -> UnifiedConflictReviewService:
     typed_runtime = cast(RuntimeWithDatabase, runtime)
-    return ConflictResolutionService(typed_runtime.database)
+    return UnifiedConflictReviewService(typed_runtime.database)
 
 
 def _not_found(exc: ConflictNotFoundError) -> HTTPException:
