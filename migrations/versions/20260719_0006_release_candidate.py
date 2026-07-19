@@ -6,6 +6,7 @@ Create Date: 2026-07-19
 """
 
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
 from alembic import op
@@ -31,6 +32,26 @@ def upgrade() -> None:
         "ix_release_control_active_release_id",
         "release_control",
         ["active_release_id"],
+    )
+    release_control = sa.table(
+        "release_control",
+        sa.column("control_key", sa.String(length=32)),
+        sa.column("active_release_id", sa.String(length=96)),
+        sa.column("previous_release_id", sa.String(length=96)),
+        sa.column("generation", sa.Integer()),
+        sa.column("updated_at", sa.DateTime(timezone=True)),
+    )
+    op.bulk_insert(
+        release_control,
+        [
+            {
+                "control_key": "global",
+                "active_release_id": "mura-core-v1.0.0-rc1",
+                "previous_release_id": "mura-core-v0.9.0",
+                "generation": 1,
+                "updated_at": datetime.now(UTC),
+            }
+        ],
     )
     op.create_table(
         "release_decisions",
