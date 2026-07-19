@@ -13,7 +13,13 @@ from mura.deepseek.anchor_prompts import (
 from mura.deepseek.anchors import ExtractionAnchorBundle, build_extraction_anchor_bundle
 from mura.deepseek.client import DeepSeekClient, DeepSeekError, DeepSeekUsage
 from mura.deepseek.prompts import CLEANER_REPAIR_SYSTEM_PROMPT, CLEANER_SYSTEM_PROMPT
-from mura.domain.models import CleanerResult, ExtractionResult, KnownPerson, TranscriptEnvelope
+from mura.domain.models import (
+    CleanerResult,
+    ExtractionResult,
+    KnownPerson,
+    ReadableSegment,
+    TranscriptEnvelope,
+)
 from mura.extraction_sanitizer import sanitize_extraction_output
 from mura.validation import ContractValidationError, validate_cleaner_result
 
@@ -57,18 +63,36 @@ class DeepSeekPipelineService:
             result = self._validate_model(CleanerResult, raw, "cleaner")
             validate_cleaner_result(transcript, result)
         except (DeepSeekError, ContractValidationError) as exc:
-            result, repair_usage = self._repair_cleaner(
-                transcript=transcript,
-                invalid_output=raw,
-                validation_error=str(exc),
-            )
+            initial_validation_error = str(exc)
+            try:
+                result, repair_usage = self._repair_cleaner(
+                    transcript=transcript,
+                    invalid_output=raw,
+                    validation_error=initial_validation_error,
+                )
+            except (DeepSeekError, ContractValidationError) as repair_exc:
+                fallback = self._raw_preserving_cleaner_fallback(transcript)
+                return fallback, {
+                    **initial_usage,
+                    "repair_attempted": True,
+                    "fallback_used": True,
+                    "fallback_strategy": "raw_transcript",
+                    "initial_validation_error": initial_validation_error,
+                    "repair_validation_error": str(repair_exc),
+                    "initial_usage": initial_usage,
+                }
             return result, {
                 **repair_usage,
                 "repair_attempted": True,
-                "initial_validation_error": str(exc),
+                "fallback_used": False,
+                "initial_validation_error": initial_validation_error,
                 "initial_usage": initial_usage,
             }
-        return result, {**initial_usage, "repair_attempted": False}
+        return result, {
+            **initial_usage,
+            "repair_attempted": False,
+            "fallback_used": False,
+        }
 
     def _repair_cleaner(
         self,
@@ -93,6 +117,20 @@ class DeepSeekPipelineService:
         repaired = self._validate_model(CleanerResult, repaired_raw, "cleaner repair")
         validate_cleaner_result(transcript, repaired)
         return repaired, self._usage_dict(repair_usage)
+
+    @staticmethod
+    def _raw_preserving_cleaner_fallback(transcript: TranscriptEnvelope) -> CleanerResult:
+        fallback = CleanerResult(
+            readable_segments=[
+                ReadableSegment(segment_id=segment.segment_id, text=segment.text)
+                for segment in transcript.segments
+            ],
+            detected_corrections=[],
+            uncertain_fragments=[],
+            full_readable_text=" ".join(segment.text for segment in transcript.segments),
+        )
+        validate_cleaner_result(transcript, fallback)
+        return fallback
 
     def extract(
         self,
