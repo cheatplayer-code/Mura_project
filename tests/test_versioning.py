@@ -12,8 +12,7 @@ def test_pipeline_versions_are_explicit_and_copy_safe() -> None:
     assert versions.evidence_rules == "claim-evidence-v2+bounded-coreference-v1"
     assert versions.resolver == "mention-resolver-v2-cross-recording"
     assert (
-        versions.archive_schema
-        == "archive-claim-ledger-v1+conflict-decisions-v1+generic-claims-v1"
+        versions.archive_schema == "archive-claim-ledger-v1+conflict-decisions-v1+generic-claims-v1"
     )
     assert versions.materializer == "family-materializer-v3-graph-and-profiles"
     assert versions.evaluator == "core-evaluator-v1+entity-resolution-v1"
