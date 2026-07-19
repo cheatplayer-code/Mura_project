@@ -84,7 +84,7 @@ def test_release_manifest_matches_runtime_catalog() -> None:
 
 def test_one_command_release_smoke_passes(tmp_path: Path) -> None:
     report = run_smoke(tmp_path / "smoke.db")
-    assert report["passed"] is True
+    assert report["passed"] is True, report
     checks = report["checks"]
     assert isinstance(checks, dict)
     assert all(checks.values())
