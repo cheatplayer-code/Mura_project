@@ -151,8 +151,7 @@ def _candidate_name_signals(
                 rule_id="resolution.name.canonical_exact.v2",
                 kind=ResolutionSignalKind.CANONICAL_NAME,
                 detail=(
-                    "mention primary name matches canonical archive name "
-                    f"{person.canonical_name!r}"
+                    f"mention primary name matches canonical archive name {person.canonical_name!r}"
                 ),
                 person_id=person.person_id,
             )
@@ -480,9 +479,7 @@ def resolve_mentions_with_report(
                     supporting_signals=all_support,
                     conflicting_signals=all_conflicts,
                     rule_ids=list(
-                        dict.fromkeys(
-                            signal.rule_id for signal in [*all_support, *all_conflicts]
-                        )
+                        dict.fromkeys(signal.rule_id for signal in [*all_support, *all_conflicts])
                     ),
                     reason=(
                         "name overlap exists, but identity is ambiguous, insufficiently "
