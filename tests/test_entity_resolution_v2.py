@@ -8,6 +8,9 @@ from mura.domain.models import (
     KnownPerson,
     PersonCategory,
     PersonMention,
+    RelationshipClaim,
+    RelationshipRole,
+    RelationshipType,
     ResolutionStatus,
 )
 from mura.entity_resolution import EntityResolutionContext, KnownPersonProfile
@@ -122,6 +125,60 @@ def test_relation_and_generation_must_both_agree_for_name_based_auto_merge() -> 
 
     assert resolution.status is ResolutionStatus.RESOLVED
     assert resolution.person_id == "person_erlan_son"
+
+
+def test_uncertain_relationship_cannot_corroborate_an_identity_merge() -> None:
+    erlan = _mention(mention_id="mention_erlan", name="Ерлан")
+    dina = _mention(mention_id="mention_dina", name="Дина")
+    extraction = ExtractionResult(
+        schema_version="extraction-v2",
+        recording_id="recording_graph_guard",
+        speaker_id="speaker_test",
+        speaker_name="Күләш",
+        people_mentions=[erlan, dina],
+        relationship_claims=[
+            RelationshipClaim(
+                relationship_id="relationship_spouse",
+                relationship_type=RelationshipType.SPOUSE,
+                subject_mention_id="mention_erlan",
+                subject_role=RelationshipRole.SPOUSE,
+                object_mention_id="mention_dina",
+                object_role=RelationshipRole.SPOUSE,
+                source_segment_ids=["seg_001"],
+                confidence=1.0,
+            )
+        ],
+    )
+    context = EntityResolutionContext(
+        family_id="family_a",
+        profiles=[
+            KnownPersonProfile(
+                family_id="family_a",
+                person=KnownPerson(
+                    person_id="person_erlan",
+                    canonical_name="Ерлан",
+                    category=PersonCategory.FAMILY_MEMBER,
+                ),
+                spouse_person_ids=["person_dinara"],
+            ),
+            KnownPersonProfile(
+                family_id="family_a",
+                person=KnownPerson(
+                    person_id="person_dinara",
+                    canonical_name="Динара",
+                    aliases=["Дина"],
+                    category=PersonCategory.FAMILY_MEMBER,
+                ),
+                spouse_person_ids=["person_erlan"],
+            ),
+        ],
+    )
+
+    run = resolve_mentions_with_report(extraction, context)
+    resolutions = {item.mention_id: item for item in run.resolutions}
+
+    assert resolutions["mention_dina"].status is ResolutionStatus.RESOLVED
+    assert resolutions["mention_erlan"].status is ResolutionStatus.NEEDS_REVIEW
 
 
 def test_foreign_family_profile_is_rejected_before_resolution() -> None:
