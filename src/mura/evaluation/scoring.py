@@ -266,8 +266,7 @@ def score_case(
         valid_segment_ids,
     )
     self_relationships = sum(
-        item.subject_mention_id == item.object_mention_id
-        for item in extraction.relationship_claims
+        item.subject_mention_id == item.object_mention_id for item in extraction.relationship_claims
     )
     claims_without_evidence = _accepted_claims_without_evidence(extraction)
 
