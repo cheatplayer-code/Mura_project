@@ -61,12 +61,6 @@ addopts = "-q --strict-config --strict-markers"
 target-version = "py311"
 line-length = 100
 
-[tool.ruff.format]
-exclude = [
-  "src/mura/storage/archive.py",
-  "tests/test_archive_persistence.py",
-]
-
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "RUF"]
 
@@ -81,7 +75,6 @@ select = ["E", "F", "I", "B", "UP", "RUF"]
 "src/mura/linguistics/multilingual.py" = ["RUF001"]
 "src/mura/linguistics/russian.py" = ["RUF001"]
 "src/mura/relationship_evidence.py" = ["RUF001"]
-"src/mura/storage/archive.py" = ["F401", "I001"]
 "tests/test_anchor_constrained_extraction.py" = ["RUF001"]
 "tests/test_bounded_coreference.py" = ["RUF001"]
 "tests/test_entity_resolution_v2.py" = ["RUF001"]
@@ -102,10 +95,6 @@ warn_redundant_casts = true
 warn_unused_configs = true
 warn_unused_ignores = true
 exclude = ["notebooks/"]
-
-[[tool.mypy.overrides]]
-module = "mura.storage.archive"
-disable_error_code = ["return-value"]
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]
