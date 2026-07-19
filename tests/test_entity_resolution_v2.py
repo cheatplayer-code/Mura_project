@@ -73,7 +73,34 @@ def test_exact_name_alone_is_reviewed_instead_of_merged() -> None:
     assert run.metrics.needs_review == 1
 
 
-def test_established_alias_resolves_but_stays_unreviewed() -> None:
+def test_verified_alias_resolves_but_stays_unreviewed() -> None:
+    mention = _mention(mention_id="mention_ereke", name="Ереке")
+    context = EntityResolutionContext(
+        family_id="family_a",
+        profiles=[
+            KnownPersonProfile(
+                family_id="family_a",
+                person=KnownPerson(
+                    person_id="person_erlan",
+                    canonical_name="Ерлан",
+                    aliases=["Ереке"],
+                    category=PersonCategory.FAMILY_MEMBER,
+                ),
+                verified_aliases=["Ереке"],
+            )
+        ],
+    )
+
+    run = resolve_mentions_with_report(_extraction(mention), context)
+
+    assert run.resolutions[0].status is ResolutionStatus.RESOLVED
+    assert run.resolutions[0].person_id == "person_erlan"
+    trace = run.traces[0]
+    assert trace.verification_status.value == "unreviewed"
+    assert "resolution.name.verified_alias.v2" in trace.rule_ids
+
+
+def test_unverified_archive_alias_remains_reviewable() -> None:
     mention = _mention(mention_id="mention_ereke", name="Ереке")
     context = EntityResolutionContext(
         family_id="family_a",
@@ -92,11 +119,8 @@ def test_established_alias_resolves_but_stays_unreviewed() -> None:
 
     run = resolve_mentions_with_report(_extraction(mention), context)
 
-    assert run.resolutions[0].status is ResolutionStatus.RESOLVED
-    assert run.resolutions[0].person_id == "person_erlan"
-    trace = run.traces[0]
-    assert trace.verification_status.value == "unreviewed"
-    assert "resolution.name.established_alias.v2" in trace.rule_ids
+    assert run.resolutions[0].status is ResolutionStatus.NEEDS_REVIEW
+    assert "resolution.name.archive_alias_candidate.v2" in run.traces[0].rule_ids
 
 
 def test_relation_and_generation_must_both_agree_for_name_based_auto_merge() -> None:
@@ -107,6 +131,7 @@ def test_relation_and_generation_must_both_agree_for_name_based_auto_merge() -> 
     )
     context = EntityResolutionContext(
         family_id="family_a",
+        speaker_id="speaker_kulash",
         profiles=[
             KnownPersonProfile(
                 family_id="family_a",
@@ -116,7 +141,7 @@ def test_relation_and_generation_must_both_agree_for_name_based_auto_merge() -> 
                     category=PersonCategory.FAMILY_MEMBER,
                     relation_to_speaker="son",
                 ),
-                generation=1,
+                generation_relative_to_speaker=1,
             )
         ],
     )
@@ -169,6 +194,7 @@ def test_uncertain_relationship_cannot_corroborate_an_identity_merge() -> None:
                     aliases=["Дина"],
                     category=PersonCategory.FAMILY_MEMBER,
                 ),
+                verified_aliases=["Дина"],
                 spouse_person_ids=["person_erlan"],
             ),
         ],
@@ -197,11 +223,30 @@ def test_foreign_family_profile_is_rejected_before_resolution() -> None:
         )
 
 
-def test_legacy_adapter_remains_available_but_exact_name_is_fail_closed() -> None:
-    mention = _mention(mention_id="mention_erlan", name="Ерлан")
+def test_verified_alias_must_exist_in_archive_aliases() -> None:
+    with pytest.raises(ValidationError, match="verified aliases"):
+        KnownPersonProfile(
+            family_id="family_a",
+            person=KnownPerson(
+                person_id="person_erlan",
+                canonical_name="Ерлан",
+                aliases=[],
+            ),
+            verified_aliases=["Ереке"],
+        )
+
+
+def test_legacy_adapter_remains_available_but_alias_is_fail_closed() -> None:
+    mention = _mention(mention_id="mention_ereke", name="Ереке")
     resolutions = resolve_mentions(
         _extraction(mention),
-        [KnownPerson(person_id="person_erlan", canonical_name="Ерлан")],
+        [
+            KnownPerson(
+                person_id="person_erlan",
+                canonical_name="Ерлан",
+                aliases=["Ереке"],
+            )
+        ],
     )
 
     assert resolutions[0].status is ResolutionStatus.NEEDS_REVIEW
