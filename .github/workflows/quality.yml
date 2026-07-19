@@ -148,6 +148,7 @@ jobs:
 
       - name: Run release candidate smoke test
         id: release_smoke
+        if: always()
         run: mura-release-smoke --json-output release-smoke-report.json
 
       - name: Upload release smoke report
