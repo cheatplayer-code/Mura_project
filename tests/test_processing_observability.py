@@ -20,6 +20,7 @@ from mura.observability import (
     TraceRepository,
     sanitize_trace_attributes,
 )
+from mura.release_control import CURRENT_RELEASE_ID
 from mura.storage.archive import ArchivePersonRow
 from mura.storage.completion import finalize_recording_job
 from mura.storage.database import Database, RecordingRepository
@@ -179,7 +180,15 @@ def test_atomic_completion_persists_result_job_archive_and_trace(tmp_path: Path)
             trace_events=trace.events,
         )
 
-    assert repository.get_pipeline_result("rec_trace") == _result()
+    stored_result = repository.get_pipeline_result("rec_trace")
+    assert stored_result is not None
+    assert stored_result.transcript == _result().transcript
+    assert stored_result.extraction == _result().extraction
+    assert stored_result.processing["release_id"] == CURRENT_RELEASE_ID
+    budget = stored_result.processing["runtime_budget"]
+    assert isinstance(budget, dict)
+    assert budget["passed"] is True
+    assert budget["complete"] is False
     job = repository.get_job("job_trace")
     assert job is not None
     assert job.status == JobStatus.COMPLETED.value

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mura-project"
-version = "0.2.0"
+version = "1.0.0rc1"
 description = "Voice-first family memory archive for Kazakh and Russian stories"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -24,6 +24,7 @@ dependencies = [
 
 [project.scripts]
 mura-evaluate-core = "mura.evaluation.cli:main"
+mura-release-smoke = "mura.smoke:main"
 
 [project.optional-dependencies]
 kaggle = [

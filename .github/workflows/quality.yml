@@ -146,6 +146,20 @@ jobs:
           if-no-files-found: warn
           retention-days: 1
 
+      - name: Run release candidate smoke test
+        id: release_smoke
+        if: always()
+        run: mura-release-smoke --json-output release-smoke-report.json
+
+      - name: Upload release smoke report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-smoke-report
+          path: release-smoke-report.json
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Enforce ML release gates
         shell: bash
         run: |
