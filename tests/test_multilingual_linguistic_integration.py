@@ -91,7 +91,7 @@ def test_russian_inflected_speaker_relationship_is_accepted() -> None:
     relationship = result.relationship_claims[0]
     assert relationship.evidence_class is EvidenceClass.C_SPEAKER_ANCHORED
     assert relationship.provenance is not None
-    assert relationship.provenance.pipeline_versions["pipeline"] == "mura-core-v0.7.0"
+    assert relationship.provenance.pipeline_versions["pipeline"] == "mura-core-v0.8.0"
 
 
 def test_russian_third_person_possessive_is_quarantined() -> None:

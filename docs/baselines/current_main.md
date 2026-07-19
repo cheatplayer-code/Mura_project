@@ -11,8 +11,9 @@ Manifest: `benchmarks/manifest.json`
 | domain_schema | `domain-v2` |
 | evaluator | `core-evaluator-v1` |
 | evidence_rules | `claim-evidence-v2+bounded-coreference-v1` |
-| extractor_prompt | `extractor-v2` |
-| pipeline | `mura-core-v0.7.0` |
+| extractor_prompt | `extractor-v3-anchor-constrained` |
+| extractor_repair_prompt | `extractor-repair-v1-anchor-constrained` |
+| pipeline | `mura-core-v0.8.0` |
 | resolver | `mention-resolver-v1+bounded-coreference-v1` |
 
 ## Aggregate metrics
@@ -26,13 +27,13 @@ Manifest: `benchmarks/manifest.json`
 - Unknown segment references: **0**
 - Self relationships: **0**
 
-## PR 17 bounded-coreference improvements
+## PR 18 anchor-constrained extraction changes
 
-1. Singular `оның / его / his` relationships may be retained only when the bounded discourse window contains exactly one compatible antecedent.
-2. Kazakh plural `олардың` resolves to an explicitly coordinated married pair and retains both parent-child claims.
-3. Competing candidates such as `Ерлан встретил Болата. Его сын Нурлан.` still produce reviewable ambiguity instead of an accepted edge.
-4. Context-resolved relationships retain evidence class D and remain ineligible for automatic graph materialization.
-5. Model-proposed resolved links cannot authorize a claim unless deterministic discourse or human review independently supports the antecedent.
+1. DeepSeek receives a typed, versioned anchor contract containing the complete allowed segment set, speaker anchors, known-person surfaces, bounded name candidates, and audited kinship annotations.
+2. Anchors remain candidate-generation hints and cannot become evidence, prove identity, authorize a merge, or determine relationship direction.
+3. Fatal top-level collection-shape failures may receive one bounded extraction-repair invocation using the exact same anchor contract.
+4. Valid empty outputs and isolated invalid objects remain sanitizer outcomes and do not trigger a second semantic extraction call.
+5. The deterministic reasoning benchmark metrics remain unchanged because this phase modifies candidate-generation inputs rather than sanitizer rules.
 
 ## Scope and limitations
 
