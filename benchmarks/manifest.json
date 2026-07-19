@@ -1,11 +1,35 @@
 {
-  "schema_version": "benchmark-manifest-v1",
+  "schema_version": "benchmark-manifest-v2",
   "datasets": [
     {
       "dataset_id": "synthetic_current_main",
       "path": "synthetic/current_main.json",
       "split": "validation",
-      "enabled": true
+      "layer": "deterministic",
+      "enabled": true,
+      "approved_anonymized": false,
+      "narrator_count": 0,
+      "required_for_production": false
+    },
+    {
+      "dataset_id": "adversarial_public_v1",
+      "path": "adversarial/public_v1.json",
+      "split": "test",
+      "layer": "adversarial",
+      "enabled": true,
+      "approved_anonymized": false,
+      "narrator_count": 0,
+      "required_for_production": false
+    },
+    {
+      "dataset_id": "approved_anonymized_real",
+      "path": "private/approved_real.json",
+      "split": "test",
+      "layer": "anonymized_real",
+      "enabled": false,
+      "approved_anonymized": false,
+      "narrator_count": 0,
+      "required_for_production": true
     }
   ]
 }
