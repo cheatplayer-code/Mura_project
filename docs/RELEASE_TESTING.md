@@ -101,9 +101,9 @@ After starting the Core API, use the same bearer token configured as `CORE_API_K
 GET  /v1/operations/release
 POST /v1/operations/release/rollback
 POST /v1/operations/release/activate
-POST /v1/families/{family_id}/replay
+POST /v1/families/{family_id}/replays
 GET  /v1/families/{family_id}/replays
-GET  /v1/operations/retention/preview
+GET  /v1/operations/retention
 POST /v1/operations/retention/apply
 ```
 
