@@ -29,8 +29,8 @@ CURRENT_PIPELINE_VERSIONS = PipelineVersions(
     resolver="mention-resolver-v2-cross-recording",
     archive_schema="archive-claim-ledger-v1+conflict-decisions-v1+generic-claims-v1",
     materializer="family-materializer-v3-graph-and-profiles",
-    evaluator="core-evaluator-v1+entity-resolution-v1",
-    benchmark_schema="benchmark-v1+entity-resolution-benchmark-v1",
+    evaluator="core-evaluator-v2-release-gates+entity-resolution-v1",
+    benchmark_schema="benchmark-v2-adversarial+entity-resolution-benchmark-v1",
 )
 
 
