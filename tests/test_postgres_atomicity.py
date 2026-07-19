@@ -17,6 +17,7 @@ from mura.domain.models import (
 )
 from mura.jobs import JobStatus
 from mura.observability import ProcessingTrace, TraceOutcome, TraceRepository
+from mura.release_control import CURRENT_RELEASE_ID
 from mura.storage.archive import ArchivePersonRow
 from mura.storage.completion import finalize_recording_job
 from mura.storage.database import Database, RecordingRepository
@@ -156,5 +157,11 @@ def test_postgres_migration_and_atomic_completion(tmp_path: Path) -> None:
     completed_job = repository.get_job(job_id)
     assert completed_job is not None
     assert completed_job.status == JobStatus.COMPLETED.value
-    assert repository.get_pipeline_result(recording_id) == _result(recording_id)
+    stored_result = repository.get_pipeline_result(recording_id)
+    assert stored_result is not None
+    assert stored_result.transcript == _result(recording_id).transcript
+    assert stored_result.processing["release_id"] == CURRENT_RELEASE_ID
+    budget = stored_result.processing["runtime_budget"]
+    assert isinstance(budget, dict)
+    assert budget["passed"] is True
     assert TraceRepository(database).get_job_trace(job_id=job_id) is not None
