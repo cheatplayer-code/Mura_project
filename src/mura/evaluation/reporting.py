@@ -73,10 +73,7 @@ def render_markdown_report(report: BenchmarkReport) -> str:
             ),
             f"- Unknown segment references: **{summary.unknown_segment_references}**",
             f"- Self relationships: **{summary.self_relationships}**",
-            (
-                "- Accepted claims without evidence: "
-                f"**{summary.accepted_claims_without_evidence}**"
-            ),
+            (f"- Accepted claims without evidence: **{summary.accepted_claims_without_evidence}**"),
             f"- Critical graph violations: **{summary.critical_graph_violations}**",
             "",
             "## Dataset coverage",
