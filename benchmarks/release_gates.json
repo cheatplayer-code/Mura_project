@@ -1,0 +1,53 @@
+{
+  "schema_version": "release-gates-v1",
+  "profiles": {
+    "pull_request": {
+      "min_relationship_precision": 0.97,
+      "min_relationship_recall": 0.9,
+      "min_direction_accuracy": 0.99,
+      "min_provenance_completeness": 1.0,
+      "max_unsupported_acceptance_rate": 0.01,
+      "max_unknown_segment_references": 0,
+      "max_self_relationships": 0,
+      "max_accepted_claims_without_evidence": 0,
+      "max_critical_graph_violations": 0,
+      "max_false_merges": 0,
+      "max_false_splits": 0,
+      "min_entity_identity_accuracy": 1.0,
+      "min_entity_review_routing_accuracy": 1.0,
+      "required_languages": [
+        "kk",
+        "ru",
+        "en",
+        "mixed"
+      ],
+      "min_adversarial_cases": 8,
+      "min_approved_real_narrators": 0,
+      "max_common_case_f1_regression": 0.0
+    },
+    "production": {
+      "min_relationship_precision": 0.97,
+      "min_relationship_recall": 0.9,
+      "min_direction_accuracy": 0.99,
+      "min_provenance_completeness": 1.0,
+      "max_unsupported_acceptance_rate": 0.01,
+      "max_unknown_segment_references": 0,
+      "max_self_relationships": 0,
+      "max_accepted_claims_without_evidence": 0,
+      "max_critical_graph_violations": 0,
+      "max_false_merges": 0,
+      "max_false_splits": 0,
+      "min_entity_identity_accuracy": 1.0,
+      "min_entity_review_routing_accuracy": 1.0,
+      "required_languages": [
+        "kk",
+        "ru",
+        "en",
+        "mixed"
+      ],
+      "min_adversarial_cases": 8,
+      "min_approved_real_narrators": 3,
+      "max_common_case_f1_regression": 0.0
+    }
+  }
+}
