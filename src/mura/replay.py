@@ -100,6 +100,12 @@ def _semantic_extraction_payload(extraction: ExtractionResult) -> dict[str, Any]
     return payload
 
 
+def _candidate_payload_for_replay(extraction: ExtractionResult) -> dict[str, Any]:
+    payload = extraction.model_dump(mode="json")
+    payload["provenance_activities"] = []
+    return payload
+
+
 def _snapshot(session: Session, *, family_id: str) -> dict[str, object]:
     people = [
         {
@@ -244,7 +250,7 @@ class FamilyReplayService:
         for recording, result_row in source_rows:
             source_result = PipelineResult.model_validate(result_row.payload)
             sanitized, sanitizer_issues, closure_count = sanitize_extraction_output(
-                raw=source_result.extraction.model_dump(mode="json"),
+                raw=_candidate_payload_for_replay(source_result.extraction),
                 transcript=source_result.transcript,
                 speaker_id=source_result.extraction.speaker_id,
                 speaker_name=source_result.extraction.speaker_name,
@@ -311,6 +317,7 @@ class FamilyReplayService:
             notes=[
                 "Replay uses stored immutable transcripts, extraction candidates, and resolutions.",
                 "No ASR or LLM provider is called.",
+                "Authoritative run provenance is rebuilt rather than treated as a model candidate.",
                 "Semantic hashes exclude run provenance; evidence and facts remain included.",
                 "Human conflict decisions are not replayed into the shadow materialization.",
             ],
