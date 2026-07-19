@@ -10,6 +10,7 @@ from mura.evaluation.models import (
     BenchmarkGold,
     BenchmarkSummary,
     CaseEvaluation,
+    DatasetLayer,
     DatasetSplit,
     GoldRelationship,
     PrecisionRecallF1,
@@ -24,6 +25,12 @@ RelationshipBaseKey = tuple[str, str, str]
 def _safe_ratio(numerator: int, denominator: int) -> float:
     if denominator == 0:
         return 1.0
+    return numerator / denominator
+
+
+def _safe_error_rate(numerator: int, denominator: int) -> float:
+    if denominator == 0:
+        return 0.0
     return numerator / denominator
 
 
@@ -50,6 +57,14 @@ def ratio_metric(numerator: int, denominator: int) -> RatioMetric:
         numerator=numerator,
         denominator=denominator,
         value=round(_safe_ratio(numerator, denominator), 6),
+    )
+
+
+def error_rate_metric(numerator: int, denominator: int) -> RatioMetric:
+    return RatioMetric(
+        numerator=numerator,
+        denominator=denominator,
+        value=round(_safe_error_rate(numerator, denominator), 6),
     )
 
 
@@ -179,8 +194,8 @@ def _person_metrics(
     return precision_recall_f1(true_positive, false_positive, false_negative)
 
 
-def _provenance_counts(extraction: ExtractionResult) -> tuple[int, int]:
-    objects: list[Any] = [
+def _objects(extraction: ExtractionResult) -> list[Any]:
+    return [
         *extraction.people_mentions,
         *extraction.relationship_claims,
         *extraction.events,
@@ -188,24 +203,25 @@ def _provenance_counts(extraction: ExtractionResult) -> tuple[int, int]:
         *extraction.stories,
         *extraction.unresolved_questions,
     ]
+
+
+def _provenance_counts(extraction: ExtractionResult) -> tuple[int, int]:
+    objects = _objects(extraction)
     complete = sum(bool(getattr(item, "source_segment_ids", [])) for item in objects)
     return complete, len(objects)
+
+
+def _accepted_claims_without_evidence(extraction: ExtractionResult) -> int:
+    return sum(not bool(getattr(item, "evidence_ids", [])) for item in _objects(extraction))
 
 
 def _unknown_segment_reference_count(
     extraction: ExtractionResult,
     valid_segment_ids: set[str],
 ) -> int:
-    objects: list[Any] = [
-        *extraction.people_mentions,
-        *extraction.relationship_claims,
-        *extraction.events,
-        *extraction.descriptions,
-        *extraction.stories,
-        *extraction.unresolved_questions,
-    ]
     return sum(
-        len(set(getattr(item, "source_segment_ids", [])) - valid_segment_ids) for item in objects
+        len(set(getattr(item, "source_segment_ids", [])) - valid_segment_ids)
+        for item in _objects(extraction)
     )
 
 
@@ -214,6 +230,7 @@ def score_case(
     case: BenchmarkCase,
     dataset_id: str,
     split: DatasetSplit,
+    dataset_layer: DatasetLayer,
     extraction: ExtractionResult,
     issues: list[dict[str, Any]],
     evidence_closure_relationships: int,
@@ -223,6 +240,7 @@ def score_case(
         _actual_relationship_key(item, mention_to_gold) for item in extraction.relationship_claims
     ]
     gold_relationship_keys = [_gold_relationship_key(item) for item in case.gold.relationships]
+    relationship_metrics = _multiset_prf(actual_relationship_keys, gold_relationship_keys)
 
     gold_base_keys = {_base_relationship_key(item) for item in gold_relationship_keys}
     direction_denominator = 0
@@ -243,15 +261,25 @@ def score_case(
     expected_quarantine = set(case.gold.quarantined_relationship_ids)
     provenance_complete, provenance_total = _provenance_counts(extraction)
     valid_segment_ids = {segment.segment_id for segment in case.transcript.segments}
+    unknown_segment_references = _unknown_segment_reference_count(
+        extraction,
+        valid_segment_ids,
+    )
+    self_relationships = sum(
+        item.subject_mention_id == item.object_mention_id
+        for item in extraction.relationship_claims
+    )
+    claims_without_evidence = _accepted_claims_without_evidence(extraction)
 
     return CaseEvaluation(
         case_id=case.case_id,
         dataset_id=dataset_id,
         split=split,
+        dataset_layer=dataset_layer,
         language=case.language,
         construction_tags=case.construction_tags,
         person_mentions=_person_metrics(extraction, case.gold, mention_to_gold),
-        relationships=_multiset_prf(actual_relationship_keys, gold_relationship_keys),
+        relationships=relationship_metrics,
         quarantined_relationships=_set_prf(
             quarantined_relationship_ids,
             expected_quarantine,
@@ -261,14 +289,14 @@ def score_case(
             direction_denominator,
         ),
         provenance_completeness=ratio_metric(provenance_complete, provenance_total),
-        unknown_segment_references=_unknown_segment_reference_count(
-            extraction,
-            valid_segment_ids,
+        unsupported_relationship_acceptance=error_rate_metric(
+            relationship_metrics.false_positive,
+            len(actual_relationship_keys),
         ),
-        self_relationships=sum(
-            item.subject_mention_id == item.object_mention_id
-            for item in extraction.relationship_claims
-        ),
+        unknown_segment_references=unknown_segment_references,
+        self_relationships=self_relationships,
+        accepted_claims_without_evidence=claims_without_evidence,
+        critical_graph_violations=unknown_segment_references + self_relationships,
         accepted_relationship_ids=sorted(
             item.relationship_id for item in extraction.relationship_claims
         ),
@@ -291,6 +319,14 @@ def aggregate_case_metrics(cases: list[CaseEvaluation]) -> BenchmarkSummary:
     direction_denominator = sum(case.relationship_direction_accuracy.denominator for case in cases)
     provenance_numerator = sum(case.provenance_completeness.numerator for case in cases)
     provenance_denominator = sum(case.provenance_completeness.denominator for case in cases)
+    unsupported_numerator = sum(
+        case.unsupported_relationship_acceptance.numerator for case in cases
+    )
+    unsupported_denominator = sum(
+        case.unsupported_relationship_acceptance.denominator for case in cases
+    )
+    unknown_segment_references = sum(case.unknown_segment_references for case in cases)
+    self_relationships = sum(case.self_relationships for case in cases)
 
     return BenchmarkSummary(
         case_count=len(cases),
@@ -305,6 +341,14 @@ def aggregate_case_metrics(cases: list[CaseEvaluation]) -> BenchmarkSummary:
             provenance_numerator,
             provenance_denominator,
         ),
-        unknown_segment_references=sum(case.unknown_segment_references for case in cases),
-        self_relationships=sum(case.self_relationships for case in cases),
+        unsupported_relationship_acceptance=error_rate_metric(
+            unsupported_numerator,
+            unsupported_denominator,
+        ),
+        unknown_segment_references=unknown_segment_references,
+        self_relationships=self_relationships,
+        accepted_claims_without_evidence=sum(
+            case.accepted_claims_without_evidence for case in cases
+        ),
+        critical_graph_violations=sum(case.critical_graph_violations for case in cases),
     )
