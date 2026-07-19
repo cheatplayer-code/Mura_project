@@ -119,9 +119,7 @@ def _result(
     return PipelineResult(
         transcript=transcript,
         cleaned_transcript=CleanerResult(
-            readable_segments=[
-                ReadableSegment(segment_id="seg_001", text=transcript.full_text)
-            ],
+            readable_segments=[ReadableSegment(segment_id="seg_001", text=transcript.full_text)],
             full_readable_text=transcript.full_text,
         ),
         extraction=ExtractionResult(
@@ -206,8 +204,8 @@ def _seed_conflict(tmp_path: Path):
 
 
 def test_resolved_preference_survives_reconciliation(tmp_path: Path) -> None:
-    database, _recordings, archive, service, _parent, spouse, _people, conflict = (
-        _seed_conflict(tmp_path)
+    database, _recordings, archive, service, _parent, spouse, _people, conflict = _seed_conflict(
+        tmp_path
     )
     preferred = next(claim for claim in conflict.claims if claim.predicate == "parent_child")
 
@@ -239,8 +237,8 @@ def test_resolved_preference_survives_reconciliation(tmp_path: Path) -> None:
 
 
 def test_new_competing_claim_reopens_resolved_conflict(tmp_path: Path) -> None:
-    database, recordings, archive, service, _parent, _spouse, people, conflict = (
-        _seed_conflict(tmp_path)
+    database, recordings, archive, service, _parent, _spouse, people, conflict = _seed_conflict(
+        tmp_path
     )
     preferred = next(claim for claim in conflict.claims if claim.predicate == "parent_child")
     service.resolve(
@@ -276,8 +274,8 @@ def test_new_competing_claim_reopens_resolved_conflict(tmp_path: Path) -> None:
 
 
 def test_dismiss_and_manual_reopen_keep_graph_safe(tmp_path: Path) -> None:
-    _database, _recordings, archive, service, _parent, _spouse, _people, conflict = (
-        _seed_conflict(tmp_path)
+    _database, _recordings, archive, service, _parent, _spouse, _people, conflict = _seed_conflict(
+        tmp_path
     )
 
     dismissed = service.dismiss(
@@ -307,8 +305,8 @@ def test_dismiss_and_manual_reopen_keep_graph_safe(tmp_path: Path) -> None:
 
 
 def test_resolution_rejects_invalid_claim_and_cross_family_access(tmp_path: Path) -> None:
-    _database, _recordings, _archive, service, _parent, _spouse, _people, conflict = (
-        _seed_conflict(tmp_path)
+    _database, _recordings, _archive, service, _parent, _spouse, _people, conflict = _seed_conflict(
+        tmp_path
     )
 
     with pytest.raises(ConflictResolutionError, match="must belong"):
