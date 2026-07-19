@@ -22,6 +22,7 @@ from mura.domain.models import (
     UnresolvedQuestion,
 )
 from mura.evidence import complete_relationship_evidence
+from mura.evidence_recovery import recover_evidence_offsets
 from mura.relationship_evidence import analyze_relationship_evidence
 from mura.validation import ContractValidationError, validate_extraction_result
 
@@ -193,6 +194,7 @@ def sanitize_extraction_output(
 ) -> tuple[ExtractionResult, list[dict[str, Any]], int]:
     """Return valid claims with authoritative v2 provenance and object-level quarantine."""
 
+    raw, _ = recover_evidence_offsets(raw=raw, transcript=transcript)
     issues: list[ExtractionIssue] = []
 
     for key, expected in (
@@ -207,9 +209,7 @@ def sanitize_extraction_output(
                     object_type="metadata",
                     object_id=key,
                     stage="schema",
-                    detail=(
-                        f"model returned {actual!r}; authoritative value {expected!r} was used"
-                    ),
+                    detail=(f"model returned {actual!r}; authoritative value {expected!r} was used"),
                     context={"model_value": actual, "authoritative_value": expected},
                 )
             )
