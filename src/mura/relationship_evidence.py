@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any
 
 from mura._relationship_evidence_core import (
     RelationshipEvidenceAnalysis,
@@ -99,7 +98,9 @@ def _coordinated_english_sibling_signal(
     if not endpoint_ids.issubset(exact_ids):
         return None
 
-    source_text = normalize_evidence(joined_segment_text(relationship.source_segment_ids, transcript))
+    source_text = normalize_evidence(
+        joined_segment_text(relationship.source_segment_ids, transcript)
+    )
     if not any(
         phrase in f" {source_text} "
         for phrase in (" are sisters ", " are brothers ", " are siblings ")
