@@ -6,13 +6,7 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from mura.domain.models import (
-    AssertionMode,
-    FamilyEvent,
-    NameVariantType,
-    PipelineResult,
-    VerificationStatus,
-)
+from mura.domain.models import FamilyEvent, NameVariantType, PipelineResult
 from mura.storage.archive import (
     ArchiveClaimRow,
     ArchiveConflictRow,
@@ -86,25 +80,13 @@ _EDUCATION_EVENT_TYPES = {
 }
 
 
-def _assertion_mode(value: object) -> str | None:
-    return value.value if isinstance(value, AssertionMode) else None
-
-
-def _verification_status(value: object) -> str:
-    if isinstance(value, VerificationStatus):
-        return value.value
-    return VerificationStatus.UNREVIEWED.value
-
-
 def _source_claims_for_recording(
     session: Session,
     *,
     recording_id: str,
 ) -> dict[tuple[str, str], ArchiveClaimRow]:
     rows = list(
-        session.scalars(
-            select(ArchiveClaimRow).where(ArchiveClaimRow.recording_id == recording_id)
-        )
+        session.scalars(select(ArchiveClaimRow).where(ArchiveClaimRow.recording_id == recording_id))
     )
     return {(row.object_type, row.source_object_id): row for row in rows}
 
@@ -176,14 +158,14 @@ def _project_aliases(
     mapped_people: dict[str, str],
     source_claims: dict[tuple[str, str], ArchiveClaimRow],
 ) -> int:
-    count = 0
+    projected = 0
     for mention in result.extraction.people_mentions:
         person_id = mapped_people.get(mention.mention_id)
         source_claim = source_claims.get(("person_mention", mention.mention_id))
         for variant in mention.name_variants:
             if variant.variant_type not in _PROFILE_ALIAS_VARIANTS:
                 continue
-            count += _insert_attribute_claim(
+            projected += _insert_attribute_claim(
                 session,
                 recording=recording,
                 source_claim=source_claim,
@@ -201,7 +183,7 @@ def _project_aliases(
                     "script": variant.script,
                 },
             )
-    return count
+    return projected
 
 
 def _project_descriptions(
@@ -212,9 +194,9 @@ def _project_descriptions(
     mapped_people: dict[str, str],
     source_claims: dict[tuple[str, str], ArchiveClaimRow],
 ) -> int:
-    count = 0
+    projected = 0
     for description in result.extraction.descriptions:
-        count += _insert_attribute_claim(
+        projected += _insert_attribute_claim(
             session,
             recording=recording,
             source_claim=source_claims.get(("description", description.description_id)),
@@ -228,7 +210,7 @@ def _project_descriptions(
             assertion_mode=description.assertion_mode.value,
             metadata={"perspective": description.perspective},
         )
-    return count
+    return projected
 
 
 def _event_facets(event: FamilyEvent) -> list[tuple[str, str, dict[str, Any]]]:
@@ -296,12 +278,12 @@ def _project_events(
     mapped_people: dict[str, str],
     source_claims: dict[tuple[str, str], ArchiveClaimRow],
 ) -> int:
-    count = 0
+    projected = 0
     for event in result.extraction.events:
         source_claim = source_claims.get(("event", event.event_id))
         for mention_id in event.participant_mention_ids:
             for attribute_type, value, metadata in _event_facets(event):
-                count += _insert_attribute_claim(
+                projected += _insert_attribute_claim(
                     session,
                     recording=recording,
                     source_claim=source_claim,
@@ -315,7 +297,7 @@ def _project_events(
                     assertion_mode=event.assertion_mode.value,
                     metadata=metadata,
                 )
-    return count
+    return projected
 
 
 def _generic_claims(session: Session, *, family_id: str) -> list[ArchiveClaimRow]:
@@ -346,8 +328,7 @@ def _conflict_groups(
     for (person_id, predicate), candidates in temporal.items():
         if len({generic_claim_value(candidate) for candidate in candidates}) <= 1:
             continue
-        key = ("temporal", person_id, predicate)
-        groups[key] = (
+        groups[("temporal", person_id, predicate)] = (
             "temporal",
             candidates,
             f"grounded {predicate} claims disagree for archive person {person_id}",
@@ -355,8 +336,7 @@ def _conflict_groups(
     for normalized_alias, candidates in aliases.items():
         if len({candidate.subject_person_id for candidate in candidates}) <= 1:
             continue
-        key = ("identity", "alias", normalized_alias)
-        groups[key] = (
+        groups[("identity", "alias", normalized_alias)] = (
             "identity",
             candidates,
             f"the same grounded alias is assigned to multiple people: {normalized_alias}",
@@ -446,6 +426,14 @@ def reconcile_generic_conflicts(session: Session, *, family_id: str) -> int:
     return sum(conflict.status == "open" for conflict in conflicts)
 
 
+def _first_facet(
+    facets: dict[str, list[dict[str, Any]]],
+    predicate: str,
+) -> dict[str, Any] | None:
+    entries = facets.get(predicate, [])
+    return entries[0] if entries else None
+
+
 def rebuild_materialized_profiles(session: Session, *, family_id: str) -> int:
     session.execute(
         delete(MaterializedPersonProfileRow).where(
@@ -502,8 +490,8 @@ def rebuild_materialized_profiles(session: Session, *, family_id: str) -> int:
             "family_id": family_id,
             "canonical_name": person.canonical_name,
             "category": person.category,
-            "birth_date": (facets.get("birth_date") or [None])[0],
-            "death_date": (facets.get("death_date") or [None])[0],
+            "birth_date": _first_facet(facets, "birth_date"),
+            "death_date": _first_facet(facets, "death_date"),
             "aliases": facets.get("alias", []),
             "professions": facets.get("profession", []),
             "locations": facets.get("location", []),
@@ -535,8 +523,7 @@ def persist_generic_claims(
         session,
         recording_id=recording.recording_id,
     )
-    projected = 0
-    projected += _project_aliases(
+    projected = _project_aliases(
         session,
         recording=recording,
         result=result,
