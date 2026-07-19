@@ -260,9 +260,7 @@ def test_competing_grounded_relationships_preserve_claims_and_remove_edge(
     report = _persist(database, recording_id="rec_2", result=competing)
 
     relationship_claims = [
-        claim
-        for claim in archive.list_claims("family_1")
-        if claim.object_type == "relationship"
+        claim for claim in archive.list_claims("family_1") if claim.object_type == "relationship"
     ]
     assert len(relationship_claims) == 2
     assert {claim.status for claim in relationship_claims} == {"disputed"}
