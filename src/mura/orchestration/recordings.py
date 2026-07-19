@@ -13,6 +13,7 @@ from mura.pipeline import MuraPipeline
 from mura.storage.archive import ArchiveRepository
 from mura.storage.conflict_resolution import ConflictResolutionService
 from mura.storage.database import ProcessingJobRow, RecordingRepository
+from mura.storage.generic_claims import persist_generic_claims
 
 ALLOWED_AUDIO_EXTENSIONS = {
     ".wav",
@@ -193,6 +194,11 @@ class RecordingJobWorker:
             )
             with self.repository.database.session_factory.begin() as session:
                 self.conflict_resolution.persist_pipeline_result(
+                    session,
+                    recording=recording,
+                    result=result,
+                )
+                persist_generic_claims(
                     session,
                     recording=recording,
                     result=result,
