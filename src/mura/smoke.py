@@ -8,9 +8,20 @@ from pathlib import Path
 
 from sqlalchemy import select
 
-from mura.domain.models import CleanerResult, PipelineResult, RawSegment, ReadableSegment, TranscriptEnvelope
+from mura.domain.models import (
+    CleanerResult,
+    PipelineResult,
+    RawSegment,
+    ReadableSegment,
+    TranscriptEnvelope,
+)
 from mura.extraction_sanitizer import sanitize_extraction_output
-from mura.observability import ProcessingTrace, ProcessingTraceEventRow, TraceOutcome, TraceRepository
+from mura.observability import (
+    ProcessingTrace,
+    ProcessingTraceEventRow,
+    TraceOutcome,
+    TraceRepository,
+)
 from mura.release_control import CURRENT_RELEASE_ID, ReleaseControlService
 from mura.replay import FamilyReplayService, PipelineReplayRunRow
 from mura.retention import RETENTION_CONFIRMATION, RetentionService
@@ -63,9 +74,7 @@ def _synthetic_result() -> PipelineResult:
     return PipelineResult(
         transcript=transcript,
         cleaned_transcript=CleanerResult(
-            readable_segments=[
-                ReadableSegment(segment_id="seg_001", text="Менің атым Күләш.")
-            ],
+            readable_segments=[ReadableSegment(segment_id="seg_001", text="Менің атым Күләш.")],
             full_readable_text="Менің атым Күләш.",
         ),
         extraction=extraction,
@@ -139,6 +148,9 @@ def run_smoke(database_path: Path) -> dict[str, object]:
     stored_result = repository.get_pipeline_result("rec_smoke")
     if stored_result is None:
         raise RuntimeError("smoke result was not persisted")
+    completed_job = repository.get_job("job_smoke")
+    if completed_job is None:
+        raise RuntimeError("smoke job disappeared after completion")
     budget_payload = stored_result.processing.get("runtime_budget")
     budget_passed = isinstance(budget_payload, dict) and budget_payload.get("passed") is True
     trace_view = TraceRepository(database).get_job_trace(job_id="job_smoke")
@@ -173,7 +185,7 @@ def run_smoke(database_path: Path) -> dict[str, object]:
     retention_applied = retention_service.apply(confirmation=RETENTION_CONFIRMATION)
 
     checks = {
-        "job_completed": repository.get_job("job_smoke").status == "completed",
+        "job_completed": completed_job.status == "completed",
         "budget_passed": budget_passed,
         "trace_available": trace_view is not None and bool(trace_view.events),
         "replay_passed": replay.status == "passed",
@@ -183,12 +195,10 @@ def run_smoke(database_path: Path) -> dict[str, object]:
             and reactivated.state.runtime_matches_desired
         ),
         "retention_preview_found_data": (
-            retention_preview.expired_trace_events > 0
-            and retention_preview.expired_replay_runs > 0
+            retention_preview.expired_trace_events > 0 and retention_preview.expired_replay_runs > 0
         ),
         "retention_deleted_data": (
-            retention_applied.deleted_trace_events > 0
-            and retention_applied.deleted_replay_runs > 0
+            retention_applied.deleted_trace_events > 0 and retention_applied.deleted_replay_runs > 0
         ),
     }
     passed = all(checks.values())
