@@ -11,8 +11,8 @@ def test_pipeline_versions_are_explicit_and_copy_safe() -> None:
     assert versions.extractor_repair_prompt == "extractor-repair-v1-anchor-constrained"
     assert versions.evidence_rules == "claim-evidence-v2+bounded-coreference-v1"
     assert versions.resolver == "mention-resolver-v2-cross-recording"
-    assert versions.archive_schema == "archive-claim-ledger-v1"
-    assert versions.materializer == "family-graph-materializer-v1"
+    assert versions.archive_schema == "archive-claim-ledger-v1+conflict-decisions-v1"
+    assert versions.materializer == "family-graph-materializer-v2-human-review"
     assert versions.evaluator == "core-evaluator-v1+entity-resolution-v1"
     assert versions.benchmark_schema == "benchmark-v1+entity-resolution-benchmark-v1"
     assert versions is not CURRENT_PIPELINE_VERSIONS
