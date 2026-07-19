@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from mura.domain.models import PipelineResult
 from mura.jobs import JobStatus
 from mura.observability import ProcessingTraceEvent, persist_trace_events
+from mura.release_control import attach_runtime_budget
 from mura.storage.database import (
     Database,
     PipelineResultRow,
@@ -28,7 +29,7 @@ def finalize_recording_job(
     result: PipelineResult,
     trace_events: Sequence[ProcessingTraceEvent],
 ) -> None:
-    """Persist the result and completed job state inside the caller's archive transaction."""
+    """Persist result, budget assessment, trace, and terminal job state atomically."""
     now = utcnow()
     job = session.scalar(
         select(ProcessingJobRow).where(ProcessingJobRow.job_id == job_id).with_for_update()
@@ -38,7 +39,8 @@ def finalize_recording_job(
     if job.status == JobStatus.FAILED.value:
         raise JobFinalizationError(f"cannot complete failed job: {job_id}")
 
-    payload = result.model_dump(mode="json")
+    assessed_result = attach_runtime_budget(result, trace_events)
+    payload = assessed_result.model_dump(mode="json")
     stored = session.get(PipelineResultRow, job.recording_id)
     if stored is None:
         session.add(
