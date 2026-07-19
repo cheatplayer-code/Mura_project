@@ -179,9 +179,7 @@ class RecordingJobWorker:
                 outcome=outcome,
                 event_name="stage_deferred" if exc.retryable else "stage_failed",
                 attributes={
-                    "error_code": (
-                        "asr_temporarily_unavailable" if exc.retryable else "asr_failed"
-                    )
+                    "error_code": "asr_temporarily_unavailable" if exc.retryable else "asr_failed"
                 },
             )
             if exc.retryable:
@@ -314,7 +312,9 @@ class RecordingJobWorker:
         return False
 
 
-def _pipeline_trace_attributes(result: PipelineResult) -> dict[str, str | int | float | bool | None]:
+def _pipeline_trace_attributes(
+    result: PipelineResult,
+) -> dict[str, str | int | float | bool | None]:
     attributes: dict[str, str | int | float | bool | None] = {
         "pipeline_seconds": result.processing.get("total_seconds"),
         "people_count": len(result.extraction.people_mentions),
