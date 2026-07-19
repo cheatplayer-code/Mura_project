@@ -371,7 +371,10 @@ def test_repaired_evidence_preserves_downstream_relationship_reference() -> None
 def test_evidence_span_length_validator_remains_strict() -> None:
     candidate = _evidence_candidate(text="Күләш", start_char=0, end_char=6)
 
-    with pytest.raises(ValidationError, match="evidence offsets must span exactly evidence text length"):
+    with pytest.raises(
+        ValidationError,
+        match="evidence offsets must span exactly evidence text length",
+    ):
         EvidenceSpan.model_validate(candidate)
 
 
