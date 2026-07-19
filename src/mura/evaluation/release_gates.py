@@ -35,9 +35,7 @@ class GateThresholds(StrictModel):
     max_false_splits: int = Field(default=0, ge=0)
     min_entity_identity_accuracy: float = Field(default=1.0, ge=0, le=1)
     min_entity_review_routing_accuracy: float = Field(default=1.0, ge=0, le=1)
-    required_languages: list[LanguageBucket] = Field(
-        default_factory=lambda: list(LanguageBucket)
-    )
+    required_languages: list[LanguageBucket] = Field(default_factory=lambda: list(LanguageBucket))
     min_adversarial_cases: int = Field(default=8, ge=0)
     min_approved_real_narrators: int = Field(default=0, ge=0)
     max_common_case_f1_regression: float = Field(default=0.0, ge=0, le=1)
@@ -282,10 +280,7 @@ def _add_baseline_checks(
             category="regression",
             actual=current.relationships.f1,
             threshold=max(0.0, floor),
-            detail=(
-                "A common baseline case may not lose relationship F1 beyond the "
-                "configured budget."
-            ),
+            detail="A baseline case exceeded the relationship F1 regression budget.",
         )
         _minimum(
             checks,
@@ -365,9 +360,7 @@ def evaluate_release_gates(
     approved_real_narrators = sum(
         item.narrator_count
         for item in report.dataset_coverage
-        if item.loaded
-        and item.layer is DatasetLayer.ANONYMIZED_REAL
-        and item.approved_anonymized
+        if item.loaded and item.layer is DatasetLayer.ANONYMIZED_REAL and item.approved_anonymized
     )
     _check(
         checks,
@@ -377,10 +370,7 @@ def evaluate_release_gates(
         actual=approved_real_narrators,
         comparator=">=",
         threshold=thresholds.min_approved_real_narrators,
-        detail=(
-            "Production claims require approved anonymized narratives from independent "
-            "narrators."
-        ),
+        detail="Production requires approved anonymized narratives from independent narrators.",
     )
 
     missing_required = sorted(
