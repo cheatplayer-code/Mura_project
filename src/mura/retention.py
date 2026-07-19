@@ -119,10 +119,12 @@ class RetentionService:
                     PipelineReplayRunRow.created_at < preview.replay_cutoff
                 )
             )
+            deleted_trace_events = max(0, int(getattr(trace_result, "rowcount", 0) or 0))
+            deleted_replay_runs = max(0, int(getattr(replay_result, "rowcount", 0) or 0))
         return preview.model_copy(
             update={
                 "applied": True,
-                "deleted_trace_events": max(0, trace_result.rowcount or 0),
-                "deleted_replay_runs": max(0, replay_result.rowcount or 0),
+                "deleted_trace_events": deleted_trace_events,
+                "deleted_replay_runs": deleted_replay_runs,
             }
         )
