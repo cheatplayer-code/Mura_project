@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import unicodedata
 from enum import StrEnum
 
 from pydantic import Field, model_validator
@@ -17,6 +19,7 @@ from mura.domain.models import (
 class ResolutionSignalKind(StrEnum):
     FAMILY_SCOPE = "family_scope"
     CANONICAL_NAME = "canonical_name"
+    ARCHIVE_ALIAS = "archive_alias"
     ESTABLISHED_ALIAS = "established_alias"
     STRUCTURED_ALIAS = "structured_alias"
     RELATION_TO_SPEAKER = "relation_to_speaker"
@@ -37,12 +40,18 @@ class ResolutionSignal(StrictModel):
     related_person_id: str | None = None
 
 
+def _normalized_name(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    return re.sub(r"[^\w]+", "", normalized, flags=re.UNICODE)
+
+
 class KnownPersonProfile(StrictModel):
-    """Archive-scoped identity context loaded independently from extraction candidates."""
+    """Identity context for one archive person relative to the current narrator."""
 
     family_id: str = Field(min_length=1)
     person: KnownPerson
-    generation: int | None = None
+    verified_aliases: list[str] = Field(default_factory=list)
+    generation_relative_to_speaker: int | None = None
     parent_person_ids: list[str] = Field(default_factory=list)
     child_person_ids: list[str] = Field(default_factory=list)
     spouse_person_ids: list[str] = Field(default_factory=list)
@@ -52,6 +61,7 @@ class KnownPersonProfile(StrictModel):
     @model_validator(mode="after")
     def validate_profile_references(self) -> KnownPersonProfile:
         collections = (
+            self.verified_aliases,
             self.parent_person_ids,
             self.child_person_ids,
             self.spouse_person_ids,
@@ -67,12 +77,22 @@ class KnownPersonProfile(StrictModel):
             *self.sibling_person_ids,
         }:
             raise ValueError("known-person profile cannot relate a person to itself")
+
+        archive_aliases = {_normalized_name(alias) for alias in self.person.aliases}
+        unknown_verified_aliases = [
+            alias
+            for alias in self.verified_aliases
+            if _normalized_name(alias) not in archive_aliases
+        ]
+        if unknown_verified_aliases:
+            raise ValueError("verified aliases must already exist in the archive alias set")
         return self
 
 
 class EntityResolutionContext(StrictModel):
     schema_version: str = "entity-resolution-context-v1"
     family_id: str = Field(min_length=1)
+    speaker_id: str | None = None
     profiles: list[KnownPersonProfile] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -148,7 +168,7 @@ class EntityResolutionRun(StrictModel):
 
 
 def legacy_resolution_context(known_people: list[KnownPerson]) -> EntityResolutionContext:
-    """Adapt the pre-persistence API without pretending account scope is a real family ID."""
+    """Adapt the legacy API without upgrading unverified aliases into merge evidence."""
 
     return EntityResolutionContext(
         family_id="legacy-family-scope",
