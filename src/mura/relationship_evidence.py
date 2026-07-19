@@ -84,6 +84,39 @@ def _resolved_coreference_signal(
     return None, None
 
 
+def _coordinated_english_sibling_signal(
+    *,
+    relationship: RelationshipClaim,
+    transcript: TranscriptEnvelope,
+    analysis: RelationshipEvidenceAnalysis,
+) -> dict[str, str] | None:
+    if relationship.relationship_type.value != "sibling":
+        return None
+    if relationship.subject_role.value != "sibling" or relationship.object_role.value != "sibling":
+        return None
+    exact_ids = {item["mention_id"] for item in analysis.exact_people}
+    endpoint_ids = {relationship.subject_mention_id, relationship.object_mention_id}
+    if not endpoint_ids.issubset(exact_ids):
+        return None
+
+    source_text = normalize_evidence(joined_segment_text(relationship.source_segment_ids, transcript))
+    if not any(
+        phrase in f" {source_text} "
+        for phrase in (" are sisters ", " are brothers ", " are siblings ")
+    ):
+        return None
+    return {
+        "language": "en",
+        "relationship_type": "sibling",
+        "subject_mention_id": relationship.subject_mention_id,
+        "subject_role": "sibling",
+        "object_mention_id": relationship.object_mention_id,
+        "object_role": "sibling",
+        "source_surface": "are siblings",
+        "rule_id": "en.relationship.explicit_sibling_pair.v1",
+    }
+
+
 def _append_signal(
     values: list[dict[str, str]],
     signal: dict[str, str],
@@ -110,6 +143,39 @@ def _append_signal(
     return values if key in existing else [*values, signal]
 
 
+def _apply_signal(
+    analysis: RelationshipEvidenceAnalysis,
+    *,
+    signal: dict[str, str],
+    evidence_class: EvidenceClass,
+    auto_accept_eligible: bool,
+    role_consistent: bool,
+) -> RelationshipEvidenceAnalysis:
+    all_signals = _append_signal(analysis.linguistic_relationship_signals, signal)
+    language_signals: dict[str, list[dict[str, str]]] = {
+        "kk": analysis.kazakh_relationship_signals,
+        "ru": analysis.russian_relationship_signals,
+        "en": analysis.english_relationship_signals,
+        "mixed": analysis.code_switching_relationship_signals,
+    }
+    language_signals[signal["language"]] = _append_signal(
+        language_signals.get(signal["language"], []),
+        signal,
+    )
+    return replace(
+        analysis,
+        linguistic_relationship_signals=all_signals,
+        kazakh_relationship_signals=language_signals["kk"],
+        russian_relationship_signals=language_signals["ru"],
+        english_relationship_signals=language_signals["en"],
+        code_switching_relationship_signals=language_signals["mixed"],
+        role_consistent=role_consistent,
+        linguistic_rule_ids=sorted({*analysis.linguistic_rule_ids, signal["rule_id"]}),
+        evidence_class=evidence_class.value,
+        auto_accept_eligible=auto_accept_eligible,
+    )
+
+
 def analyze_relationship_evidence(
     *,
     relationship: RelationshipClaim,
@@ -126,6 +192,21 @@ def analyze_relationship_evidence(
         speaker_name=speaker_name,
         resolved_coreference_antecedent_ids=resolved,
     )
+
+    direct_signal = _coordinated_english_sibling_signal(
+        relationship=relationship,
+        transcript=transcript,
+        analysis=analysis,
+    )
+    if direct_signal is not None:
+        return _apply_signal(
+            analysis,
+            signal=direct_signal,
+            evidence_class=EvidenceClass.A_EXPLICIT,
+            auto_accept_eligible=True,
+            role_consistent=True,
+        )
+
     signal, matches = _resolved_coreference_signal(
         relationship=relationship,
         transcript=transcript,
@@ -134,30 +215,12 @@ def analyze_relationship_evidence(
     )
     if signal is None or matches is None:
         return analysis
-
-    all_signals = _append_signal(analysis.linguistic_relationship_signals, signal)
-    language_signals: dict[str, list[dict[str, str]]] = {
-        "kk": analysis.kazakh_relationship_signals,
-        "ru": analysis.russian_relationship_signals,
-        "en": analysis.english_relationship_signals,
-        "mixed": analysis.code_switching_relationship_signals,
-    }
-    language_signals[signal["language"]] = _append_signal(
-        language_signals.get(signal["language"], []),
-        signal,
+    return _apply_signal(
+        analysis,
+        signal=signal,
+        evidence_class=(
+            EvidenceClass.D_CONTEXT_RESOLVED if matches else EvidenceClass.U_UNCERTAIN
+        ),
+        auto_accept_eligible=False,
+        role_consistent=matches,
     )
-    rule_ids = sorted({*analysis.linguistic_rule_ids, signal["rule_id"]})
-
-    updates: dict[str, Any] = {
-        "linguistic_relationship_signals": all_signals,
-        "kazakh_relationship_signals": language_signals["kk"],
-        "russian_relationship_signals": language_signals["ru"],
-        "english_relationship_signals": language_signals["en"],
-        "code_switching_relationship_signals": language_signals["mixed"],
-        "role_consistent": matches,
-        "linguistic_rule_ids": rule_ids,
-        "auto_accept_eligible": False,
-    }
-    if matches:
-        updates["evidence_class"] = EvidenceClass.D_CONTEXT_RESOLVED.value
-    return replace(analysis, **updates)
