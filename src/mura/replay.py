@@ -313,7 +313,7 @@ class FamilyReplayService:
             notes=[
                 "Replay uses stored immutable transcripts, extraction candidates, and resolutions.",
                 "No ASR or LLM provider is called.",
-                "Semantic extraction hashes exclude provenance activities but include evidence and facts.",
+                "Semantic hashes exclude provenance activities; evidence and facts remain included.",
                 "Human conflict decisions are not replayed into the shadow materialization.",
             ],
         )
