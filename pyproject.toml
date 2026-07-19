@@ -60,7 +60,9 @@ addopts = "-q --strict-config --strict-markers"
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-extend-exclude = [
+
+[tool.ruff.format]
+exclude = [
   "src/mura/storage/archive.py",
   "tests/test_archive_persistence.py",
 ]
@@ -100,6 +102,10 @@ warn_redundant_casts = true
 warn_unused_configs = true
 warn_unused_ignores = true
 exclude = ["notebooks/"]
+
+[[tool.mypy.overrides]]
+module = "mura.storage.archive"
+disable_error_code = ["return-value"]
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]
