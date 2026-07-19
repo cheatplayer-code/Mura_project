@@ -42,7 +42,7 @@ from mura.domain.models import (
     VerificationStatus,
 )
 from mura.entity_resolution import EntityResolutionContext, KnownPersonProfile
-from mura.storage.database import Base, Database, JSON_VALUE, RecordingRow, utcnow
+from mura.storage.database import JSON_VALUE, Base, Database, RecordingRow, utcnow
 
 _AUTO_MATERIALIZABLE_CLASSES = {
     EvidenceClass.A_EXPLICIT.value,
