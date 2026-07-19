@@ -85,12 +85,13 @@ def render_markdown_report(report: BenchmarkReport) -> str:
             "|---|---|---|---|---|---:|---|---:|",
         ]
     )
-    for item in report.dataset_coverage:
+    for coverage_item in report.dataset_coverage:
         lines.append(
-            f"| {item.dataset_id} | {item.layer.value} | {item.split.value} | "
-            f"{'yes' if item.enabled else 'no'} | {'yes' if item.loaded else 'no'} | "
-            f"{item.case_count} | {'yes' if item.approved_anonymized else 'no'} | "
-            f"{item.narrator_count} |"
+            f"| {coverage_item.dataset_id} | {coverage_item.layer.value} | "
+            f"{coverage_item.split.value} | {'yes' if coverage_item.enabled else 'no'} | "
+            f"{'yes' if coverage_item.loaded else 'no'} | {coverage_item.case_count} | "
+            f"{'yes' if coverage_item.approved_anonymized else 'no'} | "
+            f"{coverage_item.narrator_count} |"
         )
 
     lines.extend(
@@ -105,9 +106,9 @@ def render_markdown_report(report: BenchmarkReport) -> str:
             "|---|---:|---:|---:|---:|---:|---:|---:|",
         ]
     )
-    for item in report.slices:
-        if item.dimension == "language":
-            lines.append(_summary_row(item.key, item.summary))
+    for slice_item in report.slices:
+        if slice_item.dimension == "language":
+            lines.append(_summary_row(slice_item.key, slice_item.summary))
 
     lines.extend(
         [
@@ -121,9 +122,9 @@ def render_markdown_report(report: BenchmarkReport) -> str:
             "|---|---:|---:|---:|---:|---:|---:|---:|",
         ]
     )
-    for item in report.slices:
-        if item.dimension == "layer":
-            lines.append(_summary_row(item.key, item.summary))
+    for slice_item in report.slices:
+        if slice_item.dimension == "layer":
+            lines.append(_summary_row(slice_item.key, slice_item.summary))
 
     lines.extend(
         [
