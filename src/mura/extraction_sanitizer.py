@@ -209,7 +209,9 @@ def sanitize_extraction_output(
                     object_type="metadata",
                     object_id=key,
                     stage="schema",
-                    detail=(f"model returned {actual!r}; authoritative value {expected!r} was used"),
+                    detail=(
+                        f"model returned {actual!r}; authoritative value {expected!r} was used"
+                    ),
                     context={"model_value": actual, "authoritative_value": expected},
                 )
             )
