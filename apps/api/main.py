@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, HttpUrl, field_validator
 
+from apps.api.conflicts import register_conflict_routes
 from mura.asr import RemoteASRClient
 from mura.config import CoreSettings
 from mura.deepseek import DeepSeekClient, DeepSeekError, DeepSeekPipelineService
@@ -407,3 +408,10 @@ def _aware_optional(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     return _aware_required(value)
+
+
+register_conflict_routes(
+    app,
+    get_runtime_dependency=get_runtime,
+    core_token_dependency=require_core_token,
+)

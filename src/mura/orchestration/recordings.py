@@ -11,6 +11,7 @@ from mura.domain.models import PipelineRequest
 from mura.jobs import JobStatus
 from mura.pipeline import MuraPipeline
 from mura.storage.archive import ArchiveRepository
+from mura.storage.conflict_resolution import ConflictResolutionService
 from mura.storage.database import ProcessingJobRow, RecordingRepository
 
 ALLOWED_AUDIO_EXTENSIONS = {
@@ -80,6 +81,7 @@ class RecordingJobWorker:
     ) -> None:
         self.repository = repository
         self.archive_repository = ArchiveRepository(repository.database)
+        self.conflict_resolution = ConflictResolutionService(repository.database)
         self.pipeline = pipeline
         self.asr_client = asr_client
         self.poll_interval_seconds = poll_interval_seconds
@@ -190,7 +192,7 @@ class RecordingJobWorker:
                 "persisting_archive",
             )
             with self.repository.database.session_factory.begin() as session:
-                ArchiveRepository.persist_pipeline_result(
+                self.conflict_resolution.persist_pipeline_result(
                     session,
                     recording=recording,
                     result=result,
