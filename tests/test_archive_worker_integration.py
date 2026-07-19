@@ -65,9 +65,7 @@ class _ArchiveAwarePipeline:
             stage_callback("resolving")
         context = resolution_context or EntityResolutionContext(family_id="family_1")
         self.context_sizes.append(len(context.profiles))
-        existing_person_id = (
-            context.profiles[0].person.person_id if context.profiles else None
-        )
+        existing_person_id = context.profiles[0].person.person_id if context.profiles else None
         self.person_ids.append(existing_person_id)
         mention = PersonMention(
             mention_id="mention_erlan",
