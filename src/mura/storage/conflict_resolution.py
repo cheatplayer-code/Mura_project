@@ -368,9 +368,7 @@ class ConflictResolutionService:
 
     @staticmethod
     def _rebuild_graph(session: Session, *, family_id: str) -> int:
-        session.execute(
-            delete(FamilyGraphEdgeRow).where(FamilyGraphEdgeRow.family_id == family_id)
-        )
+        session.execute(delete(FamilyGraphEdgeRow).where(FamilyGraphEdgeRow.family_id == family_id))
         claims = ConflictResolutionService._relationship_claims(
             session,
             family_id=family_id,
@@ -431,9 +429,7 @@ class ConflictResolutionService:
                 raise ConflictResolutionError("preferred claim must belong to the conflict")
             preferred = session.get(ArchiveClaimRow, preferred_claim_id)
             if preferred is None or not _claim_is_grounded(preferred):
-                raise ConflictResolutionError(
-                    "preferred claim is not eligible for materialization"
-                )
+                raise ConflictResolutionError("preferred claim is not eligible for materialization")
             if (
                 conflict.status == "resolved"
                 and conflict.preferred_claim_id == preferred_claim_id
@@ -559,9 +555,7 @@ class ConflictResolutionService:
         status: str | None = None,
     ) -> list[ConflictReviewView]:
         with self.database.session_factory() as session:
-            statement = select(ArchiveConflictRow).where(
-                ArchiveConflictRow.family_id == family_id
-            )
+            statement = select(ArchiveConflictRow).where(ArchiveConflictRow.family_id == family_id)
             if status is not None:
                 statement = statement.where(ArchiveConflictRow.status == status)
             conflicts = list(
