@@ -120,6 +120,20 @@ def _mention_generation(mention: PersonMention) -> int | None:
     return _RELATION_GENERATIONS.get(relation) if relation is not None else None
 
 
+def _unique_signals(signals: list[ResolutionSignal]) -> list[ResolutionSignal]:
+    unique: dict[tuple[str, str, str | None, str | None, str | None], ResolutionSignal] = {}
+    for signal in signals:
+        key = (
+            signal.rule_id,
+            signal.detail,
+            signal.person_id,
+            signal.related_mention_id,
+            signal.related_person_id,
+        )
+        unique.setdefault(key, signal)
+    return list(unique.values())
+
+
 def _candidate_name_signals(
     mention: PersonMention,
     profile: KnownPersonProfile,
@@ -127,6 +141,7 @@ def _candidate_name_signals(
     person = profile.person
     canonical = normalize_name(person.canonical_name)
     aliases = {normalize_name(alias) for alias in person.aliases if normalize_name(alias)}
+    known_surfaces = {canonical, *aliases}
     signals: list[ResolutionSignal] = []
 
     normalized_primary = normalize_name(mention.name)
@@ -135,7 +150,10 @@ def _candidate_name_signals(
             ResolutionSignal(
                 rule_id="resolution.name.canonical_exact.v2",
                 kind=ResolutionSignalKind.CANONICAL_NAME,
-                detail=f"mention primary name matches canonical archive name {person.canonical_name!r}",
+                detail=(
+                    "mention primary name matches canonical archive name "
+                    f"{person.canonical_name!r}"
+                ),
                 person_id=person.person_id,
             )
         )
@@ -151,7 +169,7 @@ def _candidate_name_signals(
 
     for alias in mention.aliases:
         normalized = normalize_name(alias)
-        if normalized and normalized in {canonical, *aliases}:
+        if normalized and normalized in known_surfaces:
             signals.append(
                 ResolutionSignal(
                     rule_id="resolution.name.structured_alias.v2",
@@ -165,7 +183,7 @@ def _candidate_name_signals(
         if variant.variant_type not in _STRONG_ALIAS_VARIANTS:
             continue
         normalized = normalize_name(variant.surface)
-        if normalized and normalized in {canonical, *aliases}:
+        if normalized and normalized in known_surfaces:
             signals.append(
                 ResolutionSignal(
                     rule_id="resolution.name.structured_variant.v2",
@@ -177,21 +195,7 @@ def _candidate_name_signals(
                     person_id=person.person_id,
                 )
             )
-    return list(dict.fromkeys(signal.model_dump_json() for signal in signals)) and _unique_signals(signals)
-
-
-def _unique_signals(signals: list[ResolutionSignal]) -> list[ResolutionSignal]:
-    unique: dict[tuple[str, str, str | None, str | None, str | None], ResolutionSignal] = {}
-    for signal in signals:
-        key = (
-            signal.rule_id,
-            signal.detail,
-            signal.person_id,
-            signal.related_mention_id,
-            signal.related_person_id,
-        )
-        unique.setdefault(key, signal)
-    return list(unique.values())
+    return _unique_signals(signals)
 
 
 def _candidate_state(mention: PersonMention, profile: KnownPersonProfile) -> _CandidateState | None:
@@ -265,7 +269,8 @@ def _candidate_state(mention: PersonMention, profile: KnownPersonProfile) -> _Ca
                     rule_id="resolution.guard.generation_conflict.v1",
                     kind=ResolutionSignalKind.GENERATION_CONFLICT,
                     detail=(
-                        f"mention generation {mention_generation} conflicts with archive generation "
+                        "mention generation "
+                        f"{mention_generation} conflicts with archive generation "
                         f"{profile.generation}"
                     ),
                     person_id=profile.person.person_id,
@@ -442,9 +447,7 @@ def resolve_mentions_with_report(
 
         if len(resolvable) == 1 and len(compatible) == 1:
             selected = resolvable[0]
-            rule_ids = list(
-                dict.fromkeys(signal.rule_id for signal in selected.supporting)
-            )
+            rule_ids = list(dict.fromkeys(signal.rule_id for signal in selected.supporting))
             traces.append(
                 ResolutionTrace(
                     mention_id=mention.mention_id,
@@ -495,7 +498,10 @@ def resolve_mentions_with_report(
                 status=ResolutionStatus.NEW_PERSON,
                 candidate_person_ids=[],
                 rule_ids=["resolution.decision.no_in_scope_name_candidate.v2"],
-                reason="no same-family canonical-name, established-alias, or structured-variant candidate",
+                reason=(
+                    "no same-family canonical-name, established-alias, or "
+                    "structured-variant candidate"
+                ),
             )
         )
 
