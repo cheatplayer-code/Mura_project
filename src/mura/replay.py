@@ -249,9 +249,7 @@ class FamilyReplayService:
                 speaker_id=source_result.extraction.speaker_id,
                 speaker_name=source_result.extraction.speaker_name,
             )
-            source_extraction_hash = _hash(
-                _semantic_extraction_payload(source_result.extraction)
-            )
+            source_extraction_hash = _hash(_semantic_extraction_payload(source_result.extraction))
             replayed_extraction_hash = _hash(_semantic_extraction_payload(sanitized))
             recording_results.append(
                 RecordingReplayResult(
