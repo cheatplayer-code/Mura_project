@@ -5,9 +5,9 @@
   "cases": [
     {
       "case_id": "established_alias_unique",
-      "title": "Established alias resolves uniquely inside one family",
+      "title": "Verified alias resolves uniquely inside one family",
       "family_id": "family_a",
-      "construction_tags": ["alias", "cross_recording", "auto_resolve"],
+      "construction_tags": ["verified_alias", "cross_recording", "auto_resolve"],
       "people_mentions": [
         {
           "mention_id": "mention_ereke",
@@ -26,6 +26,7 @@
             "aliases": ["Ереке"],
             "category": "family_member"
           },
+          "verified_aliases": ["Ереке"],
           "source_recording_ids": ["recording_001"]
         }
       ],
@@ -63,7 +64,7 @@
     },
     {
       "case_id": "relation_and_generation_corroborate",
-      "title": "Relation and generation independently corroborate a unique name",
+      "title": "Relation and speaker-relative generation corroborate a unique name",
       "family_id": "family_a",
       "construction_tags": ["generation", "relation_to_speaker", "auto_resolve"],
       "people_mentions": [
@@ -85,7 +86,7 @@
             "category": "family_member",
             "relation_to_speaker": "son"
           },
-          "generation": 1,
+          "generation_relative_to_speaker": 1,
           "source_recording_ids": ["recording_001"]
         }
       ],
@@ -95,7 +96,7 @@
     },
     {
       "case_id": "generation_conflict_review",
-      "title": "A generation conflict blocks an otherwise exact-name merge",
+      "title": "A speaker-relative generation conflict blocks an exact-name merge",
       "family_id": "family_a",
       "construction_tags": ["generation_conflict", "false_merge_trap", "review"],
       "people_mentions": [
@@ -117,7 +118,7 @@
             "category": "family_member",
             "relation_to_speaker": "father"
           },
-          "generation": -1
+          "generation_relative_to_speaker": -1
         }
       ],
       "gold": [
@@ -126,9 +127,9 @@
     },
     {
       "case_id": "graph_neighbour_corroborates",
-      "title": "A resolved alias neighbour corroborates the spouse identity",
+      "title": "A verified alias neighbour corroborates the spouse identity",
       "family_id": "family_a",
-      "construction_tags": ["graph_neighbour", "spouse", "alias", "auto_resolve"],
+      "construction_tags": ["graph_neighbour", "spouse", "verified_alias", "auto_resolve"],
       "people_mentions": [
         {
           "mention_id": "mention_erlan",
@@ -154,6 +155,7 @@
           "object_mention_id": "mention_dina",
           "object_role": "spouse",
           "source_segment_ids": ["seg_001"],
+          "evidence_ids": ["evidence_spouse"],
           "evidence_class": "A_explicit",
           "confidence": 1.0
         }
@@ -176,6 +178,7 @@
             "aliases": ["Дина"],
             "category": "family_member"
           },
+          "verified_aliases": ["Дина"],
           "spouse_person_ids": ["person_erlan"]
         }
       ],
@@ -206,7 +209,7 @@
             "canonical_name": "Ерлан",
             "category": "family_member"
           },
-          "generation": 0
+          "generation_relative_to_speaker": 0
         },
         {
           "family_id": "family_a",
@@ -215,7 +218,7 @@
             "canonical_name": "Ерлан",
             "category": "family_member"
           },
-          "generation": 1
+          "generation_relative_to_speaker": 1
         }
       ],
       "gold": [
