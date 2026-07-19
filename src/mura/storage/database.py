@@ -163,6 +163,7 @@ class RecordingRepository:
                     audio_path=str(audio_path),
                 )
             )
+            session.flush()
             session.add(
                 ProcessingJobRow(
                     job_id=job_id,
