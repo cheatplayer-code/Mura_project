@@ -1,0 +1,15 @@
+{
+  "schema_version": "benchmark-manifest-v2",
+  "datasets": [
+    {
+      "dataset_id": "synthetic_current_main",
+      "path": "synthetic/current_main.json",
+      "split": "validation",
+      "layer": "deterministic",
+      "enabled": true,
+      "approved_anonymized": false,
+      "narrator_count": 0,
+      "required_for_production": false
+    }
+  ]
+}
