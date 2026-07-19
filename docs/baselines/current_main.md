@@ -6,7 +6,7 @@ Manifest: `benchmarks/manifest.json`
 
 | Component | Version |
 |---|---|
-| archive_schema | `archive-claim-ledger-v1+conflict-decisions-v1` |
+| archive_schema | `archive-claim-ledger-v1+conflict-decisions-v1+generic-claims-v1` |
 | benchmark_schema | `benchmark-v1+entity-resolution-benchmark-v1` |
 | cleaner_prompt | `cleaner-v1` |
 | domain_schema | `domain-v2` |
@@ -14,7 +14,7 @@ Manifest: `benchmarks/manifest.json`
 | evidence_rules | `claim-evidence-v2+bounded-coreference-v1` |
 | extractor_prompt | `extractor-v3-anchor-constrained` |
 | extractor_repair_prompt | `extractor-repair-v1-anchor-constrained` |
-| materializer | `family-graph-materializer-v2-human-review` |
+| materializer | `family-materializer-v3-graph-and-profiles` |
 | pipeline | `mura-core-v0.9.0` |
 | resolver | `mention-resolver-v2-cross-recording` |
 
@@ -29,18 +29,19 @@ Manifest: `benchmarks/manifest.json`
 - Unknown segment references: **0**
 - Self relationships: **0**
 
-## Human conflict review changes
+## Generic claims and profile materialization
 
-1. Reviewers may resolve a conflict by selecting one grounded preferred claim; only that claim may rematerialize an edge.
-2. Dismissing a conflict rejects every participating claim from automatic graph materialization.
-3. Reopening a conflict returns every participating claim to disputed state and removes its graph edge.
-4. Every resolve, dismiss, reopen, and automatic reopen is stored in an immutable decision audit table.
-5. A later unseen competing claim automatically reopens a previously resolved or dismissed conflict instead of inheriting an outdated human decision.
-6. Conflict reads and mutations are scoped by `family_id` and protected by the core API bearer token.
-7. Legacy deterministic conflict IDs from the prior archive schema remain reviewable and are reused when their claim pair is reconciled.
+1. Validated aliases, descriptions, and event facets are projected into immutable typed archive claims.
+2. Birth and death dates are single-valued profile facets; incompatible grounded values create temporal conflicts and remain absent from the materialized profile until review.
+3. Locations, professions, education, descriptions, and general events remain multi-valued because changes over time are not contradictions by default.
+4. A grounded alias assigned to multiple archive people creates an identity conflict instead of silently attaching the alias to every profile.
+5. Existing conflict review endpoints now adjudicate relationship, temporal, and identity conflicts without changing the partner API contract.
+6. A new competing generic claim automatically reopens a previous decision and removes the stale preferred profile value.
+7. Materialized person profiles are family-scoped, source-linked, and exposed through authenticated profile endpoints.
+8. Relationship claims and generic profile claims are persisted within the same archive transaction.
 
 ## Scope and limitations
 
 The six-case baseline above still measures the deterministic relationship-validation layer against fixed extraction candidates. It does not measure live DeepSeek candidate generation or ASR quality.
 
-The entity-resolution release benchmark remains synthetic. Human review currently applies to incompatible relationship claims for the same resolved person pair. Dates, locations, descriptions, event overlap, identity conflicts, multi-reviewer consensus, and cryptographically authenticated reviewer identities are not yet materialized. The `reviewer_reference` field is client-asserted metadata under the shared core API credential, not an independently verified user identity.
+The entity-resolution release benchmark remains synthetic. Generic profile projection currently consumes already validated aliases, descriptions, and events. Location, profession, education, descriptions, and event history are intentionally multi-valued and are not temporally ranked. Child-count claims, arbitrary typed facts, event-identity overlap, multi-reviewer consensus, and cryptographically authenticated reviewer identities remain outside this release. The `reviewer_reference` field is client-asserted metadata under the shared core API credential, not an independently verified user identity.
