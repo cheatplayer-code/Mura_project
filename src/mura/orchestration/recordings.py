@@ -10,6 +10,7 @@ from mura.asr import ASRClientError, RemoteASRClient
 from mura.domain.models import PipelineRequest
 from mura.jobs import JobStatus
 from mura.pipeline import MuraPipeline
+from mura.storage.archive import ArchiveRepository
 from mura.storage.database import ProcessingJobRow, RecordingRepository
 
 ALLOWED_AUDIO_EXTENSIONS = {
@@ -78,6 +79,7 @@ class RecordingJobWorker:
         asr_retry_seconds: float = 15.0,
     ) -> None:
         self.repository = repository
+        self.archive_repository = ArchiveRepository(repository.database)
         self.pipeline = pipeline
         self.asr_client = asr_client
         self.poll_interval_seconds = poll_interval_seconds
@@ -168,15 +170,31 @@ class RecordingJobWorker:
                 self.repository.update_job_stage(job.job_id, status, stage)
 
         try:
+            resolution_context = self.archive_repository.build_resolution_context(
+                family_id=recording.family_id,
+                speaker_id=recording.speaker_id,
+            )
             result = self.pipeline.process(
                 PipelineRequest(
                     transcript=transcript,
                     speaker_id=recording.speaker_id,
                     speaker_name=recording.speaker_name,
-                    known_people=[],
+                    known_people=[profile.person for profile in resolution_context.profiles],
                 ),
                 stage_callback=report_stage,
+                resolution_context=resolution_context,
             )
+            self.repository.update_job_stage(
+                job.job_id,
+                JobStatus.RESOLVING,
+                "persisting_archive",
+            )
+            with self.repository.database.session_factory.begin() as session:
+                ArchiveRepository.persist_pipeline_result(
+                    session,
+                    recording=recording,
+                    result=result,
+                )
             self.repository.complete_job(job.job_id, result)
         except Exception as exc:
             self.repository.fail_job(

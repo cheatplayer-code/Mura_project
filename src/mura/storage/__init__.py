@@ -1,3 +1,12 @@
+from mura.storage.archive import (
+    ArchiveClaimRow,
+    ArchiveConflictRow,
+    ArchiveCorrectionRow,
+    ArchivePersonRow,
+    ArchiveRepository,
+    ArchiveWriteReport,
+    FamilyGraphEdgeRow,
+)
 from mura.storage.database import (
     Database,
     PipelineResultRow,
@@ -8,7 +17,14 @@ from mura.storage.database import (
 )
 
 __all__ = [
+    "ArchiveClaimRow",
+    "ArchiveConflictRow",
+    "ArchiveCorrectionRow",
+    "ArchivePersonRow",
+    "ArchiveRepository",
+    "ArchiveWriteReport",
     "Database",
+    "FamilyGraphEdgeRow",
     "PipelineResultRow",
     "ProcessingJobRow",
     "RecordingRepository",
