@@ -9,7 +9,15 @@ from datetime import datetime
 from typing import Any
 
 from pydantic import Field
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, delete, select
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+    delete,
+    select,
+)
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from mura.domain.models import (
@@ -26,7 +34,6 @@ from mura.domain.models import (
     PersonMention,
     PipelineResult,
     RelationshipClaim,
-    RelationshipRole,
     RelationshipType,
     ResolutionStatus,
     Story,
@@ -330,7 +337,8 @@ def _relationship_signature(row: ArchiveClaimRow) -> tuple[str, ...]:
 
 
 def _relationship_pair(row: ArchiveClaimRow) -> tuple[str, str]:
-    return tuple(sorted((row.subject_person_id or "", row.object_person_id or "")))
+    first, second = sorted((row.subject_person_id or "", row.object_person_id or ""))
+    return first, second
 
 
 def _edge_values(row: ArchiveClaimRow) -> tuple[str, str, str, str, str]:
@@ -486,9 +494,7 @@ class ArchiveRepository:
                 VerificationStatus.UNREVIEWED,
             )
             derived_from = (
-                list(item.provenance.derived_from_claim_ids)
-                if item.provenance is not None
-                else []
+                list(item.provenance.derived_from_claim_ids) if item.provenance is not None else []
             )
             claim_id = _stable_id(
                 "claim",
@@ -514,9 +520,7 @@ class ArchiveRepository:
                     evidence_class=item.evidence_class.value,
                     verification_status=verification_status.value,
                     assertion_mode=(
-                        assertion_mode.value
-                        if isinstance(assertion_mode, AssertionMode)
-                        else None
+                        assertion_mode.value if isinstance(assertion_mode, AssertionMode) else None
                     ),
                     status=status,
                     derived_from_claim_ids=derived_from,
@@ -622,9 +626,7 @@ class ArchiveRepository:
 
     @staticmethod
     def _rebuild_graph(session: Session, *, family_id: str) -> int:
-        session.execute(
-            delete(FamilyGraphEdgeRow).where(FamilyGraphEdgeRow.family_id == family_id)
-        )
+        session.execute(delete(FamilyGraphEdgeRow).where(FamilyGraphEdgeRow.family_id == family_id))
         claims = list(
             session.scalars(
                 select(ArchiveClaimRow).where(
@@ -680,9 +682,7 @@ class ArchiveRepository:
             )
             edges = list(
                 session.scalars(
-                    select(FamilyGraphEdgeRow).where(
-                        FamilyGraphEdgeRow.family_id == family_id
-                    )
+                    select(FamilyGraphEdgeRow).where(FamilyGraphEdgeRow.family_id == family_id)
                 )
             )
 
