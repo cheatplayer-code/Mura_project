@@ -10,7 +10,7 @@ from pydantic import Field
 from sqlalchemy import DateTime, Integer, String, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from mura.domain.models import PipelineResult, StrictModel
+from mura.domain.models import ExtractionResult, PipelineResult, StrictModel
 from mura.extraction_sanitizer import sanitize_extraction_output
 from mura.release_control import CURRENT_RELEASE_ID
 from mura.storage.archive import (
@@ -22,9 +22,9 @@ from mura.storage.archive import (
 )
 from mura.storage.conflict_resolution import ConflictResolutionService
 from mura.storage.database import (
+    JSON_VALUE,
     Base,
     Database,
-    JSON_VALUE,
     PipelineResultRow,
     RecordingRow,
     utcnow,
@@ -33,6 +33,7 @@ from mura.storage.generic_claims import persist_generic_claims
 from mura.storage.profile_models import MaterializedPersonProfileRow
 
 REPLAY_PROTOCOL_VERSION = "deterministic-family-replay-v1"
+SEMANTIC_EXTRACTION_SCOPE = "semantic-extraction-v1-without-provenance-activities"
 
 
 class PipelineReplayRunRow(Base):
@@ -53,9 +54,11 @@ class PipelineReplayRunRow(Base):
 
 class RecordingReplayResult(StrictModel):
     recording_id: str
+    comparison_scope: str = SEMANTIC_EXTRACTION_SCOPE
     source_extraction_hash: str
     replayed_extraction_hash: str
     extraction_matches: bool
+    provenance_activity_count: int = Field(ge=0)
     sanitizer_issue_count: int = Field(ge=0)
     evidence_closure_count: int = Field(ge=0)
     sanitizer_issues: list[dict[str, Any]] = Field(default_factory=list)
@@ -89,6 +92,12 @@ def _canonical_json(value: object) -> str:
 
 def _hash(value: object) -> str:
     return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def _semantic_extraction_payload(extraction: ExtractionResult) -> dict[str, Any]:
+    payload = extraction.model_dump(mode="json")
+    payload.pop("provenance_activities", None)
+    return payload
 
 
 def _snapshot(session: Session, *, family_id: str) -> dict[str, object]:
@@ -240,14 +249,17 @@ class FamilyReplayService:
                 speaker_id=source_result.extraction.speaker_id,
                 speaker_name=source_result.extraction.speaker_name,
             )
-            source_extraction_hash = _hash(source_result.extraction.model_dump(mode="json"))
-            replayed_extraction_hash = _hash(sanitized.model_dump(mode="json"))
+            source_extraction_hash = _hash(
+                _semantic_extraction_payload(source_result.extraction)
+            )
+            replayed_extraction_hash = _hash(_semantic_extraction_payload(sanitized))
             recording_results.append(
                 RecordingReplayResult(
                     recording_id=recording.recording_id,
                     source_extraction_hash=source_extraction_hash,
                     replayed_extraction_hash=replayed_extraction_hash,
                     extraction_matches=source_extraction_hash == replayed_extraction_hash,
+                    provenance_activity_count=len(sanitized.provenance_activities),
                     sanitizer_issue_count=len(sanitizer_issues),
                     evidence_closure_count=closure_count,
                     sanitizer_issues=sanitizer_issues,
@@ -301,6 +313,7 @@ class FamilyReplayService:
             notes=[
                 "Replay uses stored immutable transcripts, extraction candidates, and resolutions.",
                 "No ASR or LLM provider is called.",
+                "Semantic extraction hashes exclude provenance activities but include evidence and facts.",
                 "Human conflict decisions are not replayed into the shadow materialization.",
             ],
         )
