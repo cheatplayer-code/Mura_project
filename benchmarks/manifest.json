@@ -6,6 +6,12 @@
       "path": "synthetic/current_main.json",
       "split": "validation",
       "enabled": true
+    },
+    {
+      "dataset_id": "anonymized_adversarial_v1",
+      "path": "adversarial/anonymized_v1.json",
+      "split": "test",
+      "enabled": true
     }
   ]
 }
