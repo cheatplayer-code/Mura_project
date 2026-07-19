@@ -27,6 +27,14 @@ class DatasetSplit(StrEnum):
     TEST = "test"
 
 
+class DatasetLayer(StrEnum):
+    DETERMINISTIC = "deterministic"
+    DISCOURSE = "discourse"
+    MULTI_RECORDING = "multi_recording"
+    ADVERSARIAL = "adversarial"
+    ANONYMIZED_REAL = "anonymized_real"
+
+
 class GoldPerson(StrictModel):
     person_key: str = Field(min_length=1)
     accepted_surfaces: list[str] = Field(min_length=1)
@@ -118,7 +126,19 @@ class ManifestDataset(StrictModel):
     dataset_id: str = Field(min_length=1)
     path: str = Field(min_length=1)
     split: DatasetSplit = DatasetSplit.VALIDATION
+    layer: DatasetLayer = DatasetLayer.DETERMINISTIC
     enabled: bool = True
+    approved_anonymized: bool = False
+    narrator_count: int = Field(default=0, ge=0)
+    required_for_production: bool = False
+
+    @model_validator(mode="after")
+    def validate_real_dataset_metadata(self) -> ManifestDataset:
+        if self.approved_anonymized and self.layer is not DatasetLayer.ANONYMIZED_REAL:
+            raise ValueError("approved_anonymized is valid only for anonymized_real datasets")
+        if self.narrator_count and self.layer is not DatasetLayer.ANONYMIZED_REAL:
+            raise ValueError("narrator_count is valid only for anonymized_real datasets")
+        return self
 
 
 class BenchmarkManifest(StrictModel):
@@ -152,6 +172,7 @@ class CaseEvaluation(StrictModel):
     case_id: str
     dataset_id: str
     split: DatasetSplit
+    dataset_layer: DatasetLayer = DatasetLayer.DETERMINISTIC
     language: LanguageBucket
     construction_tags: list[str]
     person_mentions: PrecisionRecallF1
@@ -159,8 +180,13 @@ class CaseEvaluation(StrictModel):
     quarantined_relationships: PrecisionRecallF1
     relationship_direction_accuracy: RatioMetric
     provenance_completeness: RatioMetric
+    unsupported_relationship_acceptance: RatioMetric = Field(
+        default_factory=lambda: RatioMetric(numerator=0, denominator=0, value=0.0)
+    )
     unknown_segment_references: int = Field(ge=0)
     self_relationships: int = Field(ge=0)
+    accepted_claims_without_evidence: int = Field(default=0, ge=0)
+    critical_graph_violations: int = Field(default=0, ge=0)
     accepted_relationship_ids: list[str] = Field(default_factory=list)
     quarantined_relationship_ids: list[str] = Field(default_factory=list)
     extraction_issue_count: int = Field(ge=0)
@@ -174,8 +200,31 @@ class BenchmarkSummary(StrictModel):
     quarantined_relationships: PrecisionRecallF1
     relationship_direction_accuracy: RatioMetric
     provenance_completeness: RatioMetric
+    unsupported_relationship_acceptance: RatioMetric = Field(
+        default_factory=lambda: RatioMetric(numerator=0, denominator=0, value=0.0)
+    )
     unknown_segment_references: int = Field(ge=0)
     self_relationships: int = Field(ge=0)
+    accepted_claims_without_evidence: int = Field(default=0, ge=0)
+    critical_graph_violations: int = Field(default=0, ge=0)
+
+
+class BenchmarkSlice(StrictModel):
+    dimension: str = Field(min_length=1)
+    key: str = Field(min_length=1)
+    summary: BenchmarkSummary
+
+
+class DatasetCoverage(StrictModel):
+    dataset_id: str
+    split: DatasetSplit
+    layer: DatasetLayer
+    enabled: bool
+    loaded: bool
+    case_count: int = Field(ge=0)
+    approved_anonymized: bool = False
+    narrator_count: int = Field(default=0, ge=0)
+    required_for_production: bool = False
 
 
 class BenchmarkReport(StrictModel):
@@ -184,3 +233,5 @@ class BenchmarkReport(StrictModel):
     pipeline_versions: dict[str, str]
     cases: list[CaseEvaluation]
     summary: BenchmarkSummary
+    slices: list[BenchmarkSlice] = Field(default_factory=list)
+    dataset_coverage: list[DatasetCoverage] = Field(default_factory=list)
