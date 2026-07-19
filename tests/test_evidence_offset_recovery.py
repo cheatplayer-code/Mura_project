@@ -302,8 +302,7 @@ def test_repaired_evidence_preserves_downstream_person_reference() -> None:
     assert result.evidence_spans[0].start_char == start
     assert result.people_mentions[0].evidence_ids == ["evidence_1"]
     assert not any(
-        "unknown or out-of-scope evidence IDs were removed" in issue["detail"]
-        for issue in issues
+        "unknown or out-of-scope evidence IDs were removed" in issue["detail"] for issue in issues
     )
 
 
@@ -363,8 +362,7 @@ def test_repaired_evidence_preserves_downstream_relationship_reference() -> None
     assert [item.evidence_id for item in result.evidence_spans] == [evidence_id]
     assert result.relationship_claims[0].evidence_ids == [evidence_id]
     assert not any(
-        "unknown or out-of-scope evidence IDs were removed" in issue["detail"]
-        for issue in issues
+        "unknown or out-of-scope evidence IDs were removed" in issue["detail"] for issue in issues
     )
 
 
