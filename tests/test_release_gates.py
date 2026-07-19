@@ -38,6 +38,7 @@ def test_pull_request_release_gate_passes_public_suites() -> None:
     )
 
     assert result.passed is True
+    assert result.production_eligible is False
     assert result.failed_check_ids == []
     assert any(item.check_id == "coverage.language.mixed" for item in result.checks)
     assert any(item.check_id == "coverage.adversarial_cases" for item in result.checks)
