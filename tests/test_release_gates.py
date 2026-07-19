@@ -11,12 +11,12 @@ from mura.evaluation.release_gates import (
 from mura.evaluation.runner import run_benchmark
 
 ROOT = Path(__file__).resolve().parents[1]
-MANIFEST = ROOT / "benchmarks" / "manifest.json"
+RELEASE_MANIFEST = ROOT / "benchmarks" / "release_manifest.json"
 GATES = ROOT / "benchmarks" / "release_gates.json"
 
 
 def test_adversarial_dataset_is_enabled_and_release_gates_pass() -> None:
-    report = run_benchmark(MANIFEST)
+    report = run_benchmark(RELEASE_MANIFEST)
     adversarial = [case for case in report.cases if "adversarial" in case.construction_tags]
 
     assert report.summary.case_count == 10
@@ -31,7 +31,7 @@ def test_adversarial_dataset_is_enabled_and_release_gates_pass() -> None:
 
 
 def test_release_gate_reports_regression_without_hiding_measurement() -> None:
-    report = run_benchmark(MANIFEST)
+    report = run_benchmark(RELEASE_MANIFEST)
     strict = ReleaseGateConfig(
         minimum_case_count=100,
         minimum_adversarial_case_count=20,
@@ -77,7 +77,7 @@ def test_cli_returns_nonzero_for_failed_release_gate(tmp_path: Path) -> None:
     exit_code = main(
         [
             "--manifest",
-            str(MANIFEST),
+            str(RELEASE_MANIFEST),
             "--release-gates",
             str(gate_path),
         ]
