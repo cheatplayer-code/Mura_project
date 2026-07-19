@@ -76,9 +76,7 @@ def test_retention_requires_exact_confirmation(tmp_path: Path) -> None:
 
 
 def test_release_manifest_matches_runtime_catalog() -> None:
-    payload = json.loads(
-        Path("release/mura-core-v1.0.0-rc1.json").read_text(encoding="utf-8")
-    )
+    payload = json.loads(Path("release/mura-core-v1.0.0-rc1.json").read_text(encoding="utf-8"))
     assert payload["release_id"] == CURRENT_RELEASE_ID
     assert payload["budgets"]["maximum_weighted_cost_units"] == 240_000
     assert payload["verification"]["local_smoke_command"] == "mura-release-smoke"
