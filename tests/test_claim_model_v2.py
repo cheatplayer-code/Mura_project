@@ -252,9 +252,17 @@ def test_deterministic_coreference_replaces_model_only_authorization() -> None:
     validate_extraction_result(transcript, result)
 
 
-def test_conflict_set_preserves_claims_and_cross_links_them() -> None:
-    transcript = _transcript(("seg_001", "Ерлан Динара."))
+def test_conflict_set_preserves_grounded_claims_and_cross_links_them() -> None:
+    transcript = _transcript(
+        ("seg_001", "Ерланның әйелі Динара."),
+        ("seg_002", "Ерланның қызы Динара."),
+    )
     raw = _explicit_relationship_raw()
+    people = raw["people_mentions"]
+    assert isinstance(people, list)
+    for person in people:
+        assert isinstance(person, dict)
+        person["source_segment_ids"] = ["seg_001", "seg_002"]
     raw["relationship_claims"] = [
         {
             "relationship_id": "relationship_spouse",
@@ -273,7 +281,7 @@ def test_conflict_set_preserves_claims_and_cross_links_them() -> None:
             "subject_role": "parent",
             "object_mention_id": "mention_dinara",
             "object_role": "child",
-            "source_segment_ids": ["seg_001"],
+            "source_segment_ids": ["seg_002"],
             "confidence": 0.8,
         },
     ]
@@ -287,7 +295,7 @@ def test_conflict_set_preserves_claims_and_cross_links_them() -> None:
             ],
             "status": "open",
             "detected_by": "model",
-            "rationale": "The two relationship types cannot both describe this pair.",
+            "rationale": "The two grounded relationship types cannot both describe this pair.",
         }
     ]
 
