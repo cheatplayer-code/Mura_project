@@ -130,7 +130,7 @@ jobs:
         run: |
           set -o pipefail
           mura-evaluate-core \
-            --manifest benchmarks/manifest.json \
+            --manifest benchmarks/release_manifest.json \
             --release-gates benchmarks/release_gates.json \
             --json-output benchmark-report.json \
             --markdown-output benchmark-report.md 2>&1 | tee release-gate-output.txt
