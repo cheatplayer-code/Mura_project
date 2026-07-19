@@ -154,6 +154,7 @@
           "object_mention_id": "mention_dina",
           "object_role": "spouse",
           "source_segment_ids": ["seg_001"],
+          "evidence_class": "A_explicit",
           "confidence": 1.0
         }
       ],
