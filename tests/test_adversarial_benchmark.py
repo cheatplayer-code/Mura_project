@@ -34,18 +34,12 @@ def test_adversarial_suite_is_reported_by_language_and_layer() -> None:
     assert report.summary.unsupported_relationship_acceptance.value == 0.0
 
     language_slices = {
-        item.key: item.summary
-        for item in report.slices
-        if item.dimension == "language"
+        item.key: item.summary for item in report.slices if item.dimension == "language"
     }
     assert set(language_slices) == {item.value for item in LanguageBucket}
     assert all(summary.provenance_completeness.value == 1.0 for summary in language_slices.values())
 
-    layer_slices = {
-        item.key: item.summary
-        for item in report.slices
-        if item.dimension == "layer"
-    }
+    layer_slices = {item.key: item.summary for item in report.slices if item.dimension == "layer"}
     assert layer_slices["adversarial"].case_count == 12
     assert layer_slices["deterministic"].case_count == 6
 
