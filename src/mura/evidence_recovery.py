@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeGuard
 
 from mura.domain.models import TranscriptEnvelope
 
@@ -42,7 +42,7 @@ def _all_occurrences(text: str, substring: str) -> list[int]:
         cursor = position + 1
 
 
-def _is_integer(value: object) -> bool:
+def _is_integer(value: object) -> TypeGuard[int]:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
