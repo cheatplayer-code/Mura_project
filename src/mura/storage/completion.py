@@ -31,9 +31,7 @@ def finalize_recording_job(
     """Persist the result and completed job state inside the caller's archive transaction."""
     now = utcnow()
     job = session.scalar(
-        select(ProcessingJobRow)
-        .where(ProcessingJobRow.job_id == job_id)
-        .with_for_update()
+        select(ProcessingJobRow).where(ProcessingJobRow.job_id == job_id).with_for_update()
     )
     if job is None:
         raise JobFinalizationError(f"unknown job: {job_id}")
@@ -74,9 +72,7 @@ def defer_recording_job(
     now = utcnow()
     with database.session_factory.begin() as session:
         job = session.scalar(
-            select(ProcessingJobRow)
-            .where(ProcessingJobRow.job_id == job_id)
-            .with_for_update()
+            select(ProcessingJobRow).where(ProcessingJobRow.job_id == job_id).with_for_update()
         )
         if job is None:
             raise JobFinalizationError(f"unknown job: {job_id}")
@@ -101,9 +97,7 @@ def fail_recording_job(
     now = utcnow()
     with database.session_factory.begin() as session:
         job = session.scalar(
-            select(ProcessingJobRow)
-            .where(ProcessingJobRow.job_id == job_id)
-            .with_for_update()
+            select(ProcessingJobRow).where(ProcessingJobRow.job_id == job_id).with_for_update()
         )
         if job is None:
             raise JobFinalizationError(f"unknown job: {job_id}")
