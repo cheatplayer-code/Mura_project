@@ -222,7 +222,7 @@ def analyze_relationship_evidence(
     elif matching_signals:
         role_consistent = True
     else:
-        role_consistent = None
+        role_consistent = False
 
     supported = [
         mention_id
