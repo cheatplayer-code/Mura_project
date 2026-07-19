@@ -51,9 +51,7 @@ class RetentionService:
         replay_cutoff = resolved_now - timedelta(days=self.policy.replay_retention_days)
         with self.database.session_factory() as session:
             terminal_job_ids = select(ProcessingJobRow.job_id).where(
-                ProcessingJobRow.status.in_(
-                    [JobStatus.COMPLETED.value, JobStatus.FAILED.value]
-                ),
+                ProcessingJobRow.status.in_([JobStatus.COMPLETED.value, JobStatus.FAILED.value]),
                 ProcessingJobRow.completed_at.is_not(None),
                 ProcessingJobRow.completed_at < trace_cutoff,
             )
@@ -102,15 +100,11 @@ class RetentionService:
         now: datetime | None = None,
     ) -> RetentionReport:
         if confirmation != RETENTION_CONFIRMATION:
-            raise RetentionConfirmationError(
-                f"confirmation must equal {RETENTION_CONFIRMATION!r}"
-            )
+            raise RetentionConfirmationError(f"confirmation must equal {RETENTION_CONFIRMATION!r}")
         preview = self.preview(now=now)
         with self.database.session_factory.begin() as session:
             terminal_job_ids = select(ProcessingJobRow.job_id).where(
-                ProcessingJobRow.status.in_(
-                    [JobStatus.COMPLETED.value, JobStatus.FAILED.value]
-                ),
+                ProcessingJobRow.status.in_([JobStatus.COMPLETED.value, JobStatus.FAILED.value]),
                 ProcessingJobRow.completed_at.is_not(None),
                 ProcessingJobRow.completed_at < preview.trace_cutoff,
             )
