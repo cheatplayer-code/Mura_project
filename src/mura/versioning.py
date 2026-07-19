@@ -20,7 +20,7 @@ class PipelineVersions(StrictModel):
 
 
 CURRENT_PIPELINE_VERSIONS = PipelineVersions(
-    pipeline="mura-core-v0.10.0",
+    pipeline="mura-core-v0.9.0",
     domain_schema="domain-v2",
     cleaner_prompt="cleaner-v1",
     extractor_prompt="extractor-v3-anchor-constrained",
