@@ -11,7 +11,7 @@ from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, 
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from mura.domain.models import StrictModel
-from mura.storage.database import Base, Database, JSON_VALUE, utcnow
+from mura.storage.database import JSON_VALUE, Base, Database, utcnow
 
 TRACE_SCHEMA_VERSION = "processing-trace-v1"
 COMPLETION_PROTOCOL_VERSION = "archive-job-atomic-v1"
