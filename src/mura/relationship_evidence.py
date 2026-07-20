@@ -66,14 +66,9 @@ def joined_segment_text(
     segment_ids: list[str],
     transcript: TranscriptEnvelope,
 ) -> str:
-    text_by_id = {
-        segment.segment_id: segment.text
-        for segment in transcript.segments
-    }
+    text_by_id = {segment.segment_id: segment.text for segment in transcript.segments}
     return " ".join(
-        text_by_id[segment_id]
-        for segment_id in segment_ids
-        if segment_id in text_by_id
+        text_by_id[segment_id] for segment_id in segment_ids if segment_id in text_by_id
     )
 
 
@@ -84,10 +79,7 @@ def explicitly_named_people(
     return [
         person
         for person in people
-        if any(
-            contains_surface(source_text, surface)
-            for surface in person_name_surfaces(person)
-        )
+        if any(contains_surface(source_text, surface) for surface in person_name_surfaces(person))
     ]
 
 
@@ -99,8 +91,7 @@ def exactly_named_people(
         person
         for person in people
         if any(
-            contains_exact_surface(source_text, surface)
-            for surface in person_name_surfaces(person)
+            contains_exact_surface(source_text, surface) for surface in person_name_surfaces(person)
         )
     ]
 
@@ -202,14 +193,9 @@ def _prefer_specific_endpoint_signals(
 
     selected: list[LinguisticRelationshipSignal] = []
     for candidates in grouped.values():
-        strongest = max(
-            _signal_specificity(candidate)
-            for candidate in candidates
-        )
+        strongest = max(_signal_specificity(candidate) for candidate in candidates)
         selected.extend(
-            candidate
-            for candidate in candidates
-            if _signal_specificity(candidate) == strongest
+            candidate for candidate in candidates if _signal_specificity(candidate) == strongest
         )
     return selected
 
@@ -244,20 +230,13 @@ def analyze_relationship_evidence(
     resolved_coreference_antecedent_ids: set[str] | None = None,
 ) -> RelationshipEvidenceAnalysis:
     resolved_antecedents = resolved_coreference_antecedent_ids or set()
-    mention_by_id = {
-        person.mention_id: person
-        for person in people
-    }
+    mention_by_id = {person.mention_id: person for person in people}
     endpoint_ids = [
         relationship.subject_mention_id,
         relationship.object_mention_id,
     ]
     endpoint_set = set(endpoint_ids)
-    endpoint_people = [
-        mention_by_id[item]
-        for item in endpoint_ids
-        if item in mention_by_id
-    ]
+    endpoint_people = [mention_by_id[item] for item in endpoint_ids if item in mention_by_id]
 
     contexts = select_relationship_grounding_contexts(
         relationship=relationship,
@@ -266,18 +245,11 @@ def analyze_relationship_evidence(
         speaker_name=speaker_name,
         resolved_antecedent_ids=resolved_antecedents,
     )
-    source_text = " ".join(
-        context.text
-        for context in contexts
-    )
+    source_text = " ".join(context.text for context in contexts)
     explicit = explicitly_named_people(source_text, people)
     exact = exactly_named_people(source_text, people)
     exact_ids = {person.mention_id for person in exact}
-    morphological = [
-        person
-        for person in explicit
-        if person.mention_id not in exact_ids
-    ]
+    morphological = [person for person in explicit if person.mention_id not in exact_ids]
     speakers = speaker_mentions(people, speaker_name)
     speaker_ids = {person.mention_id for person in speakers}
     speaker_anchors = find_speaker_anchor_matches(source_text)
@@ -300,29 +272,17 @@ def analyze_relationship_evidence(
         == endpoint_set
     ]
     matching_signals = [
-        signal
-        for signal in endpoint_signals
-        if signal_matches_relationship(signal, relationship)
+        signal for signal in endpoint_signals if signal_matches_relationship(signal, relationship)
     ]
     conflicting_signals = [
         signal
         for signal in endpoint_signals
         if not signal_matches_relationship(signal, relationship)
     ]
-    third_person_markers = find_third_person_possessive_markers(
-        source_text
-    )
-    resolved_endpoint_antecedents = endpoint_set.intersection(
-        resolved_antecedents
-    )
-    coreference_authorized = bool(
-        third_person_markers
-        and resolved_endpoint_antecedents
-    )
-    unresolved_third_person = (
-        bool(third_person_markers)
-        and not coreference_authorized
-    )
+    third_person_markers = find_third_person_possessive_markers(source_text)
+    resolved_endpoint_antecedents = endpoint_set.intersection(resolved_antecedents)
+    coreference_authorized = bool(third_person_markers and resolved_endpoint_antecedents)
+    unresolved_third_person = bool(third_person_markers) and not coreference_authorized
 
     if unresolved_third_person or conflicting_signals:
         role_consistent: bool | None = False
@@ -339,24 +299,12 @@ def analyze_relationship_evidence(
         speaker_name=speaker_name,
         resolved_antecedent_ids=resolved_antecedents,
     )
-    supported = [
-        mention_id
-        for mention_id in endpoint_ids
-        if mention_id in context_supported
-    ]
-    unsupported = [
-        mention_id
-        for mention_id in endpoint_ids
-        if mention_id not in context_supported
-    ]
+    supported = [mention_id for mention_id in endpoint_ids if mention_id in context_supported]
+    unsupported = [mention_id for mention_id in endpoint_ids if mention_id not in context_supported]
 
     if coreference_authorized:
         evidence_class = EvidenceClass.D_CONTEXT_RESOLVED
-    elif (
-        not unsupported
-        and first_person
-        and endpoint_set.intersection(speaker_ids)
-    ):
+    elif not unsupported and first_person and endpoint_set.intersection(speaker_ids):
         evidence_class = EvidenceClass.C_SPEAKER_ANCHORED
     elif endpoint_set.issubset(exact_ids):
         evidence_class = EvidenceClass.A_EXPLICIT
@@ -369,32 +317,13 @@ def analyze_relationship_evidence(
 
     uncertainty_markers = find_uncertainty_markers(source_text)
     rule_ids = set(_name_rule_ids(source_text, people))
-    rule_ids.update(
-        anchor.rule_id
-        for anchor in speaker_anchors
-    )
-    rule_ids.update(
-        signal.rule_id
-        for signal in signals
-    )
-    rule_ids.update(
-        marker.rule_id
-        for marker in third_person_markers
-    )
-    rule_ids.update(
-        marker.rule_id
-        for marker in uncertainty_markers
-    )
-    signal_dicts = [
-        signal.to_dict()
-        for signal in signals
-    ]
-    subject = mention_by_id.get(
-        relationship.subject_mention_id
-    )
-    object_person = mention_by_id.get(
-        relationship.object_mention_id
-    )
+    rule_ids.update(anchor.rule_id for anchor in speaker_anchors)
+    rule_ids.update(signal.rule_id for signal in signals)
+    rule_ids.update(marker.rule_id for marker in third_person_markers)
+    rule_ids.update(marker.rule_id for marker in uncertainty_markers)
+    signal_dicts = [signal.to_dict() for signal in signals]
+    subject = mention_by_id.get(relationship.subject_mention_id)
+    object_person = mention_by_id.get(relationship.object_mention_id)
     grounding_decision = _decision(
         matching_signals=matching_signals,
         conflicting_signals=conflicting_signals,
@@ -410,11 +339,7 @@ def analyze_relationship_evidence(
         subject_mention_id=relationship.subject_mention_id,
         subject_name=subject.name if subject else None,
         object_mention_id=relationship.object_mention_id,
-        object_name=(
-            object_person.name
-            if object_person
-            else None
-        ),
+        object_name=(object_person.name if object_person else None),
         explicit_people=[
             {
                 "mention_id": person.mention_id,
@@ -438,60 +363,28 @@ def analyze_relationship_evidence(
         ],
         speaker_mention_ids=sorted(speaker_ids),
         first_person_reference=first_person,
-        speaker_anchor_matches=[
-            anchor.to_dict()
-            for anchor in speaker_anchors
-        ],
+        speaker_anchor_matches=[anchor.to_dict() for anchor in speaker_anchors],
         supported_endpoint_ids=supported,
         unsupported_endpoint_ids=unsupported,
         evidence_class=evidence_class.value,
         auto_accept_eligible=(
-            evidence_class in _AUTO_ACCEPTABLE_CLASSES
-            and role_consistent is True
+            evidence_class in _AUTO_ACCEPTABLE_CLASSES and role_consistent is True
         ),
-        coreference_link_ids=list(
-            relationship.coreference_link_ids
-        ),
-        resolved_coreference_antecedent_ids=sorted(
-            resolved_antecedents
-        ),
+        coreference_link_ids=list(relationship.coreference_link_ids),
+        resolved_coreference_antecedent_ids=sorted(resolved_antecedents),
         linguistic_relationship_signals=signal_dicts,
-        matching_signal_rule_ids=sorted(
-            {item.rule_id for item in matching_signals}
-        ),
-        conflicting_signal_rule_ids=sorted(
-            {item.rule_id for item in conflicting_signals}
-        ),
-        kazakh_relationship_signals=[
-            item
-            for item in signal_dicts
-            if item["language"] == "kk"
-        ],
-        russian_relationship_signals=[
-            item
-            for item in signal_dicts
-            if item["language"] == "ru"
-        ],
-        english_relationship_signals=[
-            item
-            for item in signal_dicts
-            if item["language"] == "en"
-        ],
+        matching_signal_rule_ids=sorted({item.rule_id for item in matching_signals}),
+        conflicting_signal_rule_ids=sorted({item.rule_id for item in conflicting_signals}),
+        kazakh_relationship_signals=[item for item in signal_dicts if item["language"] == "kk"],
+        russian_relationship_signals=[item for item in signal_dicts if item["language"] == "ru"],
+        english_relationship_signals=[item for item in signal_dicts if item["language"] == "en"],
         code_switching_relationship_signals=[
-            item
-            for item in signal_dicts
-            if item["language"] == "mixed"
+            item for item in signal_dicts if item["language"] == "mixed"
         ],
         role_consistent=role_consistent,
         grounding_decision=grounding_decision,
-        third_person_possessive_markers=[
-            marker.to_dict()
-            for marker in third_person_markers
-        ],
-        uncertainty_markers=[
-            marker.to_dict()
-            for marker in uncertainty_markers
-        ],
+        third_person_possessive_markers=[marker.to_dict() for marker in third_person_markers],
+        uncertainty_markers=[marker.to_dict() for marker in uncertainty_markers],
         linguistic_rule_ids=sorted(rule_ids),
     )
 
