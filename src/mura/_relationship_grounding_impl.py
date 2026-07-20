@@ -10,6 +10,8 @@ from mura.domain.models import (
     RelationshipType,
     TranscriptEnvelope,
 )
+from mura.explicit_pair_grounding import find_explicit_pair_matches
+from mura.explicit_sibling_grounding import find_explicit_sibling_signals
 from mura.linguistics import kazakh, russian
 from mura.linguistics.common import TextToken, normalize_text, tokenize
 from mura.linguistics.multilingual import (
@@ -134,8 +136,6 @@ _RU_FIRST_PERSON = frozenset(
     ).split()
 )
 _RU_COUSIN = frozenset("двоюродный двоюродная двоюродного двоюродной двоюродные".split())
-_RU_WEDDING = frozenset("поженились поженился поженилась женился женилась супруги".split())
-_KK_WEDDING = frozenset("үйленді үйленген үйленгендер некелесті некелескен".split())
 _RELATION_LABELS = {
     "father": frozenset({"отец", "папа", "әке", "әкем"}),
     "mother": frozenset({"мать", "мама", "ана", "анам", "шеше", "шешем"}),
@@ -355,25 +355,6 @@ def _canonical(
     )
 
 
-def _pair_signal(
-    relationship_type: RelationshipType,
-    people: list[PersonMention],
-    language: str,
-    rule_id: str,
-) -> LinguisticRelationshipSignal:
-    role = _SPOUSE if relationship_type is RelationshipType.SPOUSE else _SIBLING
-    return LinguisticRelationshipSignal(
-        language=language,
-        relationship_type=relationship_type,
-        subject_mention_id=people[0].mention_id,
-        subject_role=role,
-        object_mention_id=people[1].mention_id,
-        object_role=role,
-        source_surface="explicit relationship predicate",
-        rule_id=rule_id,
-    )
-
-
 def _distance(start: int, end: int, matches: list[NameMatch]) -> int | None:
     values = [min(abs(item.start - end), abs(start - item.end)) for item in matches]
     return min(values) if values else None
@@ -506,83 +487,25 @@ def _named_signals(text: str, people: list[PersonMention]) -> list[LinguisticRel
     return result
 
 
-def _phrase(tokens: list[TextToken], values: tuple[str, ...]) -> bool:
-    size = len(values)
-    return any(
-        tuple(item.normalized for item in tokens[index : index + size]) == values
-        for index in range(len(tokens) - size + 1)
-    )
-
-
-def _both_named(text: str, people: list[PersonMention]) -> bool:
-    if len(people) != 2:
-        return False
-    left = _name_matches(text, people[0])
-    right = _name_matches(text, people[1])
-    return any(
-        (distance := _distance(item.start, item.end, right)) is not None and distance <= 240
-        for item in left
-    )
-
-
-def _parent_labels(text: str, people: list[PersonMention]) -> bool:
-    labels = {normalize_text(item.relation_to_speaker or "") for item in people}
-    if labels != {"father", "mother"}:
-        return False
-    tokens = tokenize(text)
-    return any(
-        _phrase(tokens, value)
-        for value in (
-            ("отец", "и", "мама"),
-            ("папа", "и", "мама"),
-            ("отец", "и", "мать"),
-        )
-    )
-
-
 def _explicit_pair_signals(
-    text: str, people: list[PersonMention]
+    text: str,
+    people: list[PersonMention],
 ) -> list[LinguisticRelationshipSignal]:
-    if len(people) != 2:
-        return []
-    tokens = tokenize(text)
-    words = [item.normalized for item in tokens]
-    named = _both_named(text, people)
-    result = []
-    ru_spouse = any(word in _RU_WEDDING for word in words)
-    ru_spouse = ru_spouse or _phrase(tokens, ("вышла", "замуж"))
-    ru_spouse = ru_spouse or _phrase(tokens, ("мужем", "и", "женой"))
-    ru_spouse = ru_spouse or _phrase(tokens, ("муж", "и", "жена"))
-    if ru_spouse and (named or _parent_labels(text, people)):
-        result.append(
-            _pair_signal(
-                RelationshipType.SPOUSE,
-                people,
-                "ru",
-                "ru.relationship.explicit_spouse_coordination.v2",
-            )
+    signals = [
+        LinguisticRelationshipSignal(
+            language=match.language,
+            relationship_type=match.relationship_type,
+            subject_mention_id=match.subject_mention_id,
+            subject_role=_SPOUSE,
+            object_mention_id=match.object_mention_id,
+            object_role=_SPOUSE,
+            source_surface=match.source_surface,
+            rule_id=match.rule_id,
         )
-    ru_sibling = _phrase(tokens, ("брат", "и", "сестра"))
-    ru_sibling = ru_sibling or _phrase(tokens, ("сестра", "и", "брат"))
-    if ru_sibling and named and not any(word in _RU_COUSIN for word in words):
-        result.append(
-            _pair_signal(
-                RelationshipType.SIBLING,
-                people,
-                "ru",
-                "ru.relationship.explicit_sibling_coordination.v2",
-            )
-        )
-    if named and any(word in _KK_WEDDING for word in words):
-        result.append(
-            _pair_signal(
-                RelationshipType.SPOUSE,
-                people,
-                "kk",
-                "kk.relationship.explicit_spouse_coordination.v2",
-            )
-        )
-    return result
+        for match in find_explicit_pair_matches(text, people)
+    ]
+    signals.extend(find_explicit_sibling_signals(text, people))
+    return signals
 
 
 def find_bounded_relationship_signals(

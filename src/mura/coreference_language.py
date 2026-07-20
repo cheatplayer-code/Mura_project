@@ -4,8 +4,9 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from mura.domain.models import GrammaticalNumber, RelationshipRole, RelationshipType
-from mura.linguistics import english, kazakh, russian
+from mura.linguistics import english, russian
 from mura.linguistics.common import tokenize
+from mura.linguistics.kazakh_kinship import find_named_possessor_kinship_matches
 
 
 class KinshipFrame(Protocol):
@@ -54,6 +55,7 @@ _PLURAL_ANAPHORS: dict[str, str] = {
     "их": "ru",
     "они": "ru",
     "their": "en",
+    "they": "en",
 }
 _RU_U_ANAPHORS: dict[str, GrammaticalNumber] = {
     "него": GrammaticalNumber.SINGULAR,
@@ -69,6 +71,12 @@ _ADDITIONAL_RU_KINSHIP_FRAMES: dict[str, russian.KinshipFrame] = {
     "дети": russian.KinshipFrame(_PARENT_CHILD, _PARENT, _CHILD),
     "детей": russian.KinshipFrame(_PARENT_CHILD, _PARENT, _CHILD),
     "сыновей": russian.KinshipFrame(_PARENT_CHILD, _PARENT, _CHILD),
+    "родился": russian.KinshipFrame(_PARENT_CHILD, _PARENT, _CHILD),
+    "родилась": russian.KinshipFrame(_PARENT_CHILD, _PARENT, _CHILD),
+}
+
+_ADDITIONAL_EN_KINSHIP_FRAMES: dict[str, english.KinshipFrame] = {
+    "children": english.KinshipFrame(_PARENT_CHILD, _PARENT, _CHILD),
 }
 
 
@@ -120,17 +128,15 @@ def find_anaphors(text: str) -> list[AnaphorOccurrence]:
 
 
 def _kazakh_kinship_matches(text: str) -> list[KinshipOccurrence]:
-    frames = getattr(kazakh, "_NAMED_POSSESSOR_FRAMES")
     return [
         KinshipOccurrence(
-            surface=token.surface,
-            start=token.start,
-            end=token.end,
+            surface=match.surface,
+            start=match.start,
+            end=match.end,
             language="kk",
-            frame=frames[token.normalized],
+            frame=match.frame,
         )
-        for token in tokenize(text)
-        if token.normalized in frames
+        for match in find_named_possessor_kinship_matches(text)
     ]
 
 
@@ -148,10 +154,25 @@ def _additional_russian_kinship_matches(text: str) -> list[KinshipOccurrence]:
     ]
 
 
+def _additional_english_kinship_matches(text: str) -> list[KinshipOccurrence]:
+    return [
+        KinshipOccurrence(
+            surface=token.surface,
+            start=token.start,
+            end=token.end,
+            language="en",
+            frame=_ADDITIONAL_EN_KINSHIP_FRAMES[token.normalized],
+        )
+        for token in tokenize(text)
+        if token.normalized in _ADDITIONAL_EN_KINSHIP_FRAMES
+    ]
+
+
 def _kinship_matches(text: str) -> list[KinshipOccurrence]:
     matches = [
         *_kazakh_kinship_matches(text),
         *_additional_russian_kinship_matches(text),
+        *_additional_english_kinship_matches(text),
         *(
             KinshipOccurrence(
                 surface=item.surface,
