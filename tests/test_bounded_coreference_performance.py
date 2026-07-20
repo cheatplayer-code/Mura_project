@@ -6,7 +6,12 @@ from typing import Any
 import pytest
 
 from mura.coreference import augment_bounded_coreference
-from mura.domain.models import ExtractionResult, PersonMention, RawSegment, TranscriptEnvelope
+from mura.domain.models import (
+    ExtractionResult,
+    PersonMention,
+    RawSegment,
+    TranscriptEnvelope,
+)
 
 
 _CASE_SIZE = 200
