@@ -6,7 +6,9 @@ from collections.abc import Iterable
 
 from mura.claim_model import validate_extraction_contract_v2
 from mura.domain.models import (
+    ClaimObjectType,
     CleanerResult,
+    ConflictStatus,
     CoreferenceStatus,
     CorrectionKind,
     EvidenceClass,
@@ -197,6 +199,16 @@ def validate_cleaner_result(transcript: TranscriptEnvelope, result: CleanerResul
         )
 
 
+def _open_conflicted_relationship_ids(result: ExtractionResult) -> set[str]:
+    return {
+        reference.object_id
+        for conflict in result.conflict_sets
+        if conflict.status is ConflictStatus.OPEN
+        for reference in conflict.claim_refs
+        if reference.object_type is ClaimObjectType.RELATIONSHIP
+    }
+
+
 def validate_extraction_result(transcript: TranscriptEnvelope, result: ExtractionResult) -> None:
     valid_segments = {segment.segment_id for segment in transcript.segments}
     segment_text_by_id = {segment.segment_id: segment.text for segment in transcript.segments}
@@ -218,6 +230,7 @@ def validate_extraction_result(transcript: TranscriptEnvelope, result: Extractio
     mention_by_id = {person.mention_id: person for person in result.people_mentions}
     mention_set = set(mention_ids)
     event_set = set(event_ids)
+    open_conflicted_relationship_ids = _open_conflicted_relationship_ids(result)
 
     for person in result.people_mentions:
         _ensure_known_segments(person.source_segment_ids, valid_segments, person.mention_id)
@@ -266,7 +279,11 @@ def validate_extraction_result(transcript: TranscriptEnvelope, result: Extractio
                 f"{relationship.relationship_id} has unsupported relationship endpoints: "
                 f"{evidence.unsupported_endpoint_ids}"
             )
-        if evidence.role_consistent is False:
+        preserve_open_conflict = (
+            relationship.relationship_id in open_conflicted_relationship_ids
+            and evidence.grounding_decision == "insufficient_deterministic_signal"
+        )
+        if evidence.role_consistent is False and not preserve_open_conflict:
             raise ContractValidationError(
                 f"{relationship.relationship_id} contradicts deterministic multilingual "
                 f"kinship evidence: {evidence.linguistic_relationship_signals}; "

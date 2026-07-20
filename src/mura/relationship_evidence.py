@@ -5,6 +5,7 @@ from typing import Any
 
 from mura.domain.models import (
     EvidenceClass,
+    ExtractionResult,
     PersonMention,
     RelationshipClaim,
     TranscriptEnvelope,
@@ -14,11 +15,16 @@ from mura.linguistics.multilingual import (
     LinguisticRelationshipSignal,
     contains_known_name_surface,
     find_known_name_matches,
-    find_relationship_signals,
     find_speaker_anchor_matches,
     find_third_person_possessive_markers,
     find_uncertainty_markers,
     signal_matches_relationship,
+)
+from mura.relationship_grounding import (
+    find_bounded_relationship_signals,
+    grounding_rule_family,
+    select_relationship_grounding_contexts,
+    supported_endpoint_ids,
 )
 
 _AUTO_ACCEPTABLE_CLASSES = {
@@ -56,7 +62,10 @@ def has_first_person_reference(text: str) -> bool:
     return bool(find_speaker_anchor_matches(text))
 
 
-def joined_segment_text(segment_ids: list[str], transcript: TranscriptEnvelope) -> str:
+def joined_segment_text(
+    segment_ids: list[str],
+    transcript: TranscriptEnvelope,
+) -> str:
     text_by_id = {segment.segment_id: segment.text for segment in transcript.segments}
     return " ".join(
         text_by_id[segment_id] for segment_id in segment_ids if segment_id in text_by_id
@@ -87,7 +96,10 @@ def exactly_named_people(
     ]
 
 
-def speaker_mentions(people: list[PersonMention], speaker_name: str) -> list[PersonMention]:
+def speaker_mentions(
+    people: list[PersonMention],
+    speaker_name: str,
+) -> list[PersonMention]:
     normalized_speaker = normalize_evidence(speaker_name)
     return [
         person
@@ -104,6 +116,7 @@ class RelationshipEvidenceAnalysis:
     relationship_id: str
     source_segment_ids: list[str]
     source_text: str
+    grounding_context_count: int
     subject_mention_id: str
     subject_name: str | None
     object_mention_id: str
@@ -121,11 +134,14 @@ class RelationshipEvidenceAnalysis:
     coreference_link_ids: list[str]
     resolved_coreference_antecedent_ids: list[str]
     linguistic_relationship_signals: list[dict[str, str]]
+    matching_signal_rule_ids: list[str]
+    conflicting_signal_rule_ids: list[str]
     kazakh_relationship_signals: list[dict[str, str]]
     russian_relationship_signals: list[dict[str, str]]
     english_relationship_signals: list[dict[str, str]]
     code_switching_relationship_signals: list[dict[str, str]]
     role_consistent: bool | None
+    grounding_decision: str
     third_person_possessive_markers: list[dict[str, Any]]
     uncertainty_markers: list[dict[str, Any]]
     linguistic_rule_ids: list[str]
@@ -134,7 +150,10 @@ class RelationshipEvidenceAnalysis:
         return asdict(self)
 
 
-def _name_rule_ids(source_text: str, people: list[PersonMention]) -> list[str]:
+def _name_rule_ids(
+    source_text: str,
+    people: list[PersonMention],
+) -> list[str]:
     rule_ids = {
         match.rule_id
         for person in people
@@ -144,7 +163,9 @@ def _name_rule_ids(source_text: str, people: list[PersonMention]) -> list[str]:
     return sorted(rule_ids)
 
 
-def _signal_specificity(signal: LinguisticRelationshipSignal) -> tuple[int, int]:
+def _signal_specificity(
+    signal: LinguisticRelationshipSignal,
+) -> tuple[int, int]:
     normalized = normalize_evidence(signal.source_surface)
     tokens = normalized.split()
     return len(tokens), len(normalized)
@@ -161,7 +182,12 @@ def _prefer_specific_endpoint_signals(
         key = (
             signal.language,
             signal.relationship_type.value,
-            frozenset({signal.subject_mention_id, signal.object_mention_id}),
+            frozenset(
+                {
+                    signal.subject_mention_id,
+                    signal.object_mention_id,
+                }
+            ),
         )
         grouped.setdefault(key, []).append(signal)
 
@@ -174,6 +200,27 @@ def _prefer_specific_endpoint_signals(
     return selected
 
 
+def _decision(
+    *,
+    matching_signals: list[LinguisticRelationshipSignal],
+    conflicting_signals: list[LinguisticRelationshipSignal],
+    unsupported: list[str],
+    coreference_authorized: bool,
+) -> str:
+    if conflicting_signals:
+        return "conflicting_deterministic_signal"
+    if matching_signals:
+        return grounding_rule_family(
+            matching_signals[0].rule_id,
+            matching_signals[0].relationship_type,
+        )
+    if coreference_authorized:
+        return "resolved_coreference"
+    if unsupported:
+        return "unsupported_endpoints"
+    return "insufficient_deterministic_signal"
+
+
 def analyze_relationship_evidence(
     *,
     relationship: RelationshipClaim,
@@ -184,10 +231,23 @@ def analyze_relationship_evidence(
 ) -> RelationshipEvidenceAnalysis:
     resolved_antecedents = resolved_coreference_antecedent_ids or set()
     mention_by_id = {person.mention_id: person for person in people}
-    source_text = joined_segment_text(relationship.source_segment_ids, transcript)
+    endpoint_ids = [
+        relationship.subject_mention_id,
+        relationship.object_mention_id,
+    ]
+    endpoint_set = set(endpoint_ids)
+    endpoint_people = [mention_by_id[item] for item in endpoint_ids if item in mention_by_id]
+
+    contexts = select_relationship_grounding_contexts(
+        relationship=relationship,
+        transcript=transcript,
+        people=people,
+        speaker_name=speaker_name,
+        resolved_antecedent_ids=resolved_antecedents,
+    )
+    source_text = " ".join(context.text for context in contexts)
     explicit = explicitly_named_people(source_text, people)
     exact = exactly_named_people(source_text, people)
-    explicit_ids = {person.mention_id for person in explicit}
     exact_ids = {person.mention_id for person in exact}
     morphological = [person for person in explicit if person.mention_id not in exact_ids]
     speakers = speaker_mentions(people, speaker_name)
@@ -196,14 +256,20 @@ def analyze_relationship_evidence(
     first_person = bool(speaker_anchors)
 
     signals = _prefer_specific_endpoint_signals(
-        find_relationship_signals(source_text, people, speaker_name)
+        find_bounded_relationship_signals(
+            contexts=contexts,
+            people=endpoint_people,
+            speaker_name=speaker_name,
+        )
     )
-    endpoint_ids = [relationship.subject_mention_id, relationship.object_mention_id]
-    endpoint_set = set(endpoint_ids)
     endpoint_signals = [
         signal
         for signal in signals
-        if {signal.subject_mention_id, signal.object_mention_id} == endpoint_set
+        if {
+            signal.subject_mention_id,
+            signal.object_mention_id,
+        }
+        == endpoint_set
     ]
     matching_signals = [
         signal for signal in endpoint_signals if signal_matches_relationship(signal, relationship)
@@ -215,37 +281,39 @@ def analyze_relationship_evidence(
     ]
     third_person_markers = find_third_person_possessive_markers(source_text)
     resolved_endpoint_antecedents = endpoint_set.intersection(resolved_antecedents)
-    unresolved_third_person = bool(third_person_markers) and not resolved_endpoint_antecedents
+    coreference_authorized = bool(third_person_markers and resolved_endpoint_antecedents)
+    unresolved_third_person = bool(third_person_markers) and not coreference_authorized
 
     if unresolved_third_person or conflicting_signals:
         role_consistent: bool | None = False
     elif matching_signals:
         role_consistent = True
-    else:
+    elif coreference_authorized:
         role_consistent = None
+    else:
+        role_consistent = False
 
-    supported = [
-        mention_id
-        for mention_id in endpoint_ids
-        if mention_id in explicit_ids or (first_person and mention_id in speaker_ids)
-    ]
-    unsupported = [mention_id for mention_id in endpoint_ids if mention_id not in supported]
+    context_supported = supported_endpoint_ids(
+        contexts=contexts,
+        people=endpoint_people,
+        speaker_name=speaker_name,
+        resolved_antecedent_ids=resolved_antecedents,
+    )
+    supported = [mention_id for mention_id in endpoint_ids if mention_id in context_supported]
+    unsupported = [mention_id for mention_id in endpoint_ids if mention_id not in context_supported]
 
-    if not unsupported and first_person and endpoint_set.intersection(speaker_ids):
+    if coreference_authorized:
+        evidence_class = EvidenceClass.D_CONTEXT_RESOLVED
+    elif not unsupported and first_person and endpoint_set.intersection(speaker_ids):
         evidence_class = EvidenceClass.C_SPEAKER_ANCHORED
     elif endpoint_set.issubset(exact_ids):
         evidence_class = EvidenceClass.A_EXPLICIT
     elif not unsupported:
         evidence_class = EvidenceClass.B_MORPHOLOGICALLY_EXPLICIT
-    elif resolved_endpoint_antecedents:
-        evidence_class = EvidenceClass.D_CONTEXT_RESOLVED
     elif relationship.assertion_mode.value == "inferred":
         evidence_class = EvidenceClass.E_INFERRED
     else:
         evidence_class = EvidenceClass.U_UNCERTAIN
-
-    speaker_endpoint_is_implicit = bool(endpoint_set.intersection(speaker_ids) - exact_ids)
-    speaker_signal_requirement_met = not speaker_endpoint_is_implicit or role_consistent is True
 
     uncertainty_markers = find_uncertainty_markers(source_text)
     rule_ids = set(_name_rule_ids(source_text, people))
@@ -253,24 +321,45 @@ def analyze_relationship_evidence(
     rule_ids.update(signal.rule_id for signal in signals)
     rule_ids.update(marker.rule_id for marker in third_person_markers)
     rule_ids.update(marker.rule_id for marker in uncertainty_markers)
-
     signal_dicts = [signal.to_dict() for signal in signals]
     subject = mention_by_id.get(relationship.subject_mention_id)
     object_person = mention_by_id.get(relationship.object_mention_id)
+    grounding_decision = _decision(
+        matching_signals=matching_signals,
+        conflicting_signals=conflicting_signals,
+        unsupported=unsupported,
+        coreference_authorized=coreference_authorized,
+    )
+
     return RelationshipEvidenceAnalysis(
         relationship_id=relationship.relationship_id,
         source_segment_ids=list(relationship.source_segment_ids),
         source_text=source_text,
+        grounding_context_count=len(contexts),
         subject_mention_id=relationship.subject_mention_id,
         subject_name=subject.name if subject else None,
         object_mention_id=relationship.object_mention_id,
-        object_name=object_person.name if object_person else None,
+        object_name=(object_person.name if object_person else None),
         explicit_people=[
-            {"mention_id": person.mention_id, "name": person.name} for person in explicit
+            {
+                "mention_id": person.mention_id,
+                "name": person.name,
+            }
+            for person in explicit
         ],
-        exact_people=[{"mention_id": person.mention_id, "name": person.name} for person in exact],
+        exact_people=[
+            {
+                "mention_id": person.mention_id,
+                "name": person.name,
+            }
+            for person in exact
+        ],
         morphological_people=[
-            {"mention_id": person.mention_id, "name": person.name} for person in morphological
+            {
+                "mention_id": person.mention_id,
+                "name": person.name,
+            }
+            for person in morphological
         ],
         speaker_mention_ids=sorted(speaker_ids),
         first_person_reference=first_person,
@@ -279,13 +368,13 @@ def analyze_relationship_evidence(
         unsupported_endpoint_ids=unsupported,
         evidence_class=evidence_class.value,
         auto_accept_eligible=(
-            evidence_class in _AUTO_ACCEPTABLE_CLASSES
-            and role_consistent is not False
-            and speaker_signal_requirement_met
+            evidence_class in _AUTO_ACCEPTABLE_CLASSES and role_consistent is True
         ),
         coreference_link_ids=list(relationship.coreference_link_ids),
         resolved_coreference_antecedent_ids=sorted(resolved_antecedents),
         linguistic_relationship_signals=signal_dicts,
+        matching_signal_rule_ids=sorted({item.rule_id for item in matching_signals}),
+        conflicting_signal_rule_ids=sorted({item.rule_id for item in conflicting_signals}),
         kazakh_relationship_signals=[item for item in signal_dicts if item["language"] == "kk"],
         russian_relationship_signals=[item for item in signal_dicts if item["language"] == "ru"],
         english_relationship_signals=[item for item in signal_dicts if item["language"] == "en"],
@@ -293,7 +382,32 @@ def analyze_relationship_evidence(
             item for item in signal_dicts if item["language"] == "mixed"
         ],
         role_consistent=role_consistent,
+        grounding_decision=grounding_decision,
         third_person_possessive_markers=[marker.to_dict() for marker in third_person_markers],
         uncertainty_markers=[marker.to_dict() for marker in uncertainty_markers],
         linguistic_rule_ids=sorted(rule_ids),
     )
+
+
+def relationship_grounding_metrics(
+    result: ExtractionResult,
+    transcript: TranscriptEnvelope,
+) -> dict[str, int]:
+    counters = {
+        "speaker_anchor_accepted": 0,
+        "named_possessor_accepted": 0,
+        "explicit_spouse_accepted": 0,
+        "explicit_parent_child_accepted": 0,
+        "explicit_sibling_accepted": 0,
+    }
+    for relationship in result.relationship_claims:
+        analysis = analyze_relationship_evidence(
+            relationship=relationship,
+            transcript=transcript,
+            people=result.people_mentions,
+            speaker_name=result.speaker_name,
+        )
+        key = f"{analysis.grounding_decision}_accepted"
+        if key in counters:
+            counters[key] += 1
+    return counters

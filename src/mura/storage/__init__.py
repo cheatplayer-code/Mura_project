@@ -7,6 +7,7 @@ from mura.storage.archive import (
     ArchiveWriteReport,
     FamilyGraphEdgeRow,
 )
+from mura.storage.archive_conflict_guard import install_archive_conflict_guard
 from mura.storage.conflict_resolution import (
     ArchiveConflictDecisionRow,
     ConflictAction,
@@ -43,6 +44,8 @@ from mura.storage.profile_models import (
     PersonProfileView,
     ProfileNotFoundError,
 )
+
+install_archive_conflict_guard()
 
 __all__ = [
     "ArchiveClaimRow",
