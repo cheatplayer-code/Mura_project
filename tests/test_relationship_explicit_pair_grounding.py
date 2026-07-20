@@ -96,6 +96,21 @@ def test_positive_pair_has_one_canonical_signal_in_both_endpoint_orders() -> Non
     assert first[0].source_surface == "Данияр и Жанар поженились"
 
 
+def test_direct_spouse_predicate_is_bound_to_exact_endpoints() -> None:
+    text = "Алия вышла замуж за Армана."
+    people = [_person("aliya", "Алия"), _person("arman", "Арман")]
+
+    signals = _spouse_signals(text, people)
+
+    assert len(signals) == 1
+    assert {signals[0].subject_mention_id, signals[0].object_mention_id} == {
+        "aliya",
+        "arman",
+    }
+    assert signals[0].source_surface == "Алия вышла замуж за Армана"
+    assert signals[0].rule_id == "ru.relationship.explicit_spouse_direct.v1"
+
+
 def test_parent_labels_still_ground_endpoint_specific_spouse_pair() -> None:
     people = [
         _person("sapar", "Сапар", "father"),
