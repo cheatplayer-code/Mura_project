@@ -217,20 +217,14 @@ def _windows(text: str) -> list[GroundingContext]:
             combined = " ".join(selected)
             if len(combined) > _MAX_CONTEXT_CHARS:
                 break
-            values.setdefault(
-                normalize_text(combined), GroundingContext(combined, count)
-            )
+            values.setdefault(normalize_text(combined), GroundingContext(combined, count))
     return list(values.values())
 
 
-def _source_text(
-    relationship: RelationshipClaim, transcript: TranscriptEnvelope
-) -> str:
+def _source_text(relationship: RelationshipClaim, transcript: TranscriptEnvelope) -> str:
     requested = set(relationship.source_segment_ids)
     return "\n".join(
-        segment.text
-        for segment in transcript.segments
-        if segment.segment_id in requested
+        segment.text for segment in transcript.segments if segment.segment_id in requested
     )
 
 
@@ -309,9 +303,7 @@ def _masked(text: str) -> str:
         frame = _RU_FORMS.get(token.normalized)
         is_kinship = frame is not None or token.normalized in _KK_SPEAKER_FORMS
         is_kinship = is_kinship or token.normalized in _KK_NAMED_FORMS
-        cousin = (
-            frame is not None and frame.relationship_type is RelationshipType.SIBLING
-        )
+        cousin = frame is not None and frame.relationship_type is RelationshipType.SIBLING
         if not is_kinship or (
             not _is_negated(tokens, index) and not (cousin and _is_cousin(tokens, index))
         ):
@@ -452,9 +444,7 @@ def _dash_or_copula(text: str, left: int, right: int) -> bool:
     start, end = sorted((left, right))
     between = text[start:end]
     words = set(normalize_text(between).split())
-    return (
-        "—" in between or "-" in between or bool(words.intersection({"это", "зовут"}))
-    )
+    return "—" in between or "-" in between or bool(words.intersection({"это", "зовут"}))
 
 
 def _named_signals(text: str, people: list[PersonMention]) -> list[LinguisticRelationshipSignal]:
@@ -490,15 +480,11 @@ def _named_signals(text: str, people: list[PersonMention]) -> list[LinguisticRel
                             "тың",
                             "тің",
                         }
-                        supported = (
-                            genitive and owner.end <= token.start <= owner.end + 80
-                        )
+                        supported = genitive and owner.end <= token.start <= owner.end + 80
                     else:
                         in_u_frame = owner.end <= token.start and _u_frame(tokens, owner, index)
                         owner_after_kinship = token.end <= owner.start <= token.end + 90
-                        target_outside = (
-                            target.end <= token.start or target.start >= owner.end
-                        )
+                        target_outside = target.end <= token.start or target.start >= owner.end
                         genitive = owner.grammatical_case == "genitive"
                         supported = in_u_frame or (
                             owner_after_kinship
