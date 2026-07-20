@@ -66,10 +66,10 @@ def relationship_grounding_counters(
         context = issue.get("context")
         if not isinstance(context, dict):
             continue
-        analysis = context.get("evidence_analysis")
-        if not isinstance(analysis, dict):
+        issue_analysis = context.get("evidence_analysis")
+        if not isinstance(issue_analysis, dict):
             continue
-        if analysis.get("grounding_decision") in _REJECTED_DECISIONS:
+        if issue_analysis.get("grounding_decision") in _REJECTED_DECISIONS:
             rejected_ids.add(object_id)
     counters["ambiguous_grounding_rejected"] = len(rejected_ids)
     return counters
