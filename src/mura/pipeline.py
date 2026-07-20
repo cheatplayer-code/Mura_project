@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 
-from mura.deepseek.service import DeepSeekPipelineService
+from mura.deepseek import DeepSeekPipelineService
 from mura.domain.models import PipelineRequest, PipelineResult
 from mura.entity_resolution import EntityResolutionContext, legacy_resolution_context
 from mura.resolution import resolve_mentions_with_report
