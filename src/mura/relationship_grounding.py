@@ -2,15 +2,73 @@ from __future__ import annotations
 
 from mura import _relationship_grounding_impl as _impl
 from mura._relationship_grounding_impl import GroundingContext
-from mura.domain.models import PersonMention, RelationshipClaim, TranscriptEnvelope
+from mura.domain.models import (
+    PersonMention,
+    RelationshipClaim,
+    RelationshipRole,
+    TranscriptEnvelope,
+)
+from mura.explicit_pair_grounding import find_explicit_pair_matches
 from mura.linguistics.common import normalize_text
+from mura.linguistics.multilingual import LinguisticRelationshipSignal
 
 _MAX_CONTEXT_CHARS = _impl._MAX_CONTEXT_CHARS
 _MAX_CONTEXT_SENTENCES = _impl._MAX_CONTEXT_SENTENCES
 _split_units = _impl._split_units
-find_bounded_relationship_signals = _impl.find_bounded_relationship_signals
 grounding_rule_family = _impl.grounding_rule_family
 supported_endpoint_ids = _impl.supported_endpoint_ids
+_EXPLICIT_PAIR_RULE_IDS = frozenset(
+    {
+        "ru.relationship.explicit_spouse_coordination.v2",
+        "kk.relationship.explicit_spouse_coordination.v2",
+        "en.relationship.explicit_spouse_coordination.v1",
+    }
+)
+
+
+def _pair_signals(text: str, people: list[PersonMention]) -> list[LinguisticRelationshipSignal]:
+    return [
+        LinguisticRelationshipSignal(
+            language=match.language,
+            relationship_type=match.relationship_type,
+            subject_mention_id=match.subject_mention_id,
+            subject_role=RelationshipRole.SPOUSE,
+            object_mention_id=match.object_mention_id,
+            object_role=RelationshipRole.SPOUSE,
+            source_surface=match.source_surface,
+            rule_id=match.rule_id,
+        )
+        for match in find_explicit_pair_matches(text, people)
+    ]
+
+
+def find_bounded_relationship_signals(
+    *,
+    contexts: list[GroundingContext],
+    people: list[PersonMention],
+    speaker_name: str,
+) -> list[LinguisticRelationshipSignal]:
+    legacy = _impl.find_bounded_relationship_signals(
+        contexts=contexts,
+        people=people,
+        speaker_name=speaker_name,
+    )
+    signals = [signal for signal in legacy if signal.rule_id not in _EXPLICIT_PAIR_RULE_IDS]
+    for context in contexts:
+        for unit in _split_units(context.text):
+            signals.extend(_pair_signals(unit, people))
+
+    unique: dict[tuple[str, str, str, str, str], LinguisticRelationshipSignal] = {}
+    for signal in signals:
+        key = (
+            signal.relationship_type.value,
+            signal.subject_mention_id,
+            signal.subject_role.value,
+            signal.object_mention_id,
+            signal.object_role.value,
+        )
+        unique.setdefault(key, signal)
+    return list(unique.values())
 
 
 def _source_units(
