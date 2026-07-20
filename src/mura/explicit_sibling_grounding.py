@@ -50,7 +50,7 @@ def find_explicit_sibling_signals(
     tokens = tokenize(text)
     if any(token.normalized.startswith("двоюрод") for token in tokens):
         return []
-    endpoint_ids = sorted(people_by_id)
+    endpoint_ids = [person.mention_id for person in people]
     occurrences = {
         mention_id: _name_occurrences(text, people_by_id[mention_id]) for mention_id in endpoint_ids
     }
