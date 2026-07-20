@@ -62,16 +62,12 @@ def _has_coordinator_between(
     first = selected[0]
     second = selected[-1]
     between = segment_text[first.end : second.start]
-    return bool(
-        {token.normalized for token in tokenize(between)}.intersection(_COORDINATORS)
-    )
+    return bool({token.normalized for token in tokenize(between)}.intersection(_COORDINATORS))
 
 
 def _has_pair_cue(text: str) -> bool:
     normalized = normalize_text(text)
-    return any(
-        f" {normalize_text(cue)} " in f" {normalized} " for cue in _PAIR_CUES
-    )
+    return any(f" {normalize_text(cue)} " in f" {normalized} " for cue in _PAIR_CUES)
 
 
 def _is_explicit_pair(
@@ -101,9 +97,7 @@ def bounded_coreference_contexts(
     people: list[PersonMention],
     transcript: TranscriptEnvelope,
 ) -> list[BoundedCoreferenceContext]:
-    segment_text_by_id = {
-        segment.segment_id: segment.text for segment in transcript.segments
-    }
+    segment_text_by_id = {segment.segment_id: segment.text for segment in transcript.segments}
     units = ordered_units(transcript)
     occurrences_by_segment = {
         segment.segment_id: person_occurrences(

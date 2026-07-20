@@ -36,9 +36,7 @@ def ordered_segment_ids(
 ) -> list[str]:
     requested = set(segment_ids)
     ordered = [
-        segment.segment_id
-        for segment in transcript.segments
-        if segment.segment_id in requested
+        segment.segment_id for segment in transcript.segments if segment.segment_id in requested
     ]
     seen = set(ordered)
     ordered.extend(item for item in segment_ids if item not in seen)

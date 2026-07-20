@@ -89,11 +89,7 @@ def _sanitize(
 
 
 def _resolved_links(result) -> list:
-    return [
-        link
-        for link in result.coreference_links
-        if link.status is CoreferenceStatus.RESOLVED
-    ]
+    return [link for link in result.coreference_links if link.status is CoreferenceStatus.RESOLVED]
 
 
 def test_two_singular_candidates_are_not_guessed() -> None:
@@ -145,9 +141,7 @@ def test_two_names_without_explicit_plural_group_do_not_resolve() -> None:
 
 
 def test_pronoun_in_third_sentence_is_outside_window() -> None:
-    transcript = _transcript(
-        "Ермек уехал. Погода испортилась. У него жена Сауле."
-    )
+    transcript = _transcript("Ермек уехал. Погода испортилась. У него жена Сауле.")
     result, issues, _ = _sanitize(
         transcript,
         people=[
@@ -280,8 +274,7 @@ def test_cross_recording_or_unknown_segment_antecedent_is_rejected() -> None:
 
     assert _resolved_links(result) == []
     assert any(
-        item["object_type"] == "person" and item["object_id"] == "external"
-        for item in issues
+        item["object_type"] == "person" and item["object_id"] == "external" for item in issues
     )
 
 

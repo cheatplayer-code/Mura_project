@@ -212,12 +212,8 @@ def test_unique_singular_link_survives_full_sanitizer(
     assert set(link.antecedent_mention_ids).issubset(
         {item.mention_id for item in result.people_mentions}
     )
-    assert set(link.evidence_ids).issubset(
-        {item.evidence_id for item in result.evidence_spans}
-    )
-    assert set(link.source_segment_ids).issubset(
-        {item.segment_id for item in transcript.segments}
-    )
+    assert set(link.evidence_ids).issubset({item.evidence_id for item in result.evidence_spans})
+    assert set(link.source_segment_ids).issubset({item.segment_id for item in transcript.segments})
 
 
 def test_ru_explicit_plural_pair_links_all_named_children() -> None:
