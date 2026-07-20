@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from mura.deepseek.discourse_telemetry import discourse_link_counters
 from mura.domain.models import ExtractionResult, TranscriptEnvelope
 from mura.relationship_evidence import analyze_relationship_evidence
 
@@ -129,6 +130,7 @@ def install_relationship_telemetry(service_type: type[Any]) -> None:
             transcript=transcript,
             extraction_issues=extraction_issues,
         )
+        payload["coreference_metrics"] = discourse_link_counters(result)
         return result, payload
 
     service_type.extract = extract
