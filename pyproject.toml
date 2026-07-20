@@ -89,6 +89,7 @@ known-first-party = ["mura"]
 "tests/test_multilingual_linguistic_integration.py" = ["RUF001"]
 "tests/test_multilingual_routing.py" = ["RUF001"]
 "tests/test_multilingual_signal_specificity.py" = ["RUF001"]
+"tests/test_relationship_grounding_completion.py" = ["RUF001"]
 "tests/test_ru_kk_relationship_grounding.py" = ["RUF001"]
 "tests/test_russian_linguistics.py" = ["RUF001"]
 
