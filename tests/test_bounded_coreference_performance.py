@@ -13,7 +13,6 @@ from mura.domain.models import (
     TranscriptEnvelope,
 )
 
-
 _CASE_SIZE = 200
 _RUNTIME_BUDGET_SECONDS = 5.0
 
