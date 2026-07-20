@@ -19,7 +19,7 @@ from mura.linguistics.multilingual import (
     find_third_person_possessive_markers,
 )
 
-_MAX_CONTEXT_SENTENCES = 3
+_MAX_CONTEXT_SENTENCES = 2
 _MAX_CONTEXT_CHARS = 420
 _SENTENCE_RE = re.compile(r"[^.!?…;\n]+(?:[.!?…;]+|$)", flags=re.UNICODE)
 _PARENT = RelationshipRole.PARENT
@@ -133,8 +133,12 @@ _RU_FIRST_PERSON = frozenset(
         "наш наша наше наши нашего нашей нашему нашем нашим нашими нашу"
     ).split()
 )
-_RU_COUSIN = frozenset("двоюродный двоюродная двоюродного двоюродной двоюродные".split())
-_RU_WEDDING = frozenset("поженились поженился поженилась женился женилась супруги".split())
+_RU_COUSIN = frozenset(
+    "двоюродный двоюродная двоюродного двоюродной двоюродные".split()
+)
+_RU_WEDDING = frozenset(
+    "поженились поженился поженилась женился женилась супруги".split()
+)
 _KK_WEDDING = frozenset("үйленді үйленген үйленгендер некелесті некелескен".split())
 _RELATION_LABELS = {
     "father": frozenset({"отец", "папа", "әке", "әкем"}),
@@ -217,14 +221,20 @@ def _windows(text: str) -> list[GroundingContext]:
             combined = " ".join(selected)
             if len(combined) > _MAX_CONTEXT_CHARS:
                 break
-            values.setdefault(normalize_text(combined), GroundingContext(combined, count))
+            values.setdefault(
+                normalize_text(combined), GroundingContext(combined, count)
+            )
     return list(values.values())
 
 
-def _source_text(relationship: RelationshipClaim, transcript: TranscriptEnvelope) -> str:
+def _source_text(
+    relationship: RelationshipClaim, transcript: TranscriptEnvelope
+) -> str:
     requested = set(relationship.source_segment_ids)
     return "\n".join(
-        segment.text for segment in transcript.segments if segment.segment_id in requested
+        segment.text
+        for segment in transcript.segments
+        if segment.segment_id in requested
     )
 
 
@@ -278,7 +288,7 @@ def select_relationship_grounding_contexts(
             contexts=[window],
             people=endpoints,
             speaker_name=speaker_name,
-            resolved_antecedent_ids=resolved_antecedent_ids,
+            resolved_antecedent_ids=set(),
         )
         if endpoint_ids.issubset(supported):
             eligible.append(window)
@@ -287,13 +297,15 @@ def select_relationship_grounding_contexts(
 
 
 def _is_negated(tokens: list[TextToken], index: int) -> bool:
-    return any(item.normalized == "не" for item in tokens[max(0, index - 2) : index]) or any(
-        item.normalized == "емес" for item in tokens[index + 1 : index + 3]
-    )
+    return any(
+        item.normalized == "не" for item in tokens[max(0, index - 2) : index]
+    ) or any(item.normalized == "емес" for item in tokens[index + 1 : index + 3])
 
 
 def _is_cousin(tokens: list[TextToken], index: int) -> bool:
-    return any(item.normalized in _RU_COUSIN for item in tokens[max(0, index - 2) : index])
+    return any(
+        item.normalized in _RU_COUSIN for item in tokens[max(0, index - 2) : index]
+    )
 
 
 def _masked(text: str) -> str:
@@ -303,9 +315,12 @@ def _masked(text: str) -> str:
         frame = _RU_FORMS.get(token.normalized)
         is_kinship = frame is not None or token.normalized in _KK_SPEAKER_FORMS
         is_kinship = is_kinship or token.normalized in _KK_NAMED_FORMS
-        cousin = frame is not None and frame.relationship_type is RelationshipType.SIBLING
+        cousin = (
+            frame is not None and frame.relationship_type is RelationshipType.SIBLING
+        )
         if not is_kinship or (
-            not _is_negated(tokens, index) and not (cousin and _is_cousin(tokens, index))
+            not _is_negated(tokens, index)
+            and not (cousin and _is_cousin(tokens, index))
         ):
             continue
         result[token.start : token.end] = " " * (token.end - token.start)
@@ -404,10 +419,12 @@ def _speaker_signals(
         if frame is None:
             continue
         nearby_anchor = any(
-            min(abs(item.start - token.end), abs(token.start - item.end)) <= 45 for item in anchors
+            min(abs(item.start - token.end), abs(token.start - item.end)) <= 45
+            for item in anchors
         )
         ru_anchor = any(
-            item.normalized in _RU_FIRST_PERSON for item in tokens[max(0, index - 4) : index]
+            item.normalized in _RU_FIRST_PERSON
+            for item in tokens[max(0, index - 4) : index]
         )
         if language == "ru" and not (nearby_anchor or ru_anchor):
             continue
@@ -444,10 +461,14 @@ def _dash_or_copula(text: str, left: int, right: int) -> bool:
     start, end = sorted((left, right))
     between = text[start:end]
     words = set(normalize_text(between).split())
-    return "—" in between or "-" in between or bool(words.intersection({"это", "зовут"}))
+    return (
+        "—" in between or "-" in between or bool(words.intersection({"это", "зовут"}))
+    )
 
 
-def _named_signals(text: str, people: list[PersonMention]) -> list[LinguisticRelationshipSignal]:
+def _named_signals(
+    text: str, people: list[PersonMention]
+) -> list[LinguisticRelationshipSignal]:
     if len(people) != 2:
         return []
     tokens = tokenize(text)
@@ -480,16 +501,25 @@ def _named_signals(text: str, people: list[PersonMention]) -> list[LinguisticRel
                             "тың",
                             "тің",
                         }
-                        supported = genitive and owner.end <= token.start <= owner.end + 80
+                        supported = (
+                            genitive and owner.end <= token.start <= owner.end + 80
+                        )
                     else:
-                        in_u_frame = owner.end <= token.start and _u_frame(tokens, owner, index)
+                        in_u_frame = owner.end <= token.start and _u_frame(
+                            tokens, owner, index
+                        )
                         owner_after_kinship = token.end <= owner.start <= token.end + 90
-                        target_outside = target.end <= token.start or target.start >= owner.end
+                        target_outside = (
+                            target.end <= token.start or target.start >= owner.end
+                        )
                         genitive = owner.grammatical_case == "genitive"
                         supported = in_u_frame or (
                             owner_after_kinship
                             and target_outside
-                            and (genitive or _dash_or_copula(text, owner.end, target.start))
+                            and (
+                                genitive
+                                or _dash_or_copula(text, owner.end, target.start)
+                            )
                         )
                     if not supported:
                         continue
@@ -520,7 +550,8 @@ def _both_named(text: str, people: list[PersonMention]) -> bool:
     left = _name_matches(text, people[0])
     right = _name_matches(text, people[1])
     return any(
-        (distance := _distance(item.start, item.end, right)) is not None and distance <= 240
+        (distance := _distance(item.start, item.end, right)) is not None
+        and distance <= 240
         for item in left
     )
 
@@ -597,7 +628,8 @@ def find_bounded_relationship_signals(
         signals.extend(find_relationship_signals(text, people, speaker_name))
         signals.extend(_speaker_signals(text, people, speaker_name))
         signals.extend(_named_signals(text, people))
-        signals.extend(_explicit_pair_signals(text, people))
+        for unit in _split_units(text):
+            signals.extend(_explicit_pair_signals(unit, people))
     unique: dict[tuple[str, str, str, str, str], LinguisticRelationshipSignal] = {}
     for signal in signals:
         key = (
