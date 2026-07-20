@@ -66,7 +66,12 @@ def find_explicit_sibling_signals(
             following = [token for token in tokens if token.start >= right[1]]
             for index in range(len(following) - 2):
                 cue_tokens = following[index : index + 3]
-                cue_spec = _SIBLING_CUES.get(tuple(token.normalized for token in cue_tokens))
+                cue_key = (
+                    cue_tokens[0].normalized,
+                    cue_tokens[1].normalized,
+                    cue_tokens[2].normalized,
+                )
+                cue_spec = _SIBLING_CUES.get(cue_key)
                 if cue_spec is None:
                     continue
                 bridge = following[:index]
