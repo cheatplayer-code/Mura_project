@@ -109,6 +109,14 @@ _CUE_SPECS: tuple[tuple[str, tuple[str, ...], bool, str], ...] = (
     ("en", ("married",), False, "en.relationship.explicit_spouse_coordination.v1"),
     ("en", ("spouses",), True, "en.relationship.explicit_spouse_coordination.v1"),
 )
+_DIRECT_ENDPOINT_SPECS: tuple[tuple[str, tuple[str, ...], int, str], ...] = (
+    ("ru", ("вышла", "замуж", "за"), 2, "ru.relationship.explicit_spouse_direct.v1"),
+    ("ru", ("женился", "на"), 1, "ru.relationship.explicit_spouse_direct.v1"),
+    ("ru", ("женилась", "на"), 1, "ru.relationship.explicit_spouse_direct.v1"),
+    ("ru", ("поженился", "с"), 1, "ru.relationship.explicit_spouse_direct.v1"),
+    ("ru", ("поженилась", "с"), 1, "ru.relationship.explicit_spouse_direct.v1"),
+    ("en", ("married",), 1, "en.relationship.explicit_spouse_direct.v1"),
+)
 
 
 def _surfaces(person: PersonMention) -> list[str]:
@@ -269,6 +277,52 @@ def _pair_and_cue_are_local(
     return False
 
 
+def _direct_endpoint_cue(
+    tokens: list[TextToken],
+    left: _EndpointOccurrence,
+    right: _EndpointOccurrence,
+) -> _CueOccurrence | None:
+    between = _tokens_between(tokens, left.end, right.start)
+    normalized = tuple(token.normalized for token in between)
+    for language, pattern, cue_size, rule_id in _DIRECT_ENDPOINT_SPECS:
+        if normalized != pattern:
+            continue
+        return _CueOccurrence(
+            language=language,
+            start=between[0].start,
+            end=between[cue_size - 1].end,
+            prefix_allowed=False,
+            rule_id=rule_id,
+        )
+    return None
+
+
+def _build_match(
+    *,
+    text: str,
+    first_id: str,
+    second_id: str,
+    left: _EndpointOccurrence,
+    right: _EndpointOccurrence,
+    cue: _CueOccurrence,
+) -> ExplicitPairMatch:
+    pair_start, pair_end = left.start, right.end
+    source_start = min(pair_start, cue.start)
+    source_end = max(pair_end, cue.end)
+    return ExplicitPairMatch(
+        relationship_type=RelationshipType.SPOUSE,
+        subject_mention_id=first_id,
+        object_mention_id=second_id,
+        language=cue.language,
+        rule_id=cue.rule_id,
+        cue_start=cue.start,
+        cue_end=cue.end,
+        pair_start=pair_start,
+        pair_end=pair_end,
+        source_surface=text[source_start:source_end],
+    )
+
+
 def find_explicit_pair_matches(
     text: str,
     people: list[PersonMention],
@@ -294,30 +348,44 @@ def find_explicit_pair_matches(
         return []
 
     cues = _cue_occurrences(tokens)
-    if not cues:
-        return []
-
     matches: dict[tuple[str, str, int, int, str], ExplicitPairMatch] = {}
     endpoint_ids = sorted(people_by_id)
     for clause_start, clause_end, hard_start, hard_end in _clause_spans(text, tokens):
         hard_tokens = _tokens_between(tokens, hard_start, hard_end)
         if _contains_inactive_marker(hard_tokens):
             continue
+        first_id, second_id = endpoint_ids
+        first_occurrences = [
+            item
+            for item in occurrences[first_id]
+            if clause_start <= item.start and item.end <= clause_end
+        ]
+        second_occurrences = [
+            item
+            for item in occurrences[second_id]
+            if clause_start <= item.start and item.end <= clause_end
+        ]
+        for first in first_occurrences:
+            for second in second_occurrences:
+                left, right = sorted((first, second), key=lambda item: (item.start, item.end))
+                if left.end > right.start or _looks_like_list_member(text, clause_start, left):
+                    continue
+                direct_cue = _direct_endpoint_cue(tokens, left, right)
+                if direct_cue is not None and not _is_negated(tokens, direct_cue):
+                    match = _build_match(
+                        text=text,
+                        first_id=first_id,
+                        second_id=second_id,
+                        left=left,
+                        right=right,
+                        cue=direct_cue,
+                    )
+                    key = (first_id, second_id, direct_cue.start, direct_cue.end, direct_cue.rule_id)
+                    matches.setdefault(key, match)
         clause_cues = [cue for cue in cues if clause_start <= cue.start and cue.end <= clause_end]
         for cue in clause_cues:
             if _is_negated(tokens, cue):
                 continue
-            first_id, second_id = endpoint_ids
-            first_occurrences = [
-                item
-                for item in occurrences[first_id]
-                if clause_start <= item.start and item.end <= clause_end
-            ]
-            second_occurrences = [
-                item
-                for item in occurrences[second_id]
-                if clause_start <= item.start and item.end <= clause_end
-            ]
             for first in first_occurrences:
                 for second in second_occurrences:
                     left, right = sorted((first, second), key=lambda item: (item.start, item.end))
@@ -331,20 +399,13 @@ def find_explicit_pair_matches(
                         text=text, tokens=tokens, left=left, right=right, cue=cue
                     ):
                         continue
-                    pair_start, pair_end = left.start, right.end
-                    source_start = min(pair_start, cue.start)
-                    source_end = max(pair_end, cue.end)
-                    match = ExplicitPairMatch(
-                        relationship_type=RelationshipType.SPOUSE,
-                        subject_mention_id=first_id,
-                        object_mention_id=second_id,
-                        language=cue.language,
-                        rule_id=cue.rule_id,
-                        cue_start=cue.start,
-                        cue_end=cue.end,
-                        pair_start=pair_start,
-                        pair_end=pair_end,
-                        source_surface=text[source_start:source_end],
+                    match = _build_match(
+                        text=text,
+                        first_id=first_id,
+                        second_id=second_id,
+                        left=left,
+                        right=right,
+                        cue=cue,
                     )
                     key = (first_id, second_id, cue.start, cue.end, cue.rule_id)
                     matches.setdefault(key, match)
