@@ -2,26 +2,40 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from mura._relationship_evidence_impl import (
-    RelationshipEvidenceAnalysis,
-    analyze_relationship_evidence as _analyze_relationship_evidence,
-    contains_exact_surface,
-    contains_surface,
-    exactly_named_people,
-    explicitly_named_people,
-    has_first_person_reference,
-    joined_segment_text,
-    normalize_evidence,
-    person_name_surfaces,
-    relationship_grounding_metrics,
-    speaker_mentions,
-)
+from mura import _relationship_evidence_impl as _impl
 from mura.domain.models import (
     EvidenceClass,
     PersonMention,
     RelationshipClaim,
     TranscriptEnvelope,
 )
+
+RelationshipEvidenceAnalysis = _impl.RelationshipEvidenceAnalysis
+contains_exact_surface = _impl.contains_exact_surface
+contains_surface = _impl.contains_surface
+exactly_named_people = _impl.exactly_named_people
+explicitly_named_people = _impl.explicitly_named_people
+has_first_person_reference = _impl.has_first_person_reference
+joined_segment_text = _impl.joined_segment_text
+normalize_evidence = _impl.normalize_evidence
+person_name_surfaces = _impl.person_name_surfaces
+relationship_grounding_metrics = _impl.relationship_grounding_metrics
+speaker_mentions = _impl.speaker_mentions
+
+__all__ = [
+    "RelationshipEvidenceAnalysis",
+    "analyze_relationship_evidence",
+    "contains_exact_surface",
+    "contains_surface",
+    "exactly_named_people",
+    "explicitly_named_people",
+    "has_first_person_reference",
+    "joined_segment_text",
+    "normalize_evidence",
+    "person_name_surfaces",
+    "relationship_grounding_metrics",
+    "speaker_mentions",
+]
 
 
 def analyze_relationship_evidence(
@@ -32,7 +46,7 @@ def analyze_relationship_evidence(
     speaker_name: str,
     resolved_coreference_antecedent_ids: set[str] | None = None,
 ) -> RelationshipEvidenceAnalysis:
-    analysis = _analyze_relationship_evidence(
+    analysis = _impl.analyze_relationship_evidence(
         relationship=relationship,
         transcript=transcript,
         people=people,
