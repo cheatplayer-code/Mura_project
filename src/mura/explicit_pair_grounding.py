@@ -380,7 +380,13 @@ def find_explicit_pair_matches(
                         right=right,
                         cue=direct_cue,
                     )
-                    key = (first_id, second_id, direct_cue.start, direct_cue.end, direct_cue.rule_id)
+                    key = (
+                        first_id,
+                        second_id,
+                        direct_cue.start,
+                        direct_cue.end,
+                        direct_cue.rule_id,
+                    )
                     matches.setdefault(key, match)
         clause_cues = [cue for cue in cues if clause_start <= cue.start and cue.end <= clause_end]
         for cue in clause_cues:
