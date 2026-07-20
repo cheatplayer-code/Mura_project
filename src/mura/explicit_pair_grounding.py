@@ -152,9 +152,7 @@ def _next_token(tokens: list[TextToken], offset: int) -> TextToken | None:
     return next((token for token in tokens if token.start >= offset), None)
 
 
-def _clause_spans(
-    text: str, tokens: list[TextToken]
-) -> list[tuple[int, int, int, int]]:
+def _clause_spans(text: str, tokens: list[TextToken]) -> list[tuple[int, int, int, int]]:
     spans: list[tuple[int, int, int, int]] = []
     for hard in _HARD_UNIT_RE.finditer(text):
         hard_start, hard_end = hard.span()
@@ -221,9 +219,7 @@ def _contains_inactive_marker(tokens: list[TextToken]) -> bool:
     return any(token.normalized in _INACTIVE_RELATION_MARKERS for token in tokens)
 
 
-def _tokens_between(
-    tokens: list[TextToken], start: int, end: int
-) -> list[TextToken]:
+def _tokens_between(tokens: list[TextToken], start: int, end: int) -> list[TextToken]:
     return [token for token in tokens if start <= token.start and token.end <= end]
 
 
