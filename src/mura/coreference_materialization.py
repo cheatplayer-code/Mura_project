@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 
 from mura.coreference_context import BoundedCoreferenceContext
@@ -239,9 +240,19 @@ def rule_id_for(
 
 
 def link_id_for(context: BoundedCoreferenceContext) -> str:
+    identity = "\x1f".join(
+        (
+            context.segment_id,
+            str(context.anaphor.start),
+            str(context.anaphor.end),
+            context.anaphor.surface,
+            context.anaphor.grammatical_number.value,
+        )
+    )
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
     return (
         f"coreference_{safe_id(context.segment_id)}_"
-        f"{context.anaphor.start}_{context.anaphor.grammatical_number.value}"
+        f"{context.anaphor.start}_{context.anaphor.grammatical_number.value}_{digest}"
     )
 
 

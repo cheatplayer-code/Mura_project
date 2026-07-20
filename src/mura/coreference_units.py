@@ -45,20 +45,33 @@ def _chunk_span(text: str, start: int, end: int) -> list[tuple[int, int]]:
     chunks: list[tuple[int, int]] = []
     chunk_start: int | None = None
     chunk_end: int | None = None
+
+    def flush_chunk() -> None:
+        nonlocal chunk_start, chunk_end
+        if chunk_start is not None and chunk_end is not None:
+            chunks.append((chunk_start, chunk_end))
+        chunk_start = None
+        chunk_end = None
+
     for word in words:
         word_start = start + word.start()
         word_end = start + word.end()
+        if word_end - word_start > MAX_CONTEXT_CHARS:
+            flush_chunk()
+            chunks.extend(
+                (offset, min(offset + MAX_CONTEXT_CHARS, word_end))
+                for offset in range(word_start, word_end, MAX_CONTEXT_CHARS)
+            )
+            continue
         if chunk_start is None:
             chunk_start = word_start
             chunk_end = word_end
             continue
         if word_end - chunk_start > MAX_CONTEXT_CHARS:
-            if chunk_end is not None:
-                chunks.append((chunk_start, chunk_end))
+            flush_chunk()
             chunk_start = word_start
         chunk_end = word_end
-    if chunk_start is not None and chunk_end is not None:
-        chunks.append((chunk_start, chunk_end))
+    flush_chunk()
     return chunks
 
 
