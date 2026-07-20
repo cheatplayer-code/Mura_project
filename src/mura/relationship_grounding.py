@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from mura._relationship_grounding_impl import (
-    GroundingContext,
-    _MAX_CONTEXT_CHARS,
-    _MAX_CONTEXT_SENTENCES,
-    _split_units,
-    find_bounded_relationship_signals,
-    grounding_rule_family,
-    supported_endpoint_ids,
-)
+from mura import _relationship_grounding_impl as _impl
+from mura._relationship_grounding_impl import GroundingContext
 from mura.domain.models import PersonMention, RelationshipClaim, TranscriptEnvelope
 from mura.linguistics.common import normalize_text
+
+_MAX_CONTEXT_CHARS = _impl._MAX_CONTEXT_CHARS
+_MAX_CONTEXT_SENTENCES = _impl._MAX_CONTEXT_SENTENCES
+_split_units = _impl._split_units
+find_bounded_relationship_signals = _impl.find_bounded_relationship_signals
+grounding_rule_family = _impl.grounding_rule_family
+supported_endpoint_ids = _impl.supported_endpoint_ids
 
 
 def _source_units(
