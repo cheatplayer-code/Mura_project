@@ -3,6 +3,7 @@ extend = "pyproject.toml"
 [lint]
 extend-per-file-ignores = {
   "src/mura/coreference_language.py" = ["B009", "RUF001"],
+  "src/mura/relationship_evidence.py" = ["F401", "I001"],
   "tests/test_bounded_coreference_links_guards.py" = ["RUF001"],
   "tests/test_bounded_coreference_links_positive.py" = ["RUF001"],
   "tests/test_bounded_coreference_telemetry.py" = ["RUF001"],
