@@ -52,8 +52,7 @@ def find_explicit_sibling_signals(
         return []
     endpoint_ids = sorted(people_by_id)
     occurrences = {
-        mention_id: _name_occurrences(text, people_by_id[mention_id])
-        for mention_id in endpoint_ids
+        mention_id: _name_occurrences(text, people_by_id[mention_id]) for mention_id in endpoint_ids
     }
     signals: list[LinguisticRelationshipSignal] = []
     for first in occurrences[endpoint_ids[0]]:
