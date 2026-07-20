@@ -139,16 +139,12 @@ _RU_COUSIN = frozenset(
 _RU_WEDDING = frozenset(
     "поженились поженился поженилась женился женилась супруги".split()
 )
-_KK_WEDDING = frozenset(
-    "үйленді үйленген үйленгендер некелесті некелескен".split()
-)
+_KK_WEDDING = frozenset("үйленді үйленген үйленгендер некелесті некелескен".split())
 _RELATION_LABELS = {
     "father": frozenset({"отец", "папа", "әке", "әкем"}),
     "mother": frozenset({"мать", "мама", "ана", "анам", "шеше", "шешем"}),
     "brother": frozenset({"брат", "аға", "ағам", "іні", "інім"}),
-    "sister": frozenset(
-        {"сестра", "сестрёнка", "әпке", "әпкем", "сіңлі", "сіңлім"}
-    ),
+    "sister": frozenset({"сестра", "сестрёнка", "әпке", "әпкем", "сіңлі", "сіңлім"}),
     "husband": frozenset({"муж", "күйеу", "күйеуім"}),
     "wife": frozenset({"жена", "әйел", "әйелім"}),
     "son": frozenset({"сын", "ұл", "ұлым"}),
@@ -225,22 +221,14 @@ def _windows(text: str) -> list[GroundingContext]:
             combined = " ".join(selected)
             if len(combined) > _MAX_CONTEXT_CHARS:
                 break
-            values.setdefault(
-                normalize_text(combined),
-                GroundingContext(combined, count),
-            )
+            values.setdefault(normalize_text(combined), GroundingContext(combined, count))
     return list(values.values())
 
 
-def _source_text(
-    relationship: RelationshipClaim,
-    transcript: TranscriptEnvelope,
-) -> str:
+def _source_text(relationship: RelationshipClaim, transcript: TranscriptEnvelope) -> str:
     requested = set(relationship.source_segment_ids)
     return "\n".join(
-        segment.text
-        for segment in transcript.segments
-        if segment.segment_id in requested
+        segment.text for segment in transcript.segments if segment.segment_id in requested
     )
 
 
@@ -249,9 +237,7 @@ def _label_supports(person: PersonMention, text: str) -> bool:
     if not label:
         return False
     accepted = _RELATION_LABELS.get(label, frozenset({label}))
-    return bool(
-        {item.normalized for item in tokenize(text)}.intersection(accepted)
-    )
+    return bool({item.normalized for item in tokenize(text)}.intersection(accepted))
 
 
 def supported_endpoint_ids(
@@ -264,9 +250,7 @@ def supported_endpoint_ids(
     supported: set[str] = set()
     for context in contexts:
         has_anchor = bool(find_speaker_anchor_matches(context.text))
-        has_third_person = bool(
-            find_third_person_possessive_markers(context.text)
-        )
+        has_third_person = bool(find_third_person_possessive_markers(context.text))
         for person in people:
             if _name_matches(context.text, person):
                 supported.add(person.mention_id)
@@ -274,10 +258,7 @@ def supported_endpoint_ids(
                 supported.add(person.mention_id)
             elif _label_supports(person, context.text):
                 supported.add(person.mention_id)
-            elif (
-                has_third_person
-                and person.mention_id in resolved_antecedent_ids
-            ):
+            elif has_third_person and person.mention_id in resolved_antecedent_ids:
                 supported.add(person.mention_id)
     return supported
 
@@ -291,15 +272,8 @@ def select_relationship_grounding_contexts(
     resolved_antecedent_ids: set[str],
 ) -> list[GroundingContext]:
     mention_by_id = {person.mention_id: person for person in people}
-    endpoint_ids = {
-        relationship.subject_mention_id,
-        relationship.object_mention_id,
-    }
-    endpoints = [
-        mention_by_id[item]
-        for item in endpoint_ids
-        if item in mention_by_id
-    ]
+    endpoint_ids = {relationship.subject_mention_id, relationship.object_mention_id}
+    endpoints = [mention_by_id[item] for item in endpoint_ids if item in mention_by_id]
     if len(endpoints) != 2:
         return []
     eligible = []
@@ -312,26 +286,19 @@ def select_relationship_grounding_contexts(
         )
         if endpoint_ids.issubset(supported):
             eligible.append(window)
-    eligible.sort(
-        key=lambda item: (item.sentence_count, len(item.text), item.text)
-    )
+    eligible.sort(key=lambda item: (item.sentence_count, len(item.text), item.text))
     return eligible[:6]
 
 
 def _is_negated(tokens: list[TextToken], index: int) -> bool:
     return any(
-        item.normalized == "не"
-        for item in tokens[max(0, index - 2) : index]
-    ) or any(
-        item.normalized == "емес"
-        for item in tokens[index + 1 : index + 3]
-    )
+        item.normalized == "не" for item in tokens[max(0, index - 2) : index]
+    ) or any(item.normalized == "емес" for item in tokens[index + 1 : index + 3])
 
 
 def _is_cousin(tokens: list[TextToken], index: int) -> bool:
     return any(
-        item.normalized in _RU_COUSIN
-        for item in tokens[max(0, index - 2) : index]
+        item.normalized in _RU_COUSIN for item in tokens[max(0, index - 2) : index]
     )
 
 
@@ -340,17 +307,13 @@ def _masked(text: str) -> str:
     result = list(text)
     for index, token in enumerate(tokens):
         frame = _RU_FORMS.get(token.normalized)
-        is_kinship = frame is not None
-        is_kinship = is_kinship or token.normalized in _KK_SPEAKER_FORMS
+        is_kinship = frame is not None or token.normalized in _KK_SPEAKER_FORMS
         is_kinship = is_kinship or token.normalized in _KK_NAMED_FORMS
-        cousin = (
-            frame is not None
-            and frame.relationship_type is RelationshipType.SIBLING
-        )
-        should_mask = _is_negated(tokens, index) or (
-            cousin and _is_cousin(tokens, index)
-        )
-        if not is_kinship or not should_mask:
+        cousin = frame is not None and frame.relationship_type is RelationshipType.SIBLING
+        if not is_kinship or (
+            not _is_negated(tokens, index)
+            and not (cousin and _is_cousin(tokens, index))
+        ):
             continue
         result[token.start : token.end] = " " * (token.end - token.start)
     return "".join(result)
@@ -367,20 +330,26 @@ def _canonical(
 ) -> LinguisticRelationshipSignal:
     if frame.relationship_type is RelationshipType.PARENT_CHILD:
         if frame.possessor_role is _PARENT:
-            subject = possessor
-            subject_role = _PARENT
-            object_person = relative
-            object_role = _CHILD
+            subject, subject_role, object_person, object_role = (
+                possessor,
+                _PARENT,
+                relative,
+                _CHILD,
+            )
         else:
-            subject = relative
-            subject_role = _PARENT
-            object_person = possessor
-            object_role = _CHILD
+            subject, subject_role, object_person, object_role = (
+                relative,
+                _PARENT,
+                possessor,
+                _CHILD,
+            )
     else:
-        subject = possessor
-        subject_role = frame.possessor_role
-        object_person = relative
-        object_role = frame.relative_role
+        subject, subject_role, object_person, object_role = (
+            possessor,
+            frame.possessor_role,
+            relative,
+            frame.relative_role,
+        )
     return LinguisticRelationshipSignal(
         language=language,
         relationship_type=frame.relationship_type,
@@ -399,11 +368,7 @@ def _pair_signal(
     language: str,
     rule_id: str,
 ) -> LinguisticRelationshipSignal:
-    role = (
-        _SPOUSE
-        if relationship_type is RelationshipType.SPOUSE
-        else _SIBLING
-    )
+    role = _SPOUSE if relationship_type is RelationshipType.SPOUSE else _SIBLING
     return LinguisticRelationshipSignal(
         language=language,
         relationship_type=relationship_type,
@@ -416,15 +381,8 @@ def _pair_signal(
     )
 
 
-def _distance(
-    start: int,
-    end: int,
-    matches: list[NameMatch],
-) -> int | None:
-    values = [
-        min(abs(item.start - end), abs(start - item.end))
-        for item in matches
-    ]
+def _distance(start: int, end: int, matches: list[NameMatch]) -> int | None:
+    values = [min(abs(item.start - end), abs(start - item.end)) for item in matches]
     return min(values) if values else None
 
 
@@ -453,11 +411,7 @@ def _speaker_signals(
         if frame is None:
             continue
         nearby_anchor = any(
-            min(
-                abs(item.start - token.end),
-                abs(token.start - item.end),
-            )
-            <= 45
+            min(abs(item.start - token.end), abs(token.start - item.end)) <= 45
             for item in anchors
         )
         ru_anchor = any(
@@ -466,11 +420,7 @@ def _speaker_signals(
         )
         if language == "ru" and not (nearby_anchor or ru_anchor):
             continue
-        target_distance = _distance(
-            token.start,
-            token.end,
-            target_matches,
-        )
+        target_distance = _distance(token.start, token.end, target_matches)
         if target_distance is None or target_distance > 110:
             continue
         result.append(
@@ -490,36 +440,24 @@ def _speaker_signals(
     return result
 
 
-def _u_frame(
-    tokens: list[TextToken],
-    possessor: NameMatch,
-    kinship_index: int,
-) -> bool:
+def _u_frame(tokens: list[TextToken], possessor: NameMatch, kinship_index: int) -> bool:
     before = [
         (index, token)
         for index, token in enumerate(tokens)
         if token.end <= possessor.start and kinship_index - index <= 9
     ]
-    return any(
-        token.normalized == "у"
-        for _, token in before[-5:]
-    )
+    return any(token.normalized == "у" for _, token in before[-5:])
 
 
 def _dash_or_copula(text: str, left: int, right: int) -> bool:
     start, end = sorted((left, right))
     between = text[start:end]
     words = set(normalize_text(between).split())
-    return (
-        "—" in between
-        or "-" in between
-        or bool(words.intersection({"это", "зовут"}))
-    )
+    return "—" in between or "-" in between or bool(words.intersection({"это", "зовут"}))
 
 
 def _named_signals(
-    text: str,
-    people: list[PersonMention],
+    text: str, people: list[PersonMention]
 ) -> list[LinguisticRelationshipSignal]:
     if len(people) != 2:
         return []
@@ -541,11 +479,7 @@ def _named_signals(
                 continue
             for owner in possessor_matches:
                 for target in relative_matches:
-                    target_distance = _distance(
-                        token.start,
-                        token.end,
-                        [target],
-                    )
+                    target_distance = _distance(token.start, token.end, [target])
                     if target_distance is None or target_distance > 160:
                         continue
                     if language == "kk":
@@ -557,35 +491,20 @@ def _named_signals(
                             "тың",
                             "тің",
                         }
-                        supported = (
-                            genitive
-                            and owner.end <= token.start <= owner.end + 80
-                        )
+                        supported = genitive and owner.end <= token.start <= owner.end + 80
                     else:
-                        in_u_frame = (
-                            owner.end <= token.start
-                            and _u_frame(tokens, owner, index)
+                        in_u_frame = owner.end <= token.start and _u_frame(
+                            tokens, owner, index
                         )
-                        owner_after_kinship = (
-                            token.end
-                            <= owner.start
-                            <= token.end + 90
-                        )
-                        target_outside = (
-                            target.end <= token.start
-                            or target.start >= owner.end
-                        )
+                        owner_after_kinship = token.end <= owner.start <= token.end + 90
+                        target_outside = target.end <= token.start or target.start >= owner.end
                         genitive = owner.grammatical_case == "genitive"
                         supported = in_u_frame or (
                             owner_after_kinship
                             and target_outside
                             and (
                                 genitive
-                                or _dash_or_copula(
-                                    text,
-                                    owner.end,
-                                    target.start,
-                                )
+                                or _dash_or_copula(text, owner.end, target.start)
                             )
                         )
                     if not supported:
@@ -597,26 +516,16 @@ def _named_signals(
                             relative=relative,
                             frame=frame,
                             surface=token.surface,
-                            rule_id=(
-                                f"{language}.relationship."
-                                "named_possessor_local.v2"
-                            ),
+                            rule_id=f"{language}.relationship.named_possessor_local.v2",
                         )
                     )
     return result
 
 
-def _phrase(
-    tokens: list[TextToken],
-    values: tuple[str, ...],
-) -> bool:
+def _phrase(tokens: list[TextToken], values: tuple[str, ...]) -> bool:
     size = len(values)
     return any(
-        tuple(
-            item.normalized
-            for item in tokens[index : index + size]
-        )
-        == values
+        tuple(item.normalized for item in tokens[index : index + size]) == values
         for index in range(len(tokens) - size + 1)
     )
 
@@ -633,14 +542,8 @@ def _both_named(text: str, people: list[PersonMention]) -> bool:
     )
 
 
-def _parent_labels(
-    text: str,
-    people: list[PersonMention],
-) -> bool:
-    labels = {
-        normalize_text(item.relation_to_speaker or "")
-        for item in people
-    }
+def _parent_labels(text: str, people: list[PersonMention]) -> bool:
+    labels = {normalize_text(item.relation_to_speaker or "") for item in people}
     if labels != {"father", "mother"}:
         return False
     tokens = tokenize(text)
@@ -655,8 +558,7 @@ def _parent_labels(
 
 
 def _explicit_pair_signals(
-    text: str,
-    people: list[PersonMention],
+    text: str, people: list[PersonMention]
 ) -> list[LinguisticRelationshipSignal]:
     if len(people) != 2:
         return []
@@ -678,15 +580,8 @@ def _explicit_pair_signals(
             )
         )
     ru_sibling = _phrase(tokens, ("брат", "и", "сестра"))
-    ru_sibling = ru_sibling or _phrase(
-        tokens,
-        ("сестра", "и", "брат"),
-    )
-    if (
-        ru_sibling
-        and named
-        and not any(word in _RU_COUSIN for word in words)
-    ):
+    ru_sibling = ru_sibling or _phrase(tokens, ("сестра", "и", "брат"))
+    if ru_sibling and named and not any(word in _RU_COUSIN for word in words):
         result.append(
             _pair_signal(
                 RelationshipType.SIBLING,
@@ -716,16 +611,11 @@ def find_bounded_relationship_signals(
     signals: list[LinguisticRelationshipSignal] = []
     for context in contexts:
         text = _masked(context.text)
-        signals.extend(
-            find_relationship_signals(text, people, speaker_name)
-        )
+        signals.extend(find_relationship_signals(text, people, speaker_name))
         signals.extend(_speaker_signals(text, people, speaker_name))
         signals.extend(_named_signals(text, people))
         signals.extend(_explicit_pair_signals(text, people))
-    unique: dict[
-        tuple[str, str, str, str, str],
-        LinguisticRelationshipSignal,
-    ] = {}
+    unique: dict[tuple[str, str, str, str, str], LinguisticRelationshipSignal] = {}
     for signal in signals:
         key = (
             signal.relationship_type.value,
@@ -738,10 +628,7 @@ def find_bounded_relationship_signals(
     return list(unique.values())
 
 
-def grounding_rule_family(
-    rule_id: str,
-    relationship_type: RelationshipType,
-) -> str:
+def grounding_rule_family(rule_id: str, relationship_type: RelationshipType) -> str:
     if "speaker" in rule_id:
         return "speaker_anchor"
     if "named" in rule_id:
