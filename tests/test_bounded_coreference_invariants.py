@@ -5,7 +5,12 @@ import pytest
 from mura.coreference_context import BoundedCoreferenceContext
 from mura.coreference_language import AnaphorOccurrence, KinshipOccurrence
 from mura.coreference_materialization import link_id_for
-from mura.coreference_units import MAX_CONTEXT_CHARS, TextUnit, segment_units
+from mura.coreference_units import (
+    MAX_CONTEXT_CHARS,
+    TextUnit,
+    context_units,
+    segment_units,
+)
 from mura.domain.models import GrammaticalNumber, RelationshipRole, RelationshipType
 from mura.linguistics.russian import KinshipFrame
 
@@ -28,6 +33,25 @@ def test_segment_units_have_a_strict_maximum_length(
     assert [len(unit.text) for unit in units] == expected_lengths
     assert all(len(unit.text) <= MAX_CONTEXT_CHARS for unit in units)
     assert "".join(unit.text for unit in units) == text
+
+
+@pytest.mark.parametrize(
+    ("total_span", "expected_count"),
+    [(MAX_CONTEXT_CHARS, 2), (MAX_CONTEXT_CHARS + 1, 1)],
+)
+def test_same_segment_context_limit_counts_trimmed_gaps(
+    total_span: int,
+    expected_count: int,
+) -> None:
+    prefix = "A."
+    suffix = "His son."
+    gap = " " * (total_span - len(prefix) - len(suffix))
+    units = segment_units("segment", prefix + gap + suffix)
+
+    selected = context_units(units, current_index=1)
+
+    assert len(selected) == expected_count
+    assert selected[-1].text == suffix
 
 
 def _context(segment_id: str) -> BoundedCoreferenceContext:

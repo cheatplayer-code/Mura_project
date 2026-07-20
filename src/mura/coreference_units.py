@@ -162,13 +162,19 @@ def unit_index_for_anaphor(
     )
 
 
+def _context_char_count(previous: TextUnit, current: TextUnit) -> int:
+    if previous.segment_id == current.segment_id:
+        return current.end - previous.start
+    return len(previous.text) + 1 + len(current.text)
+
+
 def context_units(units: list[TextUnit], *, current_index: int) -> list[TextUnit]:
     current = units[current_index]
     selected = [current]
     if current_index == 0:
         return selected
     previous = units[current_index - 1]
-    if len(previous.text) + 1 + len(current.text) <= MAX_CONTEXT_CHARS:
+    if _context_char_count(previous, current) <= MAX_CONTEXT_CHARS:
         selected.insert(0, previous)
     return selected[-_MAX_CONTEXT_UNITS:]
 
