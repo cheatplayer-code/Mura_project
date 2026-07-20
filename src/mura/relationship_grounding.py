@@ -57,11 +57,7 @@ def select_relationship_grounding_contexts(
         relationship.subject_mention_id,
         relationship.object_mention_id,
     }
-    endpoints = [
-        mention_by_id[item]
-        for item in endpoint_ids
-        if item in mention_by_id
-    ]
+    endpoints = [mention_by_id[item] for item in endpoint_ids if item in mention_by_id]
     if len(endpoints) != 2:
         return []
 
@@ -75,7 +71,5 @@ def select_relationship_grounding_contexts(
         )
         if endpoint_ids.issubset(supported):
             eligible.append(window)
-    eligible.sort(
-        key=lambda item: (item.sentence_count, len(item.text), item.text)
-    )
+    eligible.sort(key=lambda item: (item.sentence_count, len(item.text), item.text))
     return eligible[:6]
