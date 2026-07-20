@@ -1,0 +1,25 @@
+name: Export audit source
+
+on:
+  push:
+    branches:
+      - feat/mura-core-completion
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Remove VCS metadata
+        run: rm -rf .git
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: mura-audit-source
+          path: .
+          include-hidden-files: true
+          retention-days: 1
