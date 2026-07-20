@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
