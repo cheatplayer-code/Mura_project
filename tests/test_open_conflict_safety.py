@@ -80,8 +80,7 @@ def test_open_conflict_cannot_preserve_self_relationship() -> None:
 
     assert result.relationship_claims == []
     assert any(
-        item["object_id"] == "relationship_self" and item["stage"] == "schema"
-        for item in issues
+        item["object_id"] == "relationship_self" and item["stage"] == "schema" for item in issues
     )
 
 
@@ -148,12 +147,9 @@ def test_open_conflict_does_not_authorize_invalid_model_evidence() -> None:
         speaker_name="Narrator",
     )
 
-    assert "evidence_invented" not in {
-        item.evidence_id for item in result.evidence_spans
-    }
+    assert "evidence_invented" not in {item.evidence_id for item in result.evidence_spans}
     assert any(
-        item["object_id"] == "evidence_invented" and item["stage"] == "semantic"
-        for item in issues
+        item["object_id"] == "evidence_invented" and item["stage"] == "semantic" for item in issues
     )
     assert all(
         "evidence_invented" not in relationship.evidence_ids
