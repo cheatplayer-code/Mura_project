@@ -71,6 +71,8 @@ _ADDITIONAL_RU_KINSHIP_FRAMES: dict[str, russian.KinshipFrame] = {
     "дети": russian.KinshipFrame(_PARENT_CHILD, _PARENT, _CHILD),
     "детей": russian.KinshipFrame(_PARENT_CHILD, _PARENT, _CHILD),
     "сыновей": russian.KinshipFrame(_PARENT_CHILD, _PARENT, _CHILD),
+    "родился": russian.KinshipFrame(_PARENT_CHILD, _PARENT, _CHILD),
+    "родилась": russian.KinshipFrame(_PARENT_CHILD, _PARENT, _CHILD),
 }
 
 _ADDITIONAL_EN_KINSHIP_FRAMES: dict[str, english.KinshipFrame] = {
