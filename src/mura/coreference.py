@@ -154,6 +154,7 @@ def augment_bounded_coreference(
             link_id=link_id,
             source_segment_ids=source_segment_ids,
             evidence_ids=[item.evidence_id for item in generated_evidence],
+            transcript=transcript,
         )
         changed_relationship_ids.update(matching_ids)
 

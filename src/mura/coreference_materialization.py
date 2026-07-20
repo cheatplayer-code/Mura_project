@@ -231,12 +231,12 @@ def rule_id_for(
         status is CoreferenceStatus.RESOLVED
         and context.anaphor.grammatical_number is GrammaticalNumber.PLURAL
     ):
-        return "discourse.plural.explicit_pair.v2"
+        return "discourse.plural.explicit_pair.v1"
     if status is CoreferenceStatus.RESOLVED:
-        return "discourse.singular.unique_antecedent.v2"
+        return "discourse.singular.unique_antecedent.v1"
     if status is CoreferenceStatus.AMBIGUOUS:
-        return "discourse.ambiguous_competing_antecedents.v2"
-    return "discourse.unresolved.insufficient_candidates.v2"
+        return "discourse.ambiguous_competing_antecedents.v1"
+    return "discourse.unresolved.insufficient_candidates.v1"
 
 
 def link_id_for(context: BoundedCoreferenceContext) -> str:
@@ -263,6 +263,7 @@ def update_relationships(
     link_id: str,
     source_segment_ids: list[str],
     evidence_ids: list[str],
+    transcript: TranscriptEnvelope,
 ) -> list[RelationshipClaim]:
     updated: list[RelationshipClaim] = []
     for relationship in relationships:
@@ -272,8 +273,9 @@ def update_relationships(
         updated.append(
             relationship.model_copy(
                 update={
-                    "source_segment_ids": list(
-                        dict.fromkeys([*relationship.source_segment_ids, *source_segment_ids])
+                    "source_segment_ids": ordered_segment_ids(
+                        [*relationship.source_segment_ids, *source_segment_ids],
+                        transcript,
                     ),
                     "evidence_ids": list(
                         dict.fromkeys([*relationship.evidence_ids, *evidence_ids])
