@@ -66,14 +66,7 @@ def _sanitize(
         duration_seconds=10,
         language_hints=["ru", "kk"],
         full_text=case.text,
-        segments=[
-            RawSegment(
-                segment_id="seg_001",
-                start=0,
-                end=10,
-                text=case.text,
-            )
-        ],
+        segments=[RawSegment(segment_id="seg_001", start=0, end=10, text=case.text)],
         asr_model="relationship-grounding-fixture",
         asr_revision="v1",
         chunker_version="v1",
@@ -158,14 +151,7 @@ _ACCEPTED_CASES = [
             ("nurzhan", "Нұржан", "son"),
         ),
         tuple(
-            (
-                f"r_{child}",
-                "parent_child",
-                "speaker",
-                "parent",
-                child,
-                "child",
-            )
+            (f"r_{child}", "parent_child", "speaker", "parent", child, "child")
             for child in ("daniyar", "aliya", "nurzhan")
         ),
     ),
@@ -187,44 +173,17 @@ _ACCEPTED_CASES = [
     GroundingCase(
         "Моя младшая сестра Айгүл.",
         (("speaker", "Күләш", "self"), ("aigul", "Айгүл", "sister")),
-        (
-            (
-                "r1",
-                "sibling",
-                "speaker",
-                "older_sibling",
-                "aigul",
-                "younger_sibling",
-            ),
-        ),
+        (("r1", "sibling", "speaker", "older_sibling", "aigul", "younger_sibling"),),
     ),
     GroundingCase(
         "Менің ағам Ермек.",
         (("speaker", "Күләш", "self"), ("ermek", "Ермек", "brother")),
-        (
-            (
-                "r1",
-                "sibling",
-                "ermek",
-                "older_sibling",
-                "speaker",
-                "younger_sibling",
-            ),
-        ),
+        (("r1", "sibling", "ermek", "older_sibling", "speaker", "younger_sibling"),),
     ),
     GroundingCase(
         "Менің сіңлім Айгүл.",
         (("speaker", "Күләш", "self"), ("aigul", "Айгүл", "sister")),
-        (
-            (
-                "r1",
-                "sibling",
-                "speaker",
-                "older_sibling",
-                "aigul",
-                "younger_sibling",
-            ),
-        ),
+        (("r1", "sibling", "speaker", "older_sibling", "aigul", "younger_sibling"),),
     ),
     GroundingCase(
         "Жена Данияра — Жанар.",
@@ -239,41 +198,14 @@ _ACCEPTED_CASES = [
     GroundingCase(
         "Сын Айгүл — Руслан.",
         (("aigul", "Айгүл", None), ("ruslan", "Руслан", None)),
-        (
-            (
-                "r1",
-                "parent_child",
-                "aigul",
-                "parent",
-                "ruslan",
-                "child",
-            ),
-        ),
+        (("r1", "parent_child", "aigul", "parent", "ruslan", "child"),),
     ),
     GroundingCase(
         "Дочь Алии и Армана — Мадина.",
+        (("aliya", "Алия", None), ("arman", "Арман", None), ("madina", "Мадина", None)),
         (
-            ("aliya", "Алия", None),
-            ("arman", "Арман", None),
-            ("madina", "Мадина", None),
-        ),
-        (
-            (
-                "r_aliya",
-                "parent_child",
-                "aliya",
-                "parent",
-                "madina",
-                "child",
-            ),
-            (
-                "r_arman",
-                "parent_child",
-                "arman",
-                "parent",
-                "madina",
-                "child",
-            ),
+            ("r_aliya", "parent_child", "aliya", "parent", "madina", "child"),
+            ("r_arman", "parent_child", "arman", "parent", "madina", "child"),
         ),
     ),
     GroundingCase(
@@ -285,24 +217,14 @@ _ACCEPTED_CASES = [
             ("timur", "Тимур", None),
         ),
         tuple(
-            (
-                f"r_{parent}_{child}",
-                "parent_child",
-                parent,
-                "parent",
-                child,
-                "child",
-            )
+            (f"r_{parent}_{child}", "parent_child", parent, "parent", child, "child")
             for parent in ("daniyar", "zhanar")
             for child in ("amina", "timur")
         ),
     ),
     GroundingCase(
         "Отец и мама были мужем и женой.",
-        (
-            ("sapar", "Сапар", "father"),
-            ("gulmira", "Гүлмира", "mother"),
-        ),
+        (("sapar", "Сапар", "father"), ("gulmira", "Гүлмира", "mother")),
         (("r1", "spouse", "sapar", "spouse", "gulmira", "spouse"),),
     ),
     GroundingCase(
@@ -319,9 +241,7 @@ _ACCEPTED_CASES = [
 
 
 @pytest.mark.parametrize("case", _ACCEPTED_CASES, ids=lambda item: item.text)
-def test_explicit_ru_kk_relationship_is_accepted(
-    case: GroundingCase,
-) -> None:
+def test_explicit_ru_kk_relationship_is_accepted(case: GroundingCase) -> None:
     result, issues = _sanitize(case)
 
     assert issues == []
@@ -368,10 +288,7 @@ _REJECTED_CASES = [
     ),
     GroundingCase(
         "Серик Оразбаев приехал. Серик Ахметов помогал с ремонтом.",
-        (
-            ("serik_1", "Серик Оразбаев", None),
-            ("serik_2", "Серик Ахметов", None),
-        ),
+        (("serik_1", "Серик Оразбаев", None), ("serik_2", "Серик Ахметов", None)),
         (("r1", "sibling", "serik_1", "sibling", "serik_2", "sibling"),),
     ),
     GroundingCase(
@@ -384,10 +301,7 @@ _REJECTED_CASES = [
         (("r1", "parent_child", "erlan", "parent", "nurlan", "child"),),
     ),
     GroundingCase(
-        (
-            "Ерлан жил в Караганде. Потом семья переехала. "
-            "Прошло много лет. Его дочь Амина учится."
-        ),
+        "Ерлан жил в Караганде. Потом семья переехала. Прошло много лет. Его дочь Амина учится.",
         (("erlan", "Ерлан", None), ("amina", "Амина", None)),
         (("r1", "parent_child", "erlan", "parent", "amina", "child"),),
     ),
@@ -395,16 +309,11 @@ _REJECTED_CASES = [
 
 
 @pytest.mark.parametrize("case", _REJECTED_CASES, ids=lambda item: item.text)
-def test_adversarial_language_does_not_create_family_edge(
-    case: GroundingCase,
-) -> None:
+def test_adversarial_language_does_not_create_family_edge(case: GroundingCase) -> None:
     result, issues = _sanitize(case)
 
     assert result.relationship_claims == []
-    assert any(
-        item.get("object_type") == "relationship"
-        for item in issues
-    )
+    assert any(item.get("object_type") == "relationship" for item in issues)
 
 
 def test_wrong_parent_child_direction_is_quarantined() -> None:
@@ -417,10 +326,7 @@ def test_wrong_parent_child_direction_is_quarantined() -> None:
     result, issues = _sanitize(case)
 
     assert result.relationship_claims == []
-    assert any(
-        "contradicts deterministic" in item["detail"]
-        for item in issues
-    )
+    assert any("contradicts deterministic" in item["detail"] for item in issues)
 
 
 def test_self_relationship_is_rejected_by_schema() -> None:
@@ -453,10 +359,7 @@ def test_invalid_source_segment_cannot_create_relationship() -> None:
     )
 
     assert result.relationship_claims == []
-    assert any(
-        "unknown segments" in item["detail"]
-        for item in issues
-    )
+    assert any("unknown segments" in item["detail"] for item in issues)
 
 
 def test_valid_evidence_and_references_are_preserved() -> None:
@@ -473,10 +376,9 @@ def test_valid_evidence_and_references_are_preserved() -> None:
     assert relationship.evidence_ids == ["evidence_1"]
     assert relationship.provenance is not None
     assert relationship.provenance.evidence_ids == ["evidence_1"]
-    assert {
-        relationship.subject_mention_id,
-        relationship.object_mention_id,
-    }.issubset({item.mention_id for item in result.people_mentions})
+    assert {relationship.subject_mention_id, relationship.object_mention_id}.issubset(
+        {item.mention_id for item in result.people_mentions}
+    )
     assert set(relationship.evidence_ids).issubset(
         {item.evidence_id for item in result.evidence_spans}
     )
