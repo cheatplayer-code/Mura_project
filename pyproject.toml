@@ -69,6 +69,7 @@ select = ["E", "F", "I", "B", "UP", "RUF"]
 known-first-party = ["mura"]
 
 [tool.ruff.lint.per-file-ignores]
+"src/mura/_relationship_grounding_impl.py" = ["RUF001"]
 "src/mura/coreference.py" = ["B009", "RUF001"]
 "src/mura/deepseek/anchor_prompts.py" = ["I001"]
 "src/mura/deepseek/anchors.py" = ["RUF001"]
