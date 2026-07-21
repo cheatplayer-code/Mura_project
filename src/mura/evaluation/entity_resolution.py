@@ -56,7 +56,7 @@ class EntityResolutionBenchmarkCase(StrictModel):
 
 
 class EntityResolutionBenchmarkDataset(StrictModel):
-    schema_version: str = "entity-resolution-benchmark-v1"
+    schema_version: str = "entity-resolution-benchmark-v2"
     dataset_id: str = Field(min_length=1)
     description: str = ""
     cases: list[EntityResolutionBenchmarkCase] = Field(min_length=1)
@@ -82,6 +82,9 @@ class EntityResolutionCaseScore(StrictModel):
     correct_new_person: int = Field(ge=0)
     gold_new_person: int = Field(ge=0)
     predicted: list[MentionResolution] = Field(default_factory=list)
+    verified_alias_collisions: int = Field(default=0, ge=0)
+    mention_identity_collisions: int = Field(default=0, ge=0)
+    inactive_relationships_ignored: int = Field(default=0, ge=0)
 
 
 class EntityResolutionBenchmarkSummary(StrictModel):
@@ -94,10 +97,13 @@ class EntityResolutionBenchmarkSummary(StrictModel):
     false_merges: int = Field(ge=0)
     false_splits: int = Field(ge=0)
     cross_family_merges: int = Field(default=0, ge=0)
+    verified_alias_collisions: int = Field(default=0, ge=0)
+    mention_identity_collisions: int = Field(default=0, ge=0)
+    inactive_relationships_ignored: int = Field(default=0, ge=0)
 
 
 class EntityResolutionBenchmarkReport(StrictModel):
-    report_schema_version: str = "entity-resolution-report-v1"
+    report_schema_version: str = "entity-resolution-report-v2"
     dataset_id: str
     pipeline_versions: dict[str, str]
     cases: list[EntityResolutionCaseScore]
@@ -126,7 +132,8 @@ def _safe_ratio(numerator: int, denominator: int) -> float:
 
 def _score_case(case: EntityResolutionBenchmarkCase) -> EntityResolutionCaseScore:
     context = EntityResolutionContext(family_id=case.family_id, profiles=case.profiles)
-    predicted = resolve_mentions_with_report(_extraction_for(case), context).resolutions
+    run = resolve_mentions_with_report(_extraction_for(case), context)
+    predicted = run.resolutions
     predicted_by_id = {item.mention_id: item for item in predicted}
 
     correct_status = 0
@@ -175,6 +182,9 @@ def _score_case(case: EntityResolutionBenchmarkCase) -> EntityResolutionCaseScor
         correct_new_person=correct_new_person,
         gold_new_person=gold_new_person,
         predicted=predicted,
+        verified_alias_collisions=run.metrics.verified_alias_collisions,
+        mention_identity_collisions=run.metrics.mention_identity_collisions,
+        inactive_relationships_ignored=run.metrics.inactive_relationships_ignored,
     )
 
 
@@ -204,6 +214,11 @@ def run_entity_resolution_benchmark(path: Path) -> EntityResolutionBenchmarkRepo
             false_merges=sum(case.false_merges for case in cases),
             false_splits=sum(case.false_splits for case in cases),
             cross_family_merges=0,
+            verified_alias_collisions=sum(case.verified_alias_collisions for case in cases),
+            mention_identity_collisions=sum(case.mention_identity_collisions for case in cases),
+            inactive_relationships_ignored=sum(
+                case.inactive_relationships_ignored for case in cases
+            ),
         ),
     )
 

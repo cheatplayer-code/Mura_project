@@ -25,22 +25,22 @@ class PipelineVersions(StrictModel):
 
 
 CURRENT_PIPELINE_VERSIONS = PipelineVersions(
-    pipeline="mura-core-v0.12.0",
-    domain_schema="domain-v4-focused-narratives",
+    pipeline="mura-core-v0.13.0",
+    domain_schema="domain-v5-identity-safety",
     cleaner_prompt="cleaner-v3-self-correction-semantics",
     extractor_prompt="extractor-v6-focused-passes",
     extractor_repair_prompt="extractor-repair-v4-focused-pass",
-    evidence_rules="claim-evidence-v4-ordered-factual-support+bounded-coreference-v2",
+    evidence_rules="claim-evidence-v5-ordered-factual-support+bounded-coreference-v3",
     extraction_orchestration="focused-extraction-v1-three-pass",
     narrative_rules="event-story-grounding-v1",
     claim_semantics="claim-semantics-v1",
     temporal_rules="temporal-normalizer-v1",
     relationship_state_rules="relationship-state-v1",
-    resolver="mention-resolver-v2-cross-recording",
+    resolver="mention-resolver-v3-collision-safe",
     archive_schema="archive-claim-ledger-v1+conflict-decisions-v1+generic-claims-v1",
     materializer="family-materializer-v4-active-state-guard",
-    evaluator="core-evaluator-v4-events-stories+entity-resolution-v1",
-    benchmark_schema="benchmark-v4-events-stories+entity-resolution-benchmark-v1",
+    evaluator="core-evaluator-v5-identity-safety",
+    benchmark_schema="benchmark-v5-identity-safety+entity-resolution-benchmark-v2",
 )
 
 

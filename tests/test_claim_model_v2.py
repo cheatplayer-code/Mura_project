@@ -107,9 +107,7 @@ def test_legacy_candidate_is_materialized_as_complete_v2_claim_bundle() -> None:
     assert relationship.provenance is not None
     assert relationship.provenance.recording_id == transcript.recording_id
     assert relationship.provenance.evidence_ids == relationship.evidence_ids
-    assert (
-        relationship.provenance.pipeline_versions["domain_schema"] == "domain-v4-focused-narratives"
-    )
+    assert relationship.provenance.pipeline_versions["domain_schema"] == "domain-v5-identity-safety"
 
     for person in result.people_mentions:
         assert person.evidence_ids

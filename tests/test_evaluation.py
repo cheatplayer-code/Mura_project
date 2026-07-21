@@ -87,7 +87,7 @@ def test_markdown_report_contains_versions_and_limitations() -> None:
     markdown = render_markdown_report(report)
 
     assert "# Mura ML Core Baseline" in markdown
-    assert "mura-core-v0.12.0" in markdown
+    assert "mura-core-v0.13.0" in markdown
     assert "archive-claim-ledger-v1+conflict-decisions-v1+generic-claims-v1" in markdown
     assert "family-materializer-v4-active-state-guard" in markdown
     assert "extractor-v6-focused-passes" in markdown

@@ -18,7 +18,7 @@ from mura.evaluation.entity_resolution import run_entity_resolution_benchmark
 from mura.resolution import resolve_mentions, resolve_mentions_with_report
 
 ROOT = Path(__file__).resolve().parents[1]
-BENCHMARK = ROOT / "benchmarks" / "entity_resolution_v1.json"
+BENCHMARK = ROOT / "benchmarks" / "entity_resolution_v2.json"
 
 
 def _extraction(mention: PersonMention) -> ExtractionResult:
@@ -97,7 +97,7 @@ def test_verified_alias_resolves_but_stays_unreviewed() -> None:
     assert run.resolutions[0].person_id == "person_erlan"
     trace = run.traces[0]
     assert trace.verification_status.value == "unreviewed"
-    assert "resolution.name.verified_alias.v2" in trace.rule_ids
+    assert "resolution.name.verified_alias.v3" in trace.rule_ids
 
 
 def test_unverified_archive_alias_remains_reviewable() -> None:
@@ -120,7 +120,7 @@ def test_unverified_archive_alias_remains_reviewable() -> None:
     run = resolve_mentions_with_report(_extraction(mention), context)
 
     assert run.resolutions[0].status is ResolutionStatus.NEEDS_REVIEW
-    assert "resolution.name.archive_alias_candidate.v2" in run.traces[0].rule_ids
+    assert "resolution.name.archive_alias_candidate.v3" in run.traces[0].rule_ids
 
 
 def test_relation_and_generation_must_both_agree_for_name_based_auto_merge() -> None:
@@ -256,8 +256,8 @@ def test_entity_resolution_release_benchmark_has_zero_false_merges() -> None:
     report = run_entity_resolution_benchmark(BENCHMARK)
     summary = report.summary
 
-    assert summary.case_count == 8
-    assert summary.mentions == 9
+    assert summary.case_count == 14
+    assert summary.mentions == 17
     assert summary.status_accuracy == 1.0
     assert summary.identity_accuracy == 1.0
     assert summary.review_routing_accuracy == 1.0
@@ -265,5 +265,8 @@ def test_entity_resolution_release_benchmark_has_zero_false_merges() -> None:
     assert summary.false_merges == 0
     assert summary.false_splits == 0
     assert summary.cross_family_merges == 0
-    assert report.pipeline_versions["pipeline"] == "mura-core-v0.12.0"
-    assert report.pipeline_versions["resolver"] == "mention-resolver-v2-cross-recording"
+    assert summary.verified_alias_collisions == 1
+    assert summary.mention_identity_collisions == 1
+    assert summary.inactive_relationships_ignored == 1
+    assert report.pipeline_versions["pipeline"] == "mura-core-v0.13.0"
+    assert report.pipeline_versions["resolver"] == "mention-resolver-v3-collision-safe"
