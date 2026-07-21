@@ -216,6 +216,10 @@ class RecordingJobWorker:
             "cleaning": JobStatus.CLEANING,
             "extracting": JobStatus.EXTRACTING,
             "resolving": JobStatus.RESOLVING,
+            "planning_long_form": JobStatus.CLEANING,
+            "merging_windows": JobStatus.EXTRACTING,
+            "global_validation": JobStatus.EXTRACTING,
+            "resolving_entities": JobStatus.RESOLVING,
         }
         active_pipeline_stage: str | None = None
 
@@ -226,6 +230,8 @@ class RecordingJobWorker:
             active_pipeline_stage = stage
             trace.start(stage)
             status = status_by_stage.get(stage)
+            if status is None and stage.startswith("window_"):
+                status = JobStatus.CLEANING if stage.endswith("_cleaning") else JobStatus.EXTRACTING
             if status is not None:
                 self.repository.update_job_stage(job.job_id, status, stage)
 
