@@ -19,6 +19,7 @@ from mura.storage.archive import (
     _mapped_people,
     _relationship_pair,
     _relationship_signature,
+    _relationship_state_status,
     _stable_id,
 )
 from mura.storage.database import JSON_VALUE, Base, Database, RecordingRow, utcnow
@@ -116,7 +117,8 @@ def _decision_id() -> str:
 
 def _claim_is_grounded(claim: ArchiveClaimRow) -> bool:
     return (
-        claim.subject_person_id is not None
+        _relationship_state_status(claim) == "active"
+        and claim.subject_person_id is not None
         and claim.object_person_id is not None
         and claim.subject_person_id != claim.object_person_id
         and claim.evidence_class in _AUTO_MATERIALIZABLE_CLASSES
@@ -125,9 +127,7 @@ def _claim_is_grounded(claim: ArchiveClaimRow) -> bool:
 
 
 def _base_claim_status(claim: ArchiveClaimRow) -> str:
-    if claim.subject_person_id is None or claim.object_person_id is None:
-        return "unresolved"
-    return "active"
+    return _relationship_state_status(claim)
 
 
 class ConflictResolutionService:

@@ -173,19 +173,35 @@ class DeepSeekClient:
         try:
             parsed = json.loads(cleaned)
         except json.JSONDecodeError as exc:
-            raise DeepSeekError(f"invalid JSON: {cleaned[:500]}") from exc
+            raise DeepSeekError(
+                f"invalid JSON object at line {exc.lineno}, column {exc.colno}"
+            ) from exc
 
         if not isinstance(parsed, dict):
             raise DeepSeekError(f"expected JSON object, got {type(parsed).__name__}")
         return parsed
 
     @staticmethod
-    def _format_api_error(response: requests.Response) -> str:
+    def _safe_error_token(value: object) -> str | None:
+        if not isinstance(value, str):
+            return None
+        token = re.sub(r"[^A-Za-z0-9_.:-]+", "_", value).strip("_")
+        return token[:80] or None
+
+    @classmethod
+    def _format_api_error(cls, response: requests.Response) -> str:
+        parts = [f"HTTP {response.status_code}"]
         try:
             body = response.json()
         except ValueError:
-            return f"HTTP {response.status_code}: {response.text[:1000]}"
-        return f"HTTP {response.status_code}: {json.dumps(body, ensure_ascii=False)[:1000]}"
+            return parts[0]
+        error = body.get("error") if isinstance(body, dict) else None
+        if isinstance(error, dict):
+            for key in ("type", "code"):
+                token = cls._safe_error_token(error.get(key))
+                if token is not None:
+                    parts.append(f"{key}={token}")
+        return " ".join(parts)
 
     def _raise_for_status(self, response: requests.Response) -> None:
         if not response.ok:

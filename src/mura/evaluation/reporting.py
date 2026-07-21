@@ -51,7 +51,11 @@ def render_markdown_report(report: BenchmarkReport) -> str:
             f"- Cases: **{summary.case_count}**",
             f"- Person mentions: {_format_prf(summary.person_mentions)}",
             f"- Relationships: {_format_prf(summary.relationships)}",
-            (f"- Expected quarantine: {_format_prf(summary.quarantined_relationships)}"),
+            (
+                "- Expected relationship quarantine: "
+                f"{_format_prf(summary.quarantined_relationships)}"
+            ),
+            (f"- Expected object quarantine: {_format_prf(summary.quarantined_objects)}"),
             (
                 "- Relationship direction accuracy: "
                 f"{_format_ratio(summary.relationship_direction_accuracy)}"
@@ -59,6 +63,14 @@ def render_markdown_report(report: BenchmarkReport) -> str:
             (f"- Provenance completeness: {_format_ratio(summary.provenance_completeness)}"),
             (f"- Unknown segment references: **{summary.unknown_segment_references}**"),
             f"- Self relationships: **{summary.self_relationships}**",
+            f"- Provenance violations: **{summary.provenance_violations}**",
+            f"- Objects without evidence: **{summary.objects_without_evidence}**",
+            f"- Invalid evidence spans: **{summary.invalid_evidence_spans}**",
+            f"- Unsafe verification statuses: **{summary.unsafe_verification_statuses}**",
+            f"- Unsafe story privacy: **{summary.unsafe_story_privacy}**",
+            f"- Unknown issue codes: **{summary.unknown_issue_codes}**",
+            f"- Missing required issue codes: **{summary.missing_required_issue_codes}**",
+            f"- Fatal contract failures: **{summary.fatal_contract_failures}**",
             "",
             "## Cases",
             "",

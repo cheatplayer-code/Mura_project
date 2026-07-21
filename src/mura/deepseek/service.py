@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import Counter
 from dataclasses import asdict
 from typing import Any, TypeVar
 
@@ -12,6 +11,7 @@ from mura.deepseek.anchor_prompts import (
 )
 from mura.deepseek.anchors import ExtractionAnchorBundle, build_extraction_anchor_bundle
 from mura.deepseek.client import DeepSeekClient, DeepSeekError, DeepSeekUsage
+from mura.deepseek.extraction_telemetry import build_extraction_telemetry
 from mura.deepseek.prompts import CLEANER_REPAIR_SYSTEM_PROMPT, CLEANER_SYSTEM_PROMPT
 from mura.domain.models import (
     CleanerResult,
@@ -20,8 +20,11 @@ from mura.domain.models import (
     ReadableSegment,
     TranscriptEnvelope,
 )
-from mura.evidence_recovery import EvidenceOffsetRecoveryMetrics, recover_evidence_offsets
-from mura.extraction_sanitizer import sanitize_extraction_output
+from mura.extraction_issues import safe_issue_counts
+from mura.extraction_sanitizer import (
+    ExtractionSanitizationOutcome,
+    process_extraction_candidate,
+)
 from mura.validation import ContractValidationError, validate_cleaner_result
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -63,36 +66,41 @@ class DeepSeekPipelineService:
         try:
             result = self._validate_model(CleanerResult, raw, "cleaner")
             validate_cleaner_result(transcript, result)
-        except (DeepSeekError, ContractValidationError) as exc:
-            initial_validation_error = str(exc)
+        except (DeepSeekError, ContractValidationError):
             try:
                 result, repair_usage = self._repair_cleaner(
                     transcript=transcript,
                     invalid_output=raw,
-                    validation_error=initial_validation_error,
+                    validation_failures=[{"code": "cleaner_contract_invalid"}],
                 )
-            except (DeepSeekError, ContractValidationError) as repair_exc:
+            except (DeepSeekError, ContractValidationError):
                 fallback = self._raw_preserving_cleaner_fallback(transcript)
                 return fallback, {
                     **initial_usage,
                     "repair_attempted": True,
+                    "repair_succeeded": False,
                     "fallback_used": True,
                     "fallback_strategy": "raw_transcript",
-                    "initial_validation_error": initial_validation_error,
-                    "repair_validation_error": str(repair_exc),
+                    "validation_issue_counts": {
+                        "cleaner_contract_invalid": 1,
+                        "cleaner_repair_failed": 1,
+                    },
                     "initial_usage": initial_usage,
                 }
             return result, {
                 **repair_usage,
                 "repair_attempted": True,
+                "repair_succeeded": True,
                 "fallback_used": False,
-                "initial_validation_error": initial_validation_error,
+                "validation_issue_counts": {"cleaner_contract_invalid": 1},
                 "initial_usage": initial_usage,
             }
         return result, {
             **initial_usage,
             "repair_attempted": False,
+            "repair_succeeded": False,
             "fallback_used": False,
+            "validation_issue_counts": {},
         }
 
     def _repair_cleaner(
@@ -100,12 +108,12 @@ class DeepSeekPipelineService:
         *,
         transcript: TranscriptEnvelope,
         invalid_output: dict[str, Any],
-        validation_error: str,
+        validation_failures: list[dict[str, str]],
     ) -> tuple[CleanerResult, dict[str, Any]]:
         repair_payload = {
-            "validation_error": validation_error,
+            "validation_failures": validation_failures,
             "output_schema": CleanerResult.model_json_schema(),
-            "invalid_output": invalid_output,
+            "previous_untrusted_output": invalid_output,
             "allowed_segment_ids": [segment.segment_id for segment in transcript.segments],
             "raw_segments": [segment.model_dump() for segment in transcript.segments],
         }
@@ -115,7 +123,7 @@ class DeepSeekPipelineService:
             max_tokens=12_000,
             attempts=2,
         )
-        repaired = self._validate_model(CleanerResult, repaired_raw, "cleaner repair")
+        repaired = self._validate_model(CleanerResult, repaired_raw, "cleaner_repair")
         validate_cleaner_result(transcript, repaired)
         return repaired, self._usage_dict(repair_usage)
 
@@ -163,27 +171,21 @@ class DeepSeekPipelineService:
             max_tokens=16_000,
         )
         initial_usage = self._usage_dict(usage)
-        final_raw, evidence_recovery = recover_evidence_offsets(raw=raw, transcript=transcript)
-        initial_evidence_recovery = evidence_recovery
         repair_attempted = False
-        initial_validation_error: str | None = None
+        repair_succeeded = False
+        initial_outcome: ExtractionSanitizationOutcome | None = None
+
         try:
-            result, extraction_issues, evidence_closure_count = sanitize_extraction_output(
-                raw=final_raw,
+            outcome = self._process_extraction_candidate(
+                raw=raw,
                 transcript=transcript,
+                cleaned=cleaned,
                 speaker_id=speaker_id,
                 speaker_name=speaker_name,
             )
-        except (ValidationError, ContractValidationError) as exc:
-            initial_validation_error = str(exc)
-            (
-                final_raw,
-                result,
-                extraction_issues,
-                evidence_closure_count,
-                evidence_recovery,
-                usage,
-            ) = self._repair_extraction(
+        except (ValidationError, ContractValidationError):
+            failures = [{"code": "final_contract_invalid", "stage": "provenance"}]
+            outcome, usage = self._repair_extraction(
                 transcript=transcript,
                 cleaned=cleaned,
                 speaker_id=speaker_id,
@@ -191,24 +193,18 @@ class DeepSeekPipelineService:
                 known_people=resolved_known_people,
                 anchors=anchors,
                 invalid_output=raw,
-                validation_error=initial_validation_error,
+                validation_failures=failures,
             )
             repair_attempted = True
+            repair_succeeded = True
         else:
+            initial_outcome = outcome
             if self._requires_extraction_repair(
-                raw=final_raw,
-                result=result,
-                extraction_issues=extraction_issues,
+                raw=outcome.recovered_raw,
+                result=outcome.result,
+                extraction_issues=outcome.issues,
             ):
-                initial_validation_error = self._repair_reason(extraction_issues)
-                (
-                    final_raw,
-                    result,
-                    extraction_issues,
-                    evidence_closure_count,
-                    evidence_recovery,
-                    usage,
-                ) = self._repair_extraction(
+                outcome, usage = self._repair_extraction(
                     transcript=transcript,
                     cleaned=cleaned,
                     speaker_id=speaker_id,
@@ -216,25 +212,56 @@ class DeepSeekPipelineService:
                     known_people=resolved_known_people,
                     anchors=anchors,
                     invalid_output=raw,
-                    validation_error=initial_validation_error,
+                    validation_failures=self._repair_failures(outcome.issues),
                 )
                 repair_attempted = True
+                repair_succeeded = True
 
-        usage_payload = self._extraction_usage(
-            raw=final_raw,
+        telemetry = build_extraction_telemetry(
+            raw=outcome.recovered_raw,
             usage=usage,
-            result=result,
-            extraction_issues=extraction_issues,
-            evidence_closure_count=evidence_closure_count,
-            evidence_recovery=evidence_recovery,
-            anchors=anchors,
+            result=outcome.result,
+            extraction_issues=outcome.issues,
+            evidence_closure_count=outcome.evidence_closure_count,
+            evidence_recovery=outcome.evidence_recovery,
+            transcript=transcript,
+            anchor_schema_version=anchors.schema_version,
+            allowed_segment_count=len(anchors.allowed_segment_ids),
+            mention_anchor_count=len(anchors.mention_anchors),
+            lexical_annotation_count=len(anchors.lexical_annotations),
             repair_attempted=repair_attempted,
-        )
+            repair_succeeded=repair_succeeded,
+        ).model_dump(mode="json")
+        telemetry["repaired_evidence_offsets"] = outcome.evidence_recovery.repaired_evidence_offsets
         if repair_attempted:
-            usage_payload["initial_usage"] = initial_usage
-            usage_payload["initial_validation_error"] = initial_validation_error
-            usage_payload["initial_evidence_offset_recovery"] = initial_evidence_recovery.to_dict()
-        return result, usage_payload
+            telemetry["initial_usage"] = initial_usage
+            if initial_outcome is not None:
+                telemetry["initial_evidence_offset_recovery"] = (
+                    initial_outcome.evidence_recovery.to_dict()
+                )
+                telemetry["initial_validation_issue_counts"] = safe_issue_counts(
+                    initial_outcome.issues
+                )
+        return outcome.result, telemetry
+
+    @staticmethod
+    def _process_extraction_candidate(
+        *,
+        raw: dict[str, Any],
+        transcript: TranscriptEnvelope,
+        cleaned: CleanerResult,
+        speaker_id: str,
+        speaker_name: str,
+    ) -> ExtractionSanitizationOutcome:
+        """Single typed deterministic post-processing path shared by normal and repair flows."""
+
+        return process_extraction_candidate(
+            raw=raw,
+            transcript=transcript,
+            cleaned=cleaned,
+            speaker_id=speaker_id,
+            speaker_name=speaker_name,
+        )
 
     @staticmethod
     def _extraction_payload(
@@ -275,15 +302,8 @@ class DeepSeekPipelineService:
         known_people: list[KnownPerson],
         anchors: ExtractionAnchorBundle,
         invalid_output: dict[str, Any],
-        validation_error: str,
-    ) -> tuple[
-        dict[str, Any],
-        ExtractionResult,
-        list[dict[str, Any]],
-        int,
-        EvidenceOffsetRecoveryMetrics,
-        DeepSeekUsage,
-    ]:
+        validation_failures: list[dict[str, str]],
+    ) -> tuple[ExtractionSanitizationOutcome, DeepSeekUsage]:
         repair_payload = {
             **self._extraction_payload(
                 transcript=transcript,
@@ -293,8 +313,8 @@ class DeepSeekPipelineService:
                 known_people=known_people,
                 anchors=anchors,
             ),
-            "validation_error": validation_error,
-            "invalid_output": invalid_output,
+            "validation_failures": validation_failures,
+            "previous_untrusted_output": invalid_output,
         }
         repaired_raw, repair_usage = self.client.request_json(
             system_prompt=ANCHOR_CONSTRAINED_EXTRACTION_REPAIR_SYSTEM_PROMPT,
@@ -302,17 +322,14 @@ class DeepSeekPipelineService:
             max_tokens=16_000,
             attempts=2,
         )
-        recovered_raw, evidence_recovery = recover_evidence_offsets(
+        outcome = self._process_extraction_candidate(
             raw=repaired_raw,
             transcript=transcript,
-        )
-        result, issues, closure_count = sanitize_extraction_output(
-            raw=recovered_raw,
-            transcript=transcript,
+            cleaned=cleaned,
             speaker_id=speaker_id,
             speaker_name=speaker_name,
         )
-        return recovered_raw, result, issues, closure_count, evidence_recovery, repair_usage
+        return outcome, repair_usage
 
     @staticmethod
     def _requires_extraction_repair(
@@ -335,9 +352,8 @@ class DeepSeekPipelineService:
         if accepted_objects:
             return False
         fatal_schema_issue = any(
-            issue.get("stage") == "schema"
+            issue.get("code") == "top_level_not_list"
             and issue.get("object_type") in _FATAL_EXTRACTION_COLLECTIONS
-            and issue.get("object_id") is None
             for issue in extraction_issues
         )
         model_attempted_content = any(
@@ -346,85 +362,24 @@ class DeepSeekPipelineService:
         return fatal_schema_issue and model_attempted_content
 
     @staticmethod
-    def _repair_reason(extraction_issues: list[dict[str, Any]]) -> str:
-        details = [
-            str(issue.get("detail"))
-            for issue in extraction_issues
-            if issue.get("stage") == "schema"
-            and issue.get("object_type") in _FATAL_EXTRACTION_COLLECTIONS
-        ]
-        return "; ".join(details) or "fatal extraction collection schema failure"
-
-    def _extraction_usage(
-        self,
-        *,
-        raw: dict[str, Any],
-        usage: DeepSeekUsage,
-        result: ExtractionResult,
-        extraction_issues: list[dict[str, Any]],
-        evidence_closure_count: int,
-        evidence_recovery: EvidenceOffsetRecoveryMetrics,
-        anchors: ExtractionAnchorBundle,
-        repair_attempted: bool,
-    ) -> dict[str, Any]:
-        raw_relationships = raw.get("relationship_claims", [])
-        relationship_candidates = (
-            len(raw_relationships) if isinstance(raw_relationships, list) else 0
-        )
-        quarantined_relationships = sum(
-            issue.get("object_type") == "relationship" for issue in extraction_issues
-        )
-        accepted_relationships = len(result.relationship_claims)
-        acceptance_rate = (
-            accepted_relationships / relationship_candidates if relationship_candidates else None
-        )
-        evidence_class_counts = Counter(
-            item.evidence_class.value
-            for item in [
-                *result.people_mentions,
-                *result.relationship_claims,
-                *result.events,
-                *result.descriptions,
-                *result.stories,
-                *result.unresolved_questions,
-            ]
-        )
-        return {
-            **self._usage_dict(usage),
-            "repair_attempted": repair_attempted,
-            "evidence_closure_relationships": evidence_closure_count,
-            "repaired_evidence_offsets": evidence_recovery.repaired_evidence_offsets,
-            "evidence_offset_recovery": evidence_recovery.to_dict(),
-            "quarantined_items": len(extraction_issues),
-            "extraction_issues": extraction_issues,
-            "relationship_metrics": {
-                "candidates": relationship_candidates,
-                "accepted": accepted_relationships,
-                "quarantined": quarantined_relationships,
-                "acceptance_rate": acceptance_rate,
-            },
-            "anchor_contract": {
-                "schema_version": anchors.schema_version,
-                "allowed_segments": len(anchors.allowed_segment_ids),
-                "mention_anchors": len(anchors.mention_anchors),
-                "lexical_annotations": len(anchors.lexical_annotations),
-            },
-            "claim_contract": {
-                "schema_version": result.schema_version,
-                "evidence_spans": len(result.evidence_spans),
-                "provenance_activities": len(result.provenance_activities),
-                "coreference_links": len(result.coreference_links),
-                "conflict_sets": len(result.conflict_sets),
-                "evidence_class_counts": dict(sorted(evidence_class_counts.items())),
-            },
-        }
+    def _repair_failures(extraction_issues: list[dict[str, Any]]) -> list[dict[str, str]]:
+        failures: list[dict[str, str]] = []
+        for issue in extraction_issues:
+            if issue.get("severity") != "fatal":
+                continue
+            code = issue.get("code")
+            stage = issue.get("stage")
+            object_type = issue.get("object_type")
+            if isinstance(code, str) and isinstance(stage, str) and isinstance(object_type, str):
+                failures.append({"code": code, "stage": stage, "object_type": object_type})
+        return failures or [{"code": "fatal_extraction_contract", "stage": "schema"}]
 
     @staticmethod
     def _validate_model(model_type: type[ModelT], raw: dict[str, Any], stage: str) -> ModelT:
         try:
             return model_type.model_validate(raw)
         except ValidationError as exc:
-            raise DeepSeekError(f"{stage} JSON failed Pydantic validation: {exc}") from exc
+            raise DeepSeekError(f"{stage} JSON failed contract validation") from exc
 
     @staticmethod
     def _usage_dict(usage: DeepSeekUsage) -> dict[str, Any]:

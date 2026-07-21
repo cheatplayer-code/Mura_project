@@ -19,8 +19,8 @@ def test_adversarial_dataset_is_enabled_and_release_gates_pass() -> None:
     report = run_benchmark(RELEASE_MANIFEST)
     adversarial = [case for case in report.cases if "adversarial" in case.construction_tags]
 
-    assert report.summary.case_count == 10
-    assert len(adversarial) == 4
+    assert report.summary.case_count == 24
+    assert len(adversarial) == 18
     assert {case.split.value for case in adversarial} == {"test"}
 
     result = evaluate_release_gates(report, load_release_gate_config(GATES))
@@ -28,6 +28,15 @@ def test_adversarial_dataset_is_enabled_and_release_gates_pass() -> None:
     assert result.failures == []
     assert result.measurements["adversarial_relationship_false_positives"] == 0
     assert result.measurements["adversarial_quarantine_false_negatives"] == 0
+    assert result.measurements["object_quarantine_recall"] == 1.0
+    assert result.measurements["provenance_violations"] == 0
+    assert result.measurements["objects_without_evidence"] == 0
+    assert result.measurements["invalid_evidence_spans"] == 0
+    assert result.measurements["unsafe_verification_statuses"] == 0
+    assert result.measurements["unsafe_story_privacy"] == 0
+    assert result.measurements["unknown_issue_codes"] == 0
+    assert result.measurements["missing_required_issue_codes"] == 0
+    assert result.measurements["fatal_contract_failures"] == 0
 
 
 def test_release_gate_reports_regression_without_hiding_measurement() -> None:
@@ -50,14 +59,14 @@ def test_release_gate_reports_regression_without_hiding_measurement() -> None:
     result = evaluate_release_gates(report, strict)
     assert result.passed is False
     assert any("case_count" in failure for failure in result.failures)
-    assert result.measurements["case_count"] == 10
+    assert result.measurements["case_count"] == 24
 
 
 def test_cli_returns_nonzero_for_failed_release_gate(tmp_path: Path) -> None:
     gate_path = tmp_path / "impossible.json"
     gate_path.write_text(
         """{
-          "schema_version": "release-gates-v1",
+          "schema_version": "release-gates-v2",
           "minimum_case_count": 999,
           "minimum_adversarial_case_count": 999,
           "minimum_person_f1": 1.0,

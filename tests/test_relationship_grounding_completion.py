@@ -498,11 +498,14 @@ def test_metrics_deduplicate_repeated_rejection_issues() -> None:
         speaker_name="Күләш",
     )
     issue = {
+        "stage": "semantic",
         "object_type": "relationship",
         "object_id": "relationship_rejected",
-        "context": {
-            "evidence_analysis": {"grounding_decision": "insufficient_deterministic_signal"}
-        },
+        "code": "relationship_grounding_rejected",
+        "severity": "error",
+        "recoverable": False,
+        "detail_safe": "safe",
+        "related_ids": [],
     }
     counters = relationship_grounding_counters(
         result=result,

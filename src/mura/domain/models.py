@@ -30,6 +30,51 @@ class AssertionMode(StrEnum):
     UNCERTAIN = "uncertain"
 
 
+class EpistemicStatus(StrEnum):
+    ASSERTED = "asserted"
+    UNCERTAIN = "uncertain"
+    REMEMBERED_IMPRECISELY = "remembered_imprecisely"
+    REPORTED = "reported"
+    COMPETING = "competing"
+    UNRESOLVED = "unresolved"
+
+
+class RelationshipState(StrEnum):
+    CURRENT = "current"
+    FORMER = "former"
+    ENDED = "ended"
+    NEGATED = "negated"
+    FIGURATIVE = "figurative"
+    UNRESOLVED = "unresolved"
+
+
+class TemporalKind(StrEnum):
+    EXACT_DATE = "exact_date"
+    YEAR = "year"
+    MONTH_YEAR = "month_year"
+    APPROXIMATE = "approximate"
+    RANGE = "range"
+    DECADE = "decade"
+    RELATIVE = "relative"
+    UNKNOWN = "unknown"
+
+
+class TemporalPrecision(StrEnum):
+    DAY = "day"
+    MONTH = "month"
+    YEAR = "year"
+    DECADE = "decade"
+    RANGE = "range"
+    UNKNOWN = "unknown"
+
+
+class TemporalRelation(StrEnum):
+    BEFORE = "before"
+    AFTER = "after"
+    BETWEEN = "between"
+    AT_AGE = "at_age"
+
+
 class ResolutionStatus(StrEnum):
     NEW_PERSON = "new_person"
     RESOLVED = "resolved"
@@ -388,12 +433,32 @@ class ConflictSet(StrictModel):
         return self
 
 
+class ClaimUncertainty(StrictModel):
+    status: EpistemicStatus
+    markers: list[str] = Field(default_factory=list)
+    source_segment_ids: list[str] = Field(min_length=1)
+    evidence_ids: list[str] = Field(default_factory=list)
+    reason_code: str = Field(min_length=1, pattern=r"^[a-z0-9_]+$")
+    requires_review: bool = True
+
+    @model_validator(mode="after")
+    def validate_unique_references(self) -> ClaimUncertainty:
+        if len(self.markers) != len(set(self.markers)):
+            raise ValueError("uncertainty markers must be unique")
+        if len(self.source_segment_ids) != len(set(self.source_segment_ids)):
+            raise ValueError("uncertainty source segments must be unique")
+        if len(self.evidence_ids) != len(set(self.evidence_ids)):
+            raise ValueError("uncertainty evidence IDs must be unique")
+        return self
+
+
 class EvidenceBackedObject(StrictModel):
     source_segment_ids: list[str] = Field(min_length=1)
     evidence_ids: list[str] = Field(default_factory=list)
     evidence_class: EvidenceClass = EvidenceClass.U_UNCERTAIN
     coreference_link_ids: list[str] = Field(default_factory=list)
     conflict_ids: list[str] = Field(default_factory=list)
+    uncertainty: ClaimUncertainty | None = None
     provenance: ClaimProvenance | None = None
 
 
@@ -412,6 +477,8 @@ class PersonMention(EvidenceBackedObject):
 class RelationshipClaim(EvidenceBackedObject):
     relationship_id: str
     relationship_type: RelationshipType
+    relationship_state: RelationshipState = RelationshipState.CURRENT
+    state_evidence_ids: list[str] = Field(default_factory=list)
     subject_mention_id: str
     subject_role: RelationshipRole
     object_mention_id: str
@@ -445,8 +512,47 @@ class RelationshipClaim(EvidenceBackedObject):
 
 class EventDate(StrictModel):
     value: str | None = None
-    precision: str = "unknown"
+    precision: TemporalPrecision = TemporalPrecision.UNKNOWN
     original_expression: str | None = None
+    kind: TemporalKind = TemporalKind.UNKNOWN
+    normalized_value: str | None = None
+    lower_bound: str | None = None
+    upper_bound: str | None = None
+    approximate: bool = False
+    relation: TemporalRelation | None = None
+    anchor_event_id: str | None = None
+    unresolved_reason: str | None = None
+    source_evidence_ids: list[str] = Field(default_factory=list)
+    verification_status: VerificationStatus = VerificationStatus.UNREVIEWED
+
+    @model_validator(mode="after")
+    def validate_temporal_shape(self) -> EventDate:
+        if self.verification_status is not VerificationStatus.UNREVIEWED:
+            raise ValueError("model temporal values must remain unreviewed")
+        if (self.lower_bound is None) != (self.upper_bound is None):
+            one_sided_relative = self.kind is TemporalKind.RELATIVE and (
+                (
+                    self.relation is TemporalRelation.BEFORE
+                    and self.lower_bound is None
+                    and self.upper_bound is not None
+                )
+                or (
+                    self.relation is TemporalRelation.AFTER
+                    and self.lower_bound is not None
+                    and self.upper_bound is None
+                )
+            )
+            if not one_sided_relative:
+                raise ValueError("temporal ranges require both lower and upper bounds")
+        if self.lower_bound is not None and self.upper_bound is not None:
+            if self.lower_bound > self.upper_bound:
+                raise ValueError("temporal lower_bound must not exceed upper_bound")
+        if self.kind is TemporalKind.RELATIVE and self.normalized_value is not None:
+            if self.anchor_event_id is None:
+                raise ValueError("relative temporal values need an anchor before normalization")
+        if len(self.source_evidence_ids) != len(set(self.source_evidence_ids)):
+            raise ValueError("temporal source evidence IDs must be unique")
+        return self
 
 
 class FamilyEvent(EvidenceBackedObject):

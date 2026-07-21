@@ -89,7 +89,10 @@ def test_cleaner_falls_back_to_raw_after_invalid_repair() -> None:
     assert usage["repair_attempted"] is True
     assert usage["fallback_used"] is True
     assert usage["fallback_strategy"] == "raw_transcript"
-    assert "detected correction" in usage["initial_validation_error"]
-    assert "\u0413\u0440\u0430\u0434" in usage["initial_validation_error"]
-    assert "detected correction" in usage["repair_validation_error"]
-    assert "\u0413\u0440\u0430\u0434" in usage["repair_validation_error"]
+    assert usage["validation_issue_counts"] == {
+        "cleaner_contract_invalid": 1,
+        "cleaner_repair_failed": 1,
+    }
+    assert "initial_validation_error" not in usage
+    assert "repair_validation_error" not in usage
+    assert raw_text not in repr(usage)

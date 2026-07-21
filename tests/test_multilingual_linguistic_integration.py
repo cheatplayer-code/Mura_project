@@ -91,7 +91,7 @@ def test_russian_inflected_speaker_relationship_is_accepted() -> None:
     relationship = result.relationship_claims[0]
     assert relationship.evidence_class is EvidenceClass.C_SPEAKER_ANCHORED
     assert relationship.provenance is not None
-    assert relationship.provenance.pipeline_versions["pipeline"] == "mura-core-v0.9.0"
+    assert relationship.provenance.pipeline_versions["pipeline"] == "mura-core-v0.11.0"
 
 
 def test_russian_third_person_possessive_is_quarantined() -> None:
@@ -148,10 +148,8 @@ def test_russian_third_person_possessive_is_quarantined() -> None:
 
     assert result.relationship_claims == []
     issue = next(item for item in issues if item["object_id"] == "relationship_ambiguous")
-    analysis = issue["context"]["evidence_analysis"]
-    assert analysis["role_consistent"] is False
-    assert analysis["third_person_possessive_markers"][0]["surface"] == "Его"
-    assert "ru.coreference.third_person_possessive_guard.v1" in analysis["linguistic_rule_ids"]
+    assert issue["code"] == "relationship_grounding_rejected"
+    assert "context" not in issue
 
 
 def test_english_named_possessive_relationship_is_accepted() -> None:
@@ -294,4 +292,4 @@ def test_generic_first_person_sentence_does_not_prove_relationship() -> None:
 
     assert result.relationship_claims == []
     issue = next(item for item in issues if item["object_id"] == "relationship_false_spouse")
-    assert "unsupported relationship endpoints" in issue["detail"]
+    assert issue["code"] == "object_reference_invalid"

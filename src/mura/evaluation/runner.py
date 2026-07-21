@@ -11,7 +11,7 @@ from mura.evaluation.models import (
     CaseEvaluation,
 )
 from mura.evaluation.scoring import aggregate_case_metrics, score_case
-from mura.extraction_sanitizer import sanitize_extraction_output
+from mura.extraction_sanitizer import process_extraction_candidate
 from mura.versioning import get_pipeline_versions
 
 
@@ -62,7 +62,7 @@ def run_benchmark(manifest_path: str | Path) -> BenchmarkReport:
             )
 
         for case in dataset.cases:
-            extraction, issues, closure_count = sanitize_extraction_output(
+            outcome = process_extraction_candidate(
                 raw=case.raw_extraction,
                 transcript=case.transcript,
                 speaker_id=case.speaker_id,
@@ -73,9 +73,10 @@ def run_benchmark(manifest_path: str | Path) -> BenchmarkReport:
                     case=case,
                     dataset_id=dataset.dataset_id,
                     split=entry.split,
-                    extraction=extraction,
-                    issues=issues,
-                    evidence_closure_relationships=closure_count,
+                    extraction=outcome.result,
+                    issues=outcome.issues,
+                    evidence_closure_relationships=outcome.evidence_closure_count,
+                    evidence_recovery=outcome.evidence_recovery,
                 )
             )
 
@@ -83,7 +84,7 @@ def run_benchmark(manifest_path: str | Path) -> BenchmarkReport:
         raise ValueError("benchmark manifest contains no enabled cases")
 
     return BenchmarkReport(
-        report_schema_version="evaluation-report-v1",
+        report_schema_version="evaluation-report-v3",
         manifest_path=_display_path(resolved_manifest_path),
         pipeline_versions=get_pipeline_versions().model_dump(mode="json"),
         cases=evaluations,

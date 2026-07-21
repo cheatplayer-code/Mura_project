@@ -172,7 +172,7 @@ def test_fatal_collection_shape_gets_one_bounded_repair_with_same_anchors() -> N
     assert repair["system_prompt"] == ANCHOR_CONSTRAINED_EXTRACTION_REPAIR_SYSTEM_PROMPT
     assert repair["attempts"] == 2
     assert repair["payload"]["anchor_contract"] == initial["payload"]["anchor_contract"]
-    assert repair["payload"]["invalid_output"] == invalid
+    assert repair["payload"]["previous_untrusted_output"] == invalid
     assert usage["repair_attempted"] is True
     assert usage["initial_usage"]["model"] == "deepseek-v4-flash"
     assert usage["relationship_metrics"]["candidates"] == 0
@@ -204,7 +204,8 @@ def test_isolated_invalid_object_is_quarantined_without_repair() -> None:
     assert len(client.calls) == 1
     assert usage["repair_attempted"] is False
     assert usage["quarantined_items"] == 1
-    assert usage["extraction_issues"][0]["object_id"] == "mention_bad"
+    assert usage["extraction_issues"][0]["object_id"].startswith("object_")
+    assert "mention_bad" not in str(usage["extraction_issues"])
 
 
 def test_empty_valid_extraction_does_not_trigger_repair() -> None:

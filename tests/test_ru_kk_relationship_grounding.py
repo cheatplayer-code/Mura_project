@@ -223,8 +223,8 @@ _ACCEPTED_CASES = [
         ),
     ),
     GroundingCase(
-        "Отец и мама были мужем и женой.",
-        (("sapar", "Сапар", "father"), ("gulmira", "Гүлмира", "mother")),
+        "Сапар и Гүлмира поженились.",
+        (("sapar", "Сапар", None), ("gulmira", "Гүлмира", None)),
         (("r1", "spouse", "sapar", "spouse", "gulmira", "spouse"),),
     ),
     GroundingCase(
@@ -326,7 +326,7 @@ def test_wrong_parent_child_direction_is_quarantined() -> None:
     result, issues = _sanitize(case)
 
     assert result.relationship_claims == []
-    assert any("contradicts deterministic" in item["detail"] for item in issues)
+    assert any(item["code"] == "relationship_grounding_rejected" for item in issues)
 
 
 def test_self_relationship_is_rejected_by_schema() -> None:
@@ -359,7 +359,7 @@ def test_invalid_source_segment_cannot_create_relationship() -> None:
     )
 
     assert result.relationship_claims == []
-    assert any("unknown segments" in item["detail"] for item in issues)
+    assert any(item["code"] == "object_reference_invalid" for item in issues)
 
 
 def test_valid_evidence_and_references_are_preserved() -> None:

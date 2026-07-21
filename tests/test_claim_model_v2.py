@@ -107,7 +107,7 @@ def test_legacy_candidate_is_materialized_as_complete_v2_claim_bundle() -> None:
     assert relationship.provenance is not None
     assert relationship.provenance.recording_id == transcript.recording_id
     assert relationship.provenance.evidence_ids == relationship.evidence_ids
-    assert relationship.provenance.pipeline_versions["domain_schema"] == "domain-v2"
+    assert relationship.provenance.pipeline_versions["domain_schema"] == "domain-v3-claim-semantics"
 
     for person in result.people_mentions:
         assert person.evidence_ids
@@ -149,8 +149,8 @@ def test_invalid_model_evidence_is_quarantined_and_replaced() -> None:
 
     assert "evidence_invented" not in {item.evidence_id for item in result.evidence_spans}
     evidence_issue = next(item for item in issues if item["object_id"] == "evidence_invented")
-    assert evidence_issue["stage"] == "semantic"
-    assert "not present" in evidence_issue["detail"]
+    assert evidence_issue["stage"] == "evidence_recovery"
+    assert evidence_issue["code"] == "evidence_text_not_in_source"
     assert result.people_mentions[0].evidence_ids
     validate_extraction_result(transcript, result)
 
@@ -234,7 +234,7 @@ def test_deterministic_coreference_replaces_model_only_authorization() -> None:
         speaker_name="Күләш",
     )
 
-    assert issues == []
+    assert any(issue["code"] == "coreference_reference_invalid" for issue in issues)
     assert len(result.relationship_claims) == 1
     relationship = result.relationship_claims[0]
     assert relationship.evidence_class is EvidenceClass.D_CONTEXT_RESOLVED

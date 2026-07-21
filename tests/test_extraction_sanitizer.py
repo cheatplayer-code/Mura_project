@@ -48,6 +48,20 @@ def _base_raw() -> dict[str, object]:
         "speaker_id": "speaker_1",
         "speaker_name": "Күләш",
         "languages": ["kk"],
+        "evidence_spans": [
+            {
+                "evidence_id": "evidence_dias_description",
+                "segment_id": "seg_003",
+                "text": "диас баскетбол ойнағанды жақсы көреді",
+                "source_layer": "raw_transcript",
+                "start_char": 0,
+                "end_char": len("диас баскетбол ойнағанды жақсы көреді"),
+                "evidence_class": "A_explicit",
+                "purposes": ["claim"],
+                "mention_ids": ["mention_dias"],
+                "confidence": 1.0,
+            }
+        ],
         "people_mentions": [
             {
                 "mention_id": "mention_sapar",
@@ -68,6 +82,7 @@ def _base_raw() -> dict[str, object]:
                 "name": "Диас",
                 "category": "family_member",
                 "source_segment_ids": ["seg_003"],
+                "evidence_ids": ["evidence_dias_description"],
                 "confidence": 1.0,
             },
         ],
@@ -101,6 +116,7 @@ def _base_raw() -> dict[str, object]:
                 "description": "баскетбол ойнағанды жақсы көреді",
                 "perspective": "Күләш",
                 "source_segment_ids": ["seg_003"],
+                "evidence_ids": ["evidence_dias_description"],
                 "confidence": 1.0,
             },
             {
@@ -131,9 +147,9 @@ def test_sanitizer_keeps_valid_objects_and_quarantines_bad_ones() -> None:
     assert [item.description_id for item in result.descriptions] == ["description_valid"]
 
     issue_by_id = {issue["object_id"]: issue for issue in issues}
-    invalid_context = issue_by_id["relationship_invalid"]["context"]
-    assert invalid_context["candidate"]["object_mention_id"] == "mention_dias"
-    assert "description_wrong_person" in issue_by_id
+    assert issue_by_id["relationship_invalid"]["code"] == "object_schema_invalid"
+    assert issue_by_id["description_wrong_person"]["code"] == "object_semantic_unsupported"
+    assert "context" not in issue_by_id["relationship_invalid"]
 
 
 def test_sanitizer_uses_authoritative_request_metadata() -> None:

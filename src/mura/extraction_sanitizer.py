@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
-from mura.claim_model import materialize_extraction_contract_v2
+from mura.claim_model import close_extraction_conflicts, materialize_extraction_contract_v2
+from mura.claim_semantics import add_temporal_conflicts, harden_claim_semantics
 from mura.domain.models import (
+    CleanerResult,
     ConflictSet,
     CoreferenceLink,
     EvidenceSpan,
@@ -20,28 +22,52 @@ from mura.domain.models import (
     Story,
     TranscriptEnvelope,
     UnresolvedQuestion,
+    VerificationStatus,
 )
 from mura.evidence import complete_relationship_evidence
-from mura.evidence_recovery import recover_evidence_offsets
-from mura.relationship_evidence import analyze_relationship_evidence
+from mura.evidence_recovery import EvidenceOffsetRecoveryMetrics, recover_evidence_offsets
+from mura.extraction_issues import (
+    ExtractionIssue,
+    ExtractionIssueCode,
+    IssueSeverity,
+    IssueStage,
+)
 from mura.validation import ContractValidationError, validate_extraction_result
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 @dataclass(frozen=True)
-class ExtractionIssue:
-    object_type: str
-    object_id: str | None
-    stage: str
-    detail: str
-    context: dict[str, Any] | None = None
+class ExtractionSanitizationOutcome:
+    recovered_raw: dict[str, Any]
+    result: ExtractionResult
+    issues: list[dict[str, Any]]
+    evidence_closure_count: int
+    evidence_recovery: EvidenceOffsetRecoveryMetrics
 
-    def to_dict(self) -> dict[str, Any]:
-        result = asdict(self)
-        if self.context is None:
-            result.pop("context")
-        return result
+
+def _issue(
+    issues: list[ExtractionIssue],
+    *,
+    object_type: str,
+    object_id: str | None,
+    stage: IssueStage,
+    code: ExtractionIssueCode,
+    severity: IssueSeverity = IssueSeverity.ERROR,
+    recoverable: bool = False,
+    related_ids: list[str] | None = None,
+) -> None:
+    issues.append(
+        ExtractionIssue.create(
+            stage=stage,
+            object_type=object_type,
+            object_id=object_id,
+            code=code,
+            severity=severity,
+            recoverable=recoverable,
+            related_ids=related_ids,
+        )
+    )
 
 
 def _object_id(raw: object, field_name: str) -> str | None:
@@ -51,24 +77,55 @@ def _object_id(raw: object, field_name: str) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-def _list_value(
-    raw: dict[str, Any],
-    key: str,
-    issues: list[ExtractionIssue],
-) -> list[object]:
+def _list_value(raw: dict[str, Any], key: str, issues: list[ExtractionIssue]) -> list[object]:
     value = raw.get(key, [])
     if isinstance(value, list):
         return value
-    issues.append(
-        ExtractionIssue(
-            object_type=key,
-            object_id=None,
-            stage="schema",
-            detail=(f"top-level field {key!r} must be a list; received {type(value).__name__}"),
-            context={"received_value": value},
-        )
+    _issue(
+        issues,
+        object_type=key,
+        object_id=None,
+        stage=IssueStage.SCHEMA,
+        code=ExtractionIssueCode.TOP_LEVEL_NOT_LIST,
+        severity=IssueSeverity.FATAL,
     )
     return []
+
+
+def _force_unreviewed(
+    raw_item: object,
+    *,
+    object_type: str,
+    id_field: str,
+    issues: list[ExtractionIssue],
+) -> object:
+    if not isinstance(raw_item, dict):
+        return raw_item
+    updated = dict(raw_item)
+    status = updated.get("verification_status")
+    if status is not None and status != VerificationStatus.UNREVIEWED.value:
+        _issue(
+            issues,
+            object_type=object_type,
+            object_id=_object_id(updated, id_field),
+            stage=IssueStage.PROVENANCE,
+            code=ExtractionIssueCode.VERIFICATION_STATUS_DOWNGRADED,
+            severity=IssueSeverity.WARNING,
+            recoverable=True,
+        )
+        updated["verification_status"] = VerificationStatus.UNREVIEWED.value
+    if object_type == "story" and updated.get("privacy") not in (None, "private"):
+        _issue(
+            issues,
+            object_type=object_type,
+            object_id=_object_id(updated, id_field),
+            stage=IssueStage.PRIVACY,
+            code=ExtractionIssueCode.STORY_PRIVACY_FORCED_PRIVATE,
+            severity=IssueSeverity.WARNING,
+            recoverable=True,
+        )
+        updated["privacy"] = "private"
+    return updated
 
 
 def _parse_items(
@@ -78,36 +135,41 @@ def _parse_items(
     object_type: str,
     id_field: str,
     issues: list[ExtractionIssue],
+    quarantined_ids: frozenset[str] = frozenset(),
 ) -> list[ModelT]:
     parsed: list[ModelT] = []
     seen_ids: set[str] = set()
 
-    for raw_item in raw_items:
+    for candidate in raw_items:
+        raw_item = _force_unreviewed(
+            candidate,
+            object_type=object_type,
+            id_field=id_field,
+            issues=issues,
+        )
         object_id = _object_id(raw_item, id_field)
+        if object_id is not None and object_id in quarantined_ids:
+            continue
         try:
             item = model_type.model_validate(raw_item)
-        except ValidationError as exc:
-            issues.append(
-                ExtractionIssue(
-                    object_type=object_type,
-                    object_id=object_id,
-                    stage="schema",
-                    detail=str(exc),
-                    context={"candidate": raw_item},
-                )
+        except ValidationError:
+            _issue(
+                issues,
+                object_type=object_type,
+                object_id=object_id,
+                stage=IssueStage.SCHEMA,
+                code=ExtractionIssueCode.OBJECT_SCHEMA_INVALID,
             )
             continue
 
         resolved_id = str(getattr(item, id_field))
         if resolved_id in seen_ids:
-            issues.append(
-                ExtractionIssue(
-                    object_type=object_type,
-                    object_id=resolved_id,
-                    stage="schema",
-                    detail=f"duplicate {id_field}",
-                    context={"candidate": item.model_dump(mode="json")},
-                )
+            _issue(
+                issues,
+                object_type=object_type,
+                object_id=resolved_id,
+                stage=IssueStage.SCHEMA,
+                code=ExtractionIssueCode.DUPLICATE_OBJECT_ID,
             )
             continue
         seen_ids.add(resolved_id)
@@ -152,6 +214,21 @@ def _base_result(
     )
 
 
+def _semantic_code(object_type: str, message: str) -> ExtractionIssueCode:
+    if object_type == "relationship" and any(
+        token in message
+        for token in (
+            "unsupported relationship endpoints",
+            "contradicts deterministic",
+            "deterministic kinship signal",
+        )
+    ):
+        return ExtractionIssueCode.RELATIONSHIP_GROUNDING_REJECTED
+    if any(token in message for token in ("unknown", "broken references", "references")):
+        return ExtractionIssueCode.OBJECT_REFERENCE_INVALID
+    return ExtractionIssueCode.OBJECT_SEMANTIC_UNSUPPORTED
+
+
 def _semantic_filter(
     *,
     items: list[ModelT],
@@ -159,151 +236,194 @@ def _semantic_filter(
     id_field: str,
     build_candidate: Callable[[ModelT], ExtractionResult],
     transcript: TranscriptEnvelope,
+    cleaned: CleanerResult | None,
     issues: list[ExtractionIssue],
-    issue_context: Callable[[ModelT], dict[str, Any]] | None = None,
 ) -> list[ModelT]:
     accepted: list[ModelT] = []
     for item in items:
         object_id = str(getattr(item, id_field))
         try:
-            validate_extraction_result(transcript, build_candidate(item))
+            validate_extraction_result(transcript, build_candidate(item), cleaned=cleaned)
         except ContractValidationError as exc:
-            context: dict[str, Any] = {"candidate": item.model_dump(mode="json")}
-            if issue_context is not None:
-                context.update(issue_context(item))
-            issues.append(
-                ExtractionIssue(
-                    object_type=object_type,
-                    object_id=object_id,
-                    stage="semantic",
-                    detail=str(exc),
-                    context=context,
-                )
+            _issue(
+                issues,
+                object_type=object_type,
+                object_id=object_id,
+                stage=IssueStage.SEMANTIC,
+                code=_semantic_code(object_type, str(exc)),
             )
             continue
         accepted.append(item)
     return accepted
 
 
-def sanitize_extraction_output(
+def _evidence_recovery_issues(
+    metrics: EvidenceOffsetRecoveryMetrics,
+    issues: list[ExtractionIssue],
+) -> None:
+    code_by_reason = {
+        "unknown_segment": ExtractionIssueCode.EVIDENCE_UNKNOWN_SEGMENT,
+        "invalid_text": ExtractionIssueCode.EVIDENCE_EMPTY_TEXT,
+        "wrong_source_layer": ExtractionIssueCode.EVIDENCE_WRONG_SOURCE_LAYER,
+        "missing": ExtractionIssueCode.EVIDENCE_TEXT_NOT_IN_SOURCE,
+        "ambiguous": ExtractionIssueCode.EVIDENCE_OFFSETS_AMBIGUOUS,
+        "unrecoverable": ExtractionIssueCode.EVIDENCE_OFFSETS_UNRECOVERABLE,
+    }
+    for evidence_id, reason in metrics.quarantine_reasons:
+        _issue(
+            issues,
+            object_type="evidence",
+            object_id=evidence_id,
+            stage=IssueStage.EVIDENCE_RECOVERY,
+            code=code_by_reason.get(reason, ExtractionIssueCode.EVIDENCE_OFFSETS_UNRECOVERABLE),
+        )
+
+
+def process_extraction_candidate(
     *,
     raw: dict[str, Any],
     transcript: TranscriptEnvelope,
     speaker_id: str,
     speaker_name: str,
-) -> tuple[ExtractionResult, list[dict[str, Any]], int]:
-    """Return valid claims with authoritative v2 provenance and object-level quarantine."""
-
-    raw, _ = recover_evidence_offsets(raw=raw, transcript=transcript)
+    cleaned: CleanerResult | None = None,
+) -> ExtractionSanitizationOutcome:
+    recovered_raw, recovery = recover_evidence_offsets(
+        raw=raw,
+        transcript=transcript,
+        cleaned=cleaned,
+    )
     issues: list[ExtractionIssue] = []
+    _evidence_recovery_issues(recovery, issues)
 
     for key, expected in (
         ("recording_id", transcript.recording_id),
         ("speaker_id", speaker_id),
         ("speaker_name", speaker_name),
     ):
-        actual = raw.get(key)
-        if actual != expected:
-            issues.append(
-                ExtractionIssue(
-                    object_type="metadata",
-                    object_id=key,
-                    stage="schema",
-                    detail=(
-                        f"model returned {actual!r}; authoritative value {expected!r} was used"
-                    ),
-                    context={"model_value": actual, "authoritative_value": expected},
-                )
+        if recovered_raw.get(key) != expected:
+            _issue(
+                issues,
+                object_type="metadata",
+                object_id=key,
+                stage=IssueStage.SCHEMA,
+                code=ExtractionIssueCode.AUTHORITATIVE_METADATA_USED,
+                severity=IssueSeverity.WARNING,
+                recoverable=True,
             )
 
-    raw_languages = raw.get("languages", [])
+    raw_languages = recovered_raw.get("languages", [])
     if isinstance(raw_languages, list) and all(isinstance(item, str) for item in raw_languages):
         languages = list(dict.fromkeys(raw_languages))
     else:
         languages = []
-        issues.append(
-            ExtractionIssue(
-                object_type="metadata",
-                object_id="languages",
-                stage="schema",
-                detail="languages must be a list of strings",
-                context={"received_value": raw_languages},
-            )
+        _issue(
+            issues,
+            object_type="metadata",
+            object_id="languages",
+            stage=IssueStage.SCHEMA,
+            code=ExtractionIssueCode.LANGUAGES_SCHEMA_INVALID,
         )
 
     activities = _parse_items(
-        raw_items=_list_value(raw, "provenance_activities", issues),
+        raw_items=_list_value(recovered_raw, "provenance_activities", issues),
         model_type=ProvenanceActivity,
         object_type="provenance_activity",
         id_field="activity_id",
         issues=issues,
     )
     evidence = _parse_items(
-        raw_items=_list_value(raw, "evidence_spans", issues),
+        raw_items=_list_value(recovered_raw, "evidence_spans", issues),
         model_type=EvidenceSpan,
         object_type="evidence",
         id_field="evidence_id",
         issues=issues,
+        quarantined_ids=recovery.quarantined_evidence_ids,
     )
     coreference_links = _parse_items(
-        raw_items=_list_value(raw, "coreference_links", issues),
+        raw_items=_list_value(recovered_raw, "coreference_links", issues),
         model_type=CoreferenceLink,
         object_type="coreference",
         id_field="coreference_id",
         issues=issues,
     )
     conflicts = _parse_items(
-        raw_items=_list_value(raw, "conflict_sets", issues),
+        raw_items=_list_value(recovered_raw, "conflict_sets", issues),
         model_type=ConflictSet,
         object_type="conflict",
         id_field="conflict_id",
         issues=issues,
     )
     people = _parse_items(
-        raw_items=_list_value(raw, "people_mentions", issues),
+        raw_items=_list_value(recovered_raw, "people_mentions", issues),
         model_type=PersonMention,
         object_type="person",
         id_field="mention_id",
         issues=issues,
     )
     relationships = _parse_items(
-        raw_items=_list_value(raw, "relationship_claims", issues),
+        raw_items=_list_value(recovered_raw, "relationship_claims", issues),
         model_type=RelationshipClaim,
         object_type="relationship",
         id_field="relationship_id",
         issues=issues,
     )
-    original_relationships = {
-        item.relationship_id: item.model_dump(mode="json") for item in relationships
-    }
     events = _parse_items(
-        raw_items=_list_value(raw, "events", issues),
+        raw_items=_list_value(recovered_raw, "events", issues),
         model_type=FamilyEvent,
         object_type="event",
         id_field="event_id",
         issues=issues,
     )
     descriptions = _parse_items(
-        raw_items=_list_value(raw, "descriptions", issues),
+        raw_items=_list_value(recovered_raw, "descriptions", issues),
         model_type=PersonDescription,
         object_type="description",
         id_field="description_id",
         issues=issues,
     )
     stories = _parse_items(
-        raw_items=_list_value(raw, "stories", issues),
+        raw_items=_list_value(recovered_raw, "stories", issues),
         model_type=Story,
         object_type="story",
         id_field="story_id",
         issues=issues,
     )
     questions = _parse_items(
-        raw_items=_list_value(raw, "unresolved_questions", issues),
+        raw_items=_list_value(recovered_raw, "unresolved_questions", issues),
         model_type=UnresolvedQuestion,
         object_type="question",
         id_field="question_id",
         issues=issues,
     )
+
+    semantic_seed = _base_result(
+        recording_id=transcript.recording_id,
+        speaker_id=speaker_id,
+        speaker_name=speaker_name,
+        languages=languages,
+        activities=activities,
+        evidence=evidence,
+        coreference_links=coreference_links,
+        conflicts=conflicts,
+        people=people,
+        relationships=relationships,
+        events=events,
+        descriptions=descriptions,
+        stories=stories,
+        questions=questions,
+    )
+    semantic_seed, semantic_issues = harden_claim_semantics(
+        semantic_seed,
+        transcript,
+        cleaned=cleaned,
+    )
+    issues.extend(semantic_issues)
+    people = list(semantic_seed.people_mentions)
+    relationships = list(semantic_seed.relationship_claims)
+    events = list(semantic_seed.events)
+    descriptions = list(semantic_seed.descriptions)
+    stories = list(semantic_seed.stories)
+    questions = list(semantic_seed.unresolved_questions)
 
     def build_result(
         *,
@@ -337,6 +457,7 @@ def sanitize_extraction_output(
         id_field="mention_id",
         build_candidate=lambda item: build_result(selected_people=[item]),
         transcript=transcript,
+        cleaned=cleaned,
         issues=issues,
     )
 
@@ -348,25 +469,10 @@ def sanitize_extraction_output(
         selected_stories=stories,
         selected_questions=questions,
     )
-    preliminary, evidence_closure_count = complete_relationship_evidence(
-        preliminary,
-        transcript,
-    )
+    preliminary, evidence_closure_count = complete_relationship_evidence(preliminary, transcript)
     relationships = list(preliminary.relationship_claims)
     evidence = list(preliminary.evidence_spans)
     coreference_links = list(preliminary.coreference_links)
-
-    def relationship_issue_context(item: RelationshipClaim) -> dict[str, Any]:
-        analysis = analyze_relationship_evidence(
-            relationship=item,
-            transcript=transcript,
-            people=valid_people,
-            speaker_name=speaker_name,
-        )
-        return {
-            "original_candidate": original_relationships.get(item.relationship_id),
-            "evidence_analysis": analysis.to_dict(),
-        }
 
     valid_relationships = _semantic_filter(
         items=relationships,
@@ -377,8 +483,8 @@ def sanitize_extraction_output(
             selected_relationships=[item],
         ),
         transcript=transcript,
+        cleaned=cleaned,
         issues=issues,
-        issue_context=relationship_issue_context,
     )
     valid_events = _semantic_filter(
         items=events,
@@ -389,6 +495,7 @@ def sanitize_extraction_output(
             selected_events=[item],
         ),
         transcript=transcript,
+        cleaned=cleaned,
         issues=issues,
     )
     valid_descriptions = _semantic_filter(
@@ -400,6 +507,7 @@ def sanitize_extraction_output(
             selected_descriptions=[item],
         ),
         transcript=transcript,
+        cleaned=cleaned,
         issues=issues,
     )
     valid_stories = _semantic_filter(
@@ -412,6 +520,7 @@ def sanitize_extraction_output(
             selected_stories=[item],
         ),
         transcript=transcript,
+        cleaned=cleaned,
         issues=issues,
     )
     valid_questions = _semantic_filter(
@@ -423,6 +532,7 @@ def sanitize_extraction_output(
             selected_questions=[item],
         ),
         transcript=transcript,
+        cleaned=cleaned,
         issues=issues,
     )
 
@@ -434,16 +544,129 @@ def sanitize_extraction_output(
         selected_stories=valid_stories,
         selected_questions=valid_questions,
     )
-    result, claim_model_issues = materialize_extraction_contract_v2(result, transcript)
-    issues.extend(
-        ExtractionIssue(
-            object_type=issue.object_type,
-            object_id=issue.object_id,
-            stage=issue.stage,
-            detail=issue.detail,
-            context=issue.context,
-        )
-        for issue in claim_model_issues
+    result, claim_model_issues = materialize_extraction_contract_v2(
+        result,
+        transcript,
+        cleaned=cleaned,
     )
-    validate_extraction_result(transcript, result)
-    return result, [issue.to_dict() for issue in issues], evidence_closure_count
+    issues.extend(claim_model_issues)
+    result, temporal_conflict_issues = add_temporal_conflicts(result)
+    issues.extend(temporal_conflict_issues)
+
+    def post_candidate(
+        *,
+        selected_relationships: list[RelationshipClaim] | None = None,
+        selected_events: list[FamilyEvent] | None = None,
+        selected_descriptions: list[PersonDescription] | None = None,
+        selected_stories: list[Story] | None = None,
+        selected_questions: list[UnresolvedQuestion] | None = None,
+    ) -> ExtractionResult:
+        # Semantic quarantine candidates must not contain unrelated invalid objects. Otherwise an
+        # invalid later collection (for example a story with a missing event) can make an
+        # independent valid event fail validation and collapse partial salvage.
+        return result.model_copy(
+            update={
+                "schema_version": "extraction-v1",
+                "conflict_sets": [],
+                "relationship_claims": selected_relationships or [],
+                "events": selected_events or [],
+                "descriptions": selected_descriptions or [],
+                "stories": selected_stories or [],
+                "unresolved_questions": selected_questions or [],
+            }
+        )
+
+    # Relationships were already semantically grounded before provenance materialization, and
+    # materialization does not alter endpoints, roles, direction, or source segments. Revalidating
+    # one relationship without its full open conflict set would incorrectly drop review candidates.
+    post_relationships = list(result.relationship_claims)
+    post_events = _semantic_filter(
+        items=list(result.events),
+        object_type="event",
+        id_field="event_id",
+        build_candidate=lambda item: post_candidate(selected_events=[item]),
+        transcript=transcript,
+        cleaned=cleaned,
+        issues=issues,
+    )
+    post_descriptions = _semantic_filter(
+        items=list(result.descriptions),
+        object_type="description",
+        id_field="description_id",
+        build_candidate=lambda item: post_candidate(selected_descriptions=[item]),
+        transcript=transcript,
+        cleaned=cleaned,
+        issues=issues,
+    )
+    post_stories = _semantic_filter(
+        items=list(result.stories),
+        object_type="story",
+        id_field="story_id",
+        build_candidate=lambda item: post_candidate(
+            selected_events=[event for event in post_events if event.event_id in item.event_ids],
+            selected_stories=[item],
+        ),
+        transcript=transcript,
+        cleaned=cleaned,
+        issues=issues,
+    )
+    post_questions = _semantic_filter(
+        items=list(result.unresolved_questions),
+        object_type="question",
+        id_field="question_id",
+        build_candidate=lambda item: post_candidate(selected_questions=[item]),
+        transcript=transcript,
+        cleaned=cleaned,
+        issues=issues,
+    )
+    result = result.model_copy(
+        update={
+            "relationship_claims": post_relationships,
+            "events": post_events,
+            "descriptions": post_descriptions,
+            "stories": post_stories,
+            "unresolved_questions": post_questions,
+        }
+    )
+    result, conflict_issues = close_extraction_conflicts(result)
+    issues.extend(conflict_issues)
+
+    try:
+        validate_extraction_result(transcript, result, cleaned=cleaned)
+    except ContractValidationError:
+        _issue(
+            issues,
+            object_type="extraction",
+            object_id=None,
+            stage=IssueStage.PROVENANCE,
+            code=ExtractionIssueCode.FINAL_CONTRACT_INVALID,
+            severity=IssueSeverity.FATAL,
+        )
+        raise
+
+    serialized = [issue.to_dict() for issue in issues]
+    return ExtractionSanitizationOutcome(
+        recovered_raw=recovered_raw,
+        result=result,
+        issues=serialized,
+        evidence_closure_count=evidence_closure_count,
+        evidence_recovery=recovery,
+    )
+
+
+def sanitize_extraction_output(
+    *,
+    raw: dict[str, Any],
+    transcript: TranscriptEnvelope,
+    speaker_id: str,
+    speaker_name: str,
+    cleaned: CleanerResult | None = None,
+) -> tuple[ExtractionResult, list[dict[str, Any]], int]:
+    outcome = process_extraction_candidate(
+        raw=raw,
+        transcript=transcript,
+        speaker_id=speaker_id,
+        speaker_name=speaker_name,
+        cleaned=cleaned,
+    )
+    return outcome.result, outcome.issues, outcome.evidence_closure_count

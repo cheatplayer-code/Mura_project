@@ -288,7 +288,7 @@ def test_respectful_address_and_almost_family_do_not_create_kinship() -> None:
         people=[_person("roza", "Роза", "seg_001")],
     )
 
-    assert issues == []
+    assert any(issue["code"] == "person_category_downgraded" for issue in issues)
     assert result.relationship_claims == []
     assert result.coreference_links == []
 

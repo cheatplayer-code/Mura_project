@@ -166,12 +166,12 @@ def require_worker_token(
 
 
 @app.exception_handler(DeepSeekError)
-async def handle_deepseek_error(_request: Request, exc: DeepSeekError) -> JSONResponse:
+async def handle_deepseek_error(_request: Request, _exc: DeepSeekError) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_502_BAD_GATEWAY,
         content={
             "error": "deepseek_pipeline_failed",
-            "detail": str(exc),
+            "detail": "The model provider returned an unusable response.",
         },
     )
 
@@ -179,13 +179,13 @@ async def handle_deepseek_error(_request: Request, exc: DeepSeekError) -> JSONRe
 @app.exception_handler(ContractValidationError)
 async def handle_contract_validation_error(
     _request: Request,
-    exc: ContractValidationError,
+    _exc: ContractValidationError,
 ) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_502_BAD_GATEWAY,
         content={
             "error": "pipeline_output_invalid",
-            "detail": str(exc),
+            "detail": "The extraction output failed contract validation.",
         },
     )
 
