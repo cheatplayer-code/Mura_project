@@ -23,11 +23,19 @@ from mura.domain.models import (
     PersonMention,
     RelationshipClaim,
     RelationshipState,
+    StorySensitivity,
     TemporalKind,
     TranscriptEnvelope,
     VerificationStatus,
 )
+from mura.factual_support import (
+    all_statements_supported,
+    evaluate_factual_support,
+    sensitivity_level,
+    significant_tokens,
+)
 from mura.linguistics.corrections import has_explicit_correction_cue
+from mura.linguistics.multilingual import find_known_name_matches
 from mura.relationship_evidence import (
     analyze_relationship_evidence,
     contains_surface,
@@ -98,7 +106,20 @@ def _explicit_people_in_segments(
     explicit_people: set[str] = set()
     for person in people:
         if any(
-            _contains_evidence(source_text, surface) for surface in person_name_surfaces(person)
+            _contains_evidence(source_text, surface)
+            or bool(find_known_name_matches(source_text, surface))
+            for surface in person_name_surfaces(person)
+        ):
+            explicit_people.add(person.mention_id)
+    return explicit_people
+
+
+def _explicit_people_in_text(value: str, people: list[PersonMention]) -> set[str]:
+    explicit_people: set[str] = set()
+    for person in people:
+        if any(
+            _contains_evidence(value, surface) or bool(find_known_name_matches(value, surface))
+            for surface in person_name_surfaces(person)
         ):
             explicit_people.add(person.mention_id)
     return explicit_people
@@ -232,8 +253,34 @@ def _claim_support_text(item: object, result: ExtractionResult) -> str:
 
 
 def _significant_tokens(value: str) -> set[str]:
-    normalized = _normalize_evidence(value)
-    return {token for token in normalized.split() if len(token) >= 3 or token.isdigit()}
+    return set(significant_tokens(value))
+
+
+_EVENT_LABEL_TERMS: dict[str, set[str]] = {
+    "birth": {"рождение", "туған", "туу", "birth"},
+    "death": {"смерть", "қайтыс", "өлім", "death"},
+    "wedding": {"свадьба", "үйлену", "той", "wedding"},
+    "divorce": {"развод", "ажырасу", "divorce"},
+    "move": {"переезд", "көшу", "move"},
+    "migration": {"переезд", "көшу", "migration"},
+    "education": {"учёба", "оқу", "education"},
+    "employment": {"работа", "жұмыс", "employment"},
+    "profession": {"работа", "мамандық", "profession"},
+}
+_STORY_GENERIC_LABEL_TERMS = {
+    "история",
+    "рассказ",
+    "воспоминание",
+    "случай",
+    "семейная",
+    "отбасылық",
+    "әңгіме",
+    "оқиға",
+    "естелік",
+    "story",
+    "memory",
+    "family",
+}
 
 
 def _ensure_claim_text_supported(
@@ -245,13 +292,60 @@ def _ensure_claim_text_supported(
 ) -> None:
     if value is None or not value.strip():
         return
-    if _contains_evidence(evidence_text, value):
+    if all_statements_supported(value, evidence_text):
         return
-    value_tokens = _significant_tokens(value)
-    evidence_tokens = _significant_tokens(evidence_text)
-    if value_tokens and value_tokens.issubset(evidence_tokens):
+    verdict = evaluate_factual_support(value, evidence_text)
+    raise ContractValidationError(
+        f"{object_name} has unsupported {field_name} text ({verdict.status.value})"
+    )
+
+
+def _ensure_event_title_supported(
+    *,
+    title: str,
+    event_type: str,
+    participant_names: list[str],
+    location: str | None,
+    evidence_text: str,
+    object_name: str,
+) -> None:
+    if evaluate_factual_support(title, evidence_text).supported:
         return
-    raise ContractValidationError(f"{object_name} has unsupported {field_name} text")
+    allowed = set(_EVENT_LABEL_TERMS.get(_normalize_evidence(event_type), set()))
+    allowed.update(significant_tokens(event_type))
+    for name in participant_names:
+        allowed.update(significant_tokens(name))
+        for match in find_known_name_matches(title, name):
+            allowed.update(significant_tokens(match.token))
+    if location:
+        allowed.update(significant_tokens(location))
+    title_tokens = set(significant_tokens(title))
+    if title_tokens and title_tokens.issubset(allowed):
+        return
+    raise ContractValidationError(f"{object_name} has unsupported title label")
+
+
+def _ensure_story_title_supported(
+    *,
+    title: str,
+    referenced_names: list[str],
+    referenced_event_titles: list[str],
+    evidence_text: str,
+    object_name: str,
+) -> None:
+    if evaluate_factual_support(title, evidence_text).supported:
+        return
+    allowed = set(_STORY_GENERIC_LABEL_TERMS)
+    for value in [*referenced_names, *referenced_event_titles]:
+        value_tokens = significant_tokens(value)
+        allowed.update(value_tokens)
+        for surface in (value, *value_tokens):
+            for match in find_known_name_matches(title, surface):
+                allowed.update(significant_tokens(match.token))
+    title_tokens = set(significant_tokens(title))
+    if title_tokens and title_tokens.issubset(allowed):
+        return
+    raise ContractValidationError(f"{object_name} has unsupported title label")
 
 
 def _has_ambiguity_signal(value: str) -> bool:
@@ -550,11 +644,13 @@ def validate_extraction_result(
         evidence_text = _claim_support_text(event, result)
         if not evidence_text:
             raise ContractValidationError(f"{event.event_id} has no claim evidence")
-        _ensure_claim_text_supported(
-            value=event.title,
+        _ensure_event_title_supported(
+            title=event.title,
+            event_type=event.event_type,
+            participant_names=[mention_by_id[item].name for item in event.participant_mention_ids],
+            location=event.location,
             evidence_text=evidence_text,
             object_name=event.event_id,
-            field_name="title",
         )
         _ensure_claim_text_supported(
             value=event.description,
@@ -562,12 +658,11 @@ def validate_extraction_result(
             object_name=event.event_id,
             field_name="description",
         )
-        _ensure_claim_text_supported(
-            value=event.location,
-            evidence_text=evidence_text,
-            object_name=event.event_id,
-            field_name="location",
-        )
+        if event.location and not (
+            evaluate_factual_support(event.location, evidence_text).supported
+            or bool(find_known_name_matches(evidence_text, event.location))
+        ):
+            raise ContractValidationError(f"{event.event_id} has unsupported location text")
         if event.date is not None:
             if event.date.verification_status is not VerificationStatus.UNREVIEWED:
                 raise ContractValidationError(f"{event.event_id} temporal value is not unreviewed")
@@ -603,6 +698,12 @@ def validate_extraction_result(
             event.source_segment_ids, segment_text_by_id, result.people_mentions
         )
         resolved_people = _resolved_antecedents_for_object(event, result)
+        description_people = _explicit_people_in_text(event.description, result.people_mentions)
+        statement_people = description_people.union(resolved_people)
+        if statement_people and set(event.participant_mention_ids) != statement_people:
+            raise ContractValidationError(
+                f"{event.event_id} participant attribution does not match event statement"
+            )
         grounded_people = explicit_people.union(resolved_people)
         if event.participant_mention_ids and not set(event.participant_mention_ids).issubset(
             grounded_people
@@ -630,17 +731,18 @@ def validate_extraction_result(
             )
 
         target = mention_by_id[description.person_mention_id]
-        _ensure_person_evidence_overlap(
-            source_ids=description.source_segment_ids,
-            person=target,
-            object_name=object_name,
-        )
         explicit_people = _explicit_people_in_segments(
             description.source_segment_ids,
             segment_text_by_id,
             result.people_mentions,
         )
         resolved_people = _resolved_antecedents_for_object(description, result)
+        if not set(description.source_segment_ids).intersection(
+            target.source_segment_ids
+        ) and target.mention_id not in explicit_people.union(resolved_people):
+            raise ContractValidationError(
+                f"{object_name} has no evidence overlap with {target.mention_id}"
+            )
         if target.mention_id not in explicit_people.union(resolved_people):
             raise ContractValidationError(
                 f"{description.description_id} is assigned to a person not grounded in its evidence"
@@ -656,6 +758,14 @@ def validate_extraction_result(
             object_name=description.description_id,
             field_name="description",
         )
+        named_in_description = _explicit_people_in_text(
+            description.description,
+            result.people_mentions,
+        )
+        if named_in_description and target.mention_id not in named_in_description:
+            raise ContractValidationError(
+                f"{description.description_id} description text names a different person"
+            )
         if _description_drops_negation(description.description, evidence_text):
             raise ContractValidationError(f"{description.description_id} drops source negation")
         if _normalize_evidence(description.perspective) != _normalize_evidence(
@@ -679,11 +789,13 @@ def validate_extraction_result(
         evidence_text = _claim_support_text(story, result)
         if not evidence_text:
             raise ContractValidationError(f"{story.story_id} has no claim evidence")
-        _ensure_claim_text_supported(
-            value=story.title,
+        event_by_id = {event.event_id: event for event in result.events}
+        _ensure_story_title_supported(
+            title=story.title,
+            referenced_names=[mention_by_id[item].name for item in story.person_mention_ids],
+            referenced_event_titles=[event_by_id[item].title for item in story.event_ids],
             evidence_text=evidence_text,
             object_name=story.story_id,
-            field_name="title",
         )
         _ensure_claim_text_supported(
             value=story.summary,
@@ -691,22 +803,24 @@ def validate_extraction_result(
             object_name=story.story_id,
             field_name="summary",
         )
+        required_sensitivity, _ = sensitivity_level(evidence_text)
+        sensitivity_rank = {
+            StorySensitivity.NORMAL.value: 0,
+            StorySensitivity.PERSONAL.value: 1,
+            StorySensitivity.SENSITIVE.value: 2,
+            StorySensitivity.HIGHLY_SENSITIVE.value: 3,
+        }
+        if sensitivity_rank[story.sensitivity.value] < sensitivity_rank[required_sensitivity]:
+            raise ContractValidationError(f"{story.story_id} understates source sensitivity")
         explicit_story_people = _explicit_people_in_segments(
             story.source_segment_ids, segment_text_by_id, result.people_mentions
         )
         resolved_story_people = _resolved_antecedents_for_object(story, result)
         for mention_id in story.person_mention_ids:
-            if not set(story.source_segment_ids).intersection(
-                mention_by_id[mention_id].source_segment_ids
-            ):
-                raise ContractValidationError(
-                    f"{story.story_id} person reference is outside story evidence"
-                )
             if mention_id not in explicit_story_people.union(resolved_story_people):
                 raise ContractValidationError(
                     f"{story.story_id} person reference is not grounded in the episode"
                 )
-        event_by_id = {event.event_id: event for event in result.events}
         for event_id in story.event_ids:
             if not set(story.source_segment_ids).intersection(
                 event_by_id[event_id].source_segment_ids

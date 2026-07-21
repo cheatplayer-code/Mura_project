@@ -1,7 +1,7 @@
 {
-  "schema_version": "release-gates-v3",
-  "minimum_case_count": 24,
-  "minimum_adversarial_case_count": 18,
+  "schema_version": "release-gates-v4",
+  "minimum_case_count": 32,
+  "minimum_adversarial_case_count": 26,
   "minimum_person_f1": 0.95,
   "minimum_relationship_precision": 0.95,
   "minimum_relationship_recall": 0.95,
@@ -30,5 +30,19 @@
   "maximum_negated_relationship_false_positives": 0,
   "maximum_figurative_relationship_false_positives": 0,
   "maximum_former_relationships_active": 0,
-  "maximum_ended_relationships_active": 0
+  "maximum_ended_relationships_active": 0,
+  "minimum_event_precision": 1.0,
+  "minimum_event_recall": 1.0,
+  "minimum_description_precision": 1.0,
+  "minimum_description_recall": 1.0,
+  "minimum_story_precision": 1.0,
+  "minimum_story_recall": 1.0,
+  "minimum_event_participant_accuracy": 1.0,
+  "minimum_narrative_factual_support": 1.0,
+  "minimum_sensitive_story_recall": 1.0,
+  "maximum_unsupported_event_statements": 0,
+  "maximum_unsupported_story_statements": 0,
+  "maximum_sensitivity_underclassifications": 0,
+  "maximum_duplicate_semantic_events": 0,
+  "maximum_duplicate_semantic_stories": 0
 }

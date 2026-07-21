@@ -1,5 +1,5 @@
 {
-  "schema_version": "benchmark-manifest-v3",
+  "schema_version": "benchmark-manifest-v4",
   "datasets": [
     {
       "dataset_id": "synthetic_current_main",
@@ -22,6 +22,12 @@
     {
       "dataset_id": "claim_semantics_adversarial_v1",
       "path": "adversarial/claim_semantics_v1.json",
+      "split": "test",
+      "enabled": true
+    },
+    {
+      "dataset_id": "events_stories_adversarial_v1",
+      "path": "adversarial/events_stories_v1.json",
       "split": "test",
       "enabled": true
     }

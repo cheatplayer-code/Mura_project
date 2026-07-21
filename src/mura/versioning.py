@@ -12,6 +12,8 @@ class PipelineVersions(StrictModel):
     extractor_prompt: str
     extractor_repair_prompt: str
     evidence_rules: str
+    extraction_orchestration: str
+    narrative_rules: str
     claim_semantics: str
     temporal_rules: str
     relationship_state_rules: str
@@ -23,20 +25,22 @@ class PipelineVersions(StrictModel):
 
 
 CURRENT_PIPELINE_VERSIONS = PipelineVersions(
-    pipeline="mura-core-v0.11.0",
-    domain_schema="domain-v3-claim-semantics",
+    pipeline="mura-core-v0.12.0",
+    domain_schema="domain-v4-focused-narratives",
     cleaner_prompt="cleaner-v3-self-correction-semantics",
-    extractor_prompt="extractor-v5-claim-semantics",
-    extractor_repair_prompt="extractor-repair-v3-semantic-preservation",
-    evidence_rules="claim-evidence-v3-layered-provenance+bounded-coreference-v2",
+    extractor_prompt="extractor-v6-focused-passes",
+    extractor_repair_prompt="extractor-repair-v4-focused-pass",
+    evidence_rules="claim-evidence-v4-ordered-factual-support+bounded-coreference-v2",
+    extraction_orchestration="focused-extraction-v1-three-pass",
+    narrative_rules="event-story-grounding-v1",
     claim_semantics="claim-semantics-v1",
     temporal_rules="temporal-normalizer-v1",
     relationship_state_rules="relationship-state-v1",
     resolver="mention-resolver-v2-cross-recording",
     archive_schema="archive-claim-ledger-v1+conflict-decisions-v1+generic-claims-v1",
     materializer="family-materializer-v4-active-state-guard",
-    evaluator="core-evaluator-v3-claim-semantics+entity-resolution-v1",
-    benchmark_schema="benchmark-v3-claim-semantics+entity-resolution-benchmark-v1",
+    evaluator="core-evaluator-v4-events-stories+entity-resolution-v1",
+    benchmark_schema="benchmark-v4-events-stories+entity-resolution-benchmark-v1",
 )
 
 

@@ -148,7 +148,7 @@ def test_sanitizer_keeps_valid_objects_and_quarantines_bad_ones() -> None:
 
     issue_by_id = {issue["object_id"]: issue for issue in issues}
     assert issue_by_id["relationship_invalid"]["code"] == "object_schema_invalid"
-    assert issue_by_id["description_wrong_person"]["code"] == "object_semantic_unsupported"
+    assert issue_by_id["description_wrong_person"]["code"] == "description_attribution_unsupported"
     assert "context" not in issue_by_id["relationship_invalid"]
 
 

@@ -10,6 +10,7 @@ from mura.domain.models import (
     RelationshipRole,
     RelationshipState,
     RelationshipType,
+    StorySensitivity,
     StrictModel,
     TemporalKind,
     TranscriptEnvelope,
@@ -65,6 +66,27 @@ class GoldRelationship(StrictModel):
         return self
 
 
+class GoldEvent(StrictModel):
+    event_key: str = Field(min_length=1)
+    event_type: str = Field(min_length=1)
+    participant_person_keys: list[str] = Field(default_factory=list)
+    source_segment_ids: list[str] = Field(min_length=1)
+
+
+class GoldDescription(StrictModel):
+    description_key: str = Field(min_length=1)
+    person_key: str = Field(min_length=1)
+    source_segment_ids: list[str] = Field(min_length=1)
+
+
+class GoldStory(StrictModel):
+    story_key: str = Field(min_length=1)
+    person_keys: list[str] = Field(default_factory=list)
+    event_keys: list[str] = Field(default_factory=list)
+    source_segment_ids: list[str] = Field(min_length=1)
+    minimum_sensitivity: StorySensitivity = StorySensitivity.NORMAL
+
+
 class BenchmarkGold(StrictModel):
     people: list[GoldPerson] = Field(default_factory=list)
     relationships: list[GoldRelationship] = Field(default_factory=list)
@@ -74,15 +96,30 @@ class BenchmarkGold(StrictModel):
     uncertain_object_ids: list[str] = Field(default_factory=list)
     temporal_kinds: dict[str, TemporalKind] = Field(default_factory=dict)
     relationship_states: dict[str, RelationshipState] = Field(default_factory=dict)
+    events: list[GoldEvent] = Field(default_factory=list)
+    descriptions: list[GoldDescription] = Field(default_factory=list)
+    stories: list[GoldStory] = Field(default_factory=list)
+    score_events: bool = False
+    score_descriptions: bool = False
+    score_stories: bool = False
 
     @model_validator(mode="after")
     def validate_unique_keys(self) -> BenchmarkGold:
         person_keys = [person.person_key for person in self.people]
         relationship_keys = [item.relationship_key for item in self.relationships]
+        event_keys = [item.event_key for item in self.events]
+        description_keys = [item.description_key for item in self.descriptions]
+        story_keys = [item.story_key for item in self.stories]
         if len(person_keys) != len(set(person_keys)):
             raise ValueError("gold person keys must be unique")
         if len(relationship_keys) != len(set(relationship_keys)):
             raise ValueError("gold relationship keys must be unique")
+        if len(event_keys) != len(set(event_keys)):
+            raise ValueError("gold event keys must be unique")
+        if len(description_keys) != len(set(description_keys)):
+            raise ValueError("gold description keys must be unique")
+        if len(story_keys) != len(set(story_keys)):
+            raise ValueError("gold story keys must be unique")
         if len(self.quarantined_relationship_ids) != len(set(self.quarantined_relationship_ids)):
             raise ValueError("gold quarantined relationship IDs must be unique")
         if len(self.quarantined_object_ids) != len(set(self.quarantined_object_ids)):
@@ -197,6 +234,50 @@ class CaseEvaluation(StrictModel):
     relationship_state_accuracy: RatioMetric = Field(
         default_factory=lambda: RatioMetric(numerator=0, denominator=0, value=1.0)
     )
+    events: PrecisionRecallF1 = Field(
+        default_factory=lambda: PrecisionRecallF1(
+            true_positive=0,
+            false_positive=0,
+            false_negative=0,
+            precision=1.0,
+            recall=1.0,
+            f1=1.0,
+        )
+    )
+    descriptions: PrecisionRecallF1 = Field(
+        default_factory=lambda: PrecisionRecallF1(
+            true_positive=0,
+            false_positive=0,
+            false_negative=0,
+            precision=1.0,
+            recall=1.0,
+            f1=1.0,
+        )
+    )
+    stories: PrecisionRecallF1 = Field(
+        default_factory=lambda: PrecisionRecallF1(
+            true_positive=0,
+            false_positive=0,
+            false_negative=0,
+            precision=1.0,
+            recall=1.0,
+            f1=1.0,
+        )
+    )
+    event_participant_accuracy: RatioMetric = Field(
+        default_factory=lambda: RatioMetric(numerator=0, denominator=0, value=1.0)
+    )
+    narrative_factual_support: RatioMetric = Field(
+        default_factory=lambda: RatioMetric(numerator=0, denominator=0, value=1.0)
+    )
+    sensitive_story_recall: RatioMetric = Field(
+        default_factory=lambda: RatioMetric(numerator=0, denominator=0, value=1.0)
+    )
+    unsupported_event_statements: int = Field(default=0, ge=0)
+    unsupported_story_statements: int = Field(default=0, ge=0)
+    sensitivity_underclassifications: int = Field(default=0, ge=0)
+    duplicate_semantic_events: int = Field(default=0, ge=0)
+    duplicate_semantic_stories: int = Field(default=0, ge=0)
     approximate_dates_exactified: int = Field(default=0, ge=0)
     invalid_calendar_dates_accepted: int = Field(default=0, ge=0)
     unresolved_relative_dates_absolutized: int = Field(default=0, ge=0)
@@ -233,6 +314,50 @@ class BenchmarkSummary(StrictModel):
     relationship_state_accuracy: RatioMetric = Field(
         default_factory=lambda: RatioMetric(numerator=0, denominator=0, value=1.0)
     )
+    events: PrecisionRecallF1 = Field(
+        default_factory=lambda: PrecisionRecallF1(
+            true_positive=0,
+            false_positive=0,
+            false_negative=0,
+            precision=1.0,
+            recall=1.0,
+            f1=1.0,
+        )
+    )
+    descriptions: PrecisionRecallF1 = Field(
+        default_factory=lambda: PrecisionRecallF1(
+            true_positive=0,
+            false_positive=0,
+            false_negative=0,
+            precision=1.0,
+            recall=1.0,
+            f1=1.0,
+        )
+    )
+    stories: PrecisionRecallF1 = Field(
+        default_factory=lambda: PrecisionRecallF1(
+            true_positive=0,
+            false_positive=0,
+            false_negative=0,
+            precision=1.0,
+            recall=1.0,
+            f1=1.0,
+        )
+    )
+    event_participant_accuracy: RatioMetric = Field(
+        default_factory=lambda: RatioMetric(numerator=0, denominator=0, value=1.0)
+    )
+    narrative_factual_support: RatioMetric = Field(
+        default_factory=lambda: RatioMetric(numerator=0, denominator=0, value=1.0)
+    )
+    sensitive_story_recall: RatioMetric = Field(
+        default_factory=lambda: RatioMetric(numerator=0, denominator=0, value=1.0)
+    )
+    unsupported_event_statements: int = Field(default=0, ge=0)
+    unsupported_story_statements: int = Field(default=0, ge=0)
+    sensitivity_underclassifications: int = Field(default=0, ge=0)
+    duplicate_semantic_events: int = Field(default=0, ge=0)
+    duplicate_semantic_stories: int = Field(default=0, ge=0)
     approximate_dates_exactified: int = Field(default=0, ge=0)
     invalid_calendar_dates_accepted: int = Field(default=0, ge=0)
     unresolved_relative_dates_absolutized: int = Field(default=0, ge=0)

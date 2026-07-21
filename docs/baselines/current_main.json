@@ -1,21 +1,23 @@
 {
-  "report_schema_version": "evaluation-report-v3",
+  "report_schema_version": "evaluation-report-v4",
   "manifest_path": "benchmarks/manifest.json",
   "pipeline_versions": {
-    "pipeline": "mura-core-v0.11.0",
-    "domain_schema": "domain-v3-claim-semantics",
+    "pipeline": "mura-core-v0.12.0",
+    "domain_schema": "domain-v4-focused-narratives",
     "cleaner_prompt": "cleaner-v3-self-correction-semantics",
-    "extractor_prompt": "extractor-v5-claim-semantics",
-    "extractor_repair_prompt": "extractor-repair-v3-semantic-preservation",
-    "evidence_rules": "claim-evidence-v3-layered-provenance+bounded-coreference-v2",
+    "extractor_prompt": "extractor-v6-focused-passes",
+    "extractor_repair_prompt": "extractor-repair-v4-focused-pass",
+    "evidence_rules": "claim-evidence-v4-ordered-factual-support+bounded-coreference-v2",
+    "extraction_orchestration": "focused-extraction-v1-three-pass",
+    "narrative_rules": "event-story-grounding-v1",
     "claim_semantics": "claim-semantics-v1",
     "temporal_rules": "temporal-normalizer-v1",
     "relationship_state_rules": "relationship-state-v1",
     "resolver": "mention-resolver-v2-cross-recording",
     "archive_schema": "archive-claim-ledger-v1+conflict-decisions-v1+generic-claims-v1",
     "materializer": "family-materializer-v4-active-state-guard",
-    "evaluator": "core-evaluator-v3-claim-semantics+entity-resolution-v1",
-    "benchmark_schema": "benchmark-v3-claim-semantics+entity-resolution-benchmark-v1"
+    "evaluator": "core-evaluator-v4-events-stories+entity-resolution-v1",
+    "benchmark_schema": "benchmark-v4-events-stories+entity-resolution-benchmark-v1"
   },
   "cases": [
     {
@@ -119,6 +121,50 @@
         "denominator": 0,
         "value": 1.0
       },
+      "events": {
+        "true_positive": 0,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "descriptions": {
+        "true_positive": 0,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "stories": {
+        "true_positive": 0,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "event_participant_accuracy": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": 1.0
+      },
+      "narrative_factual_support": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": 1.0
+      },
+      "sensitive_story_recall": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": 1.0
+      },
+      "unsupported_event_statements": 0,
+      "unsupported_story_statements": 0,
+      "sensitivity_underclassifications": 0,
+      "duplicate_semantic_events": 0,
+      "duplicate_semantic_stories": 0,
       "approximate_dates_exactified": 0,
       "invalid_calendar_dates_accepted": 0,
       "unresolved_relative_dates_absolutized": 0,
@@ -228,6 +274,50 @@
         "denominator": 0,
         "value": 1.0
       },
+      "events": {
+        "true_positive": 0,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "descriptions": {
+        "true_positive": 0,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "stories": {
+        "true_positive": 0,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "event_participant_accuracy": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": 1.0
+      },
+      "narrative_factual_support": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": 1.0
+      },
+      "sensitive_story_recall": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": 1.0
+      },
+      "unsupported_event_statements": 0,
+      "unsupported_story_statements": 0,
+      "sensitivity_underclassifications": 0,
+      "duplicate_semantic_events": 0,
+      "duplicate_semantic_stories": 0,
       "approximate_dates_exactified": 0,
       "invalid_calendar_dates_accepted": 0,
       "unresolved_relative_dates_absolutized": 0,
@@ -337,6 +427,50 @@
         "denominator": 0,
         "value": 1.0
       },
+      "events": {
+        "true_positive": 0,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "descriptions": {
+        "true_positive": 0,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "stories": {
+        "true_positive": 0,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "event_participant_accuracy": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": 1.0
+      },
+      "narrative_factual_support": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": 1.0
+      },
+      "sensitive_story_recall": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": 1.0
+      },
+      "unsupported_event_statements": 0,
+      "unsupported_story_statements": 0,
+      "sensitivity_underclassifications": 0,
+      "duplicate_semantic_events": 0,
+      "duplicate_semantic_stories": 0,
       "approximate_dates_exactified": 0,
       "invalid_calendar_dates_accepted": 0,
       "unresolved_relative_dates_absolutized": 0,
@@ -446,6 +580,50 @@
         "denominator": 0,
         "value": 1.0
       },
+      "events": {
+        "true_positive": 0,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "descriptions": {
+        "true_positive": 0,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "stories": {
+        "true_positive": 0,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "event_participant_accuracy": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": 1.0
+      },
+      "narrative_factual_support": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": 1.0
+      },
+      "sensitive_story_recall": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": 1.0
+      },
+      "unsupported_event_statements": 0,
+      "unsupported_story_statements": 0,
+      "sensitivity_underclassifications": 0,
+      "duplicate_semantic_events": 0,
+      "duplicate_semantic_stories": 0,
       "approximate_dates_exactified": 0,
       "invalid_calendar_dates_accepted": 0,
       "unresolved_relative_dates_absolutized": 0,
@@ -556,6 +734,50 @@
         "denominator": 0,
         "value": 1.0
       },
+      "events": {
+        "true_positive": 0,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "descriptions": {
+        "true_positive": 0,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "stories": {
+        "true_positive": 0,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "event_participant_accuracy": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": 1.0
+      },
+      "narrative_factual_support": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": 1.0
+      },
+      "sensitive_story_recall": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": 1.0
+      },
+      "unsupported_event_statements": 0,
+      "unsupported_story_statements": 0,
+      "sensitivity_underclassifications": 0,
+      "duplicate_semantic_events": 0,
+      "duplicate_semantic_stories": 0,
       "approximate_dates_exactified": 0,
       "invalid_calendar_dates_accepted": 0,
       "unresolved_relative_dates_absolutized": 0,
@@ -665,6 +887,50 @@
         "denominator": 0,
         "value": 1.0
       },
+      "events": {
+        "true_positive": 0,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "descriptions": {
+        "true_positive": 0,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "stories": {
+        "true_positive": 0,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "event_participant_accuracy": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": 1.0
+      },
+      "narrative_factual_support": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": 1.0
+      },
+      "sensitive_story_recall": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": 1.0
+      },
+      "unsupported_event_statements": 0,
+      "unsupported_story_statements": 0,
+      "sensitivity_underclassifications": 0,
+      "duplicate_semantic_events": 0,
+      "duplicate_semantic_stories": 0,
       "approximate_dates_exactified": 0,
       "invalid_calendar_dates_accepted": 0,
       "unresolved_relative_dates_absolutized": 0,
@@ -743,6 +1009,50 @@
       "denominator": 0,
       "value": 1.0
     },
+    "events": {
+      "true_positive": 0,
+      "false_positive": 0,
+      "false_negative": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "descriptions": {
+      "true_positive": 0,
+      "false_positive": 0,
+      "false_negative": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "stories": {
+      "true_positive": 0,
+      "false_positive": 0,
+      "false_negative": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "event_participant_accuracy": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": 1.0
+    },
+    "narrative_factual_support": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": 1.0
+    },
+    "sensitive_story_recall": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": 1.0
+    },
+    "unsupported_event_statements": 0,
+    "unsupported_story_statements": 0,
+    "sensitivity_underclassifications": 0,
+    "duplicate_semantic_events": 0,
+    "duplicate_semantic_stories": 0,
     "approximate_dates_exactified": 0,
     "invalid_calendar_dates_accepted": 0,
     "unresolved_relative_dates_absolutized": 0,

@@ -19,8 +19,8 @@ def test_adversarial_dataset_is_enabled_and_release_gates_pass() -> None:
     report = run_benchmark(RELEASE_MANIFEST)
     adversarial = [case for case in report.cases if "adversarial" in case.construction_tags]
 
-    assert report.summary.case_count == 24
-    assert len(adversarial) == 18
+    assert report.summary.case_count == 32
+    assert len(adversarial) == 26
     assert {case.split.value for case in adversarial} == {"test"}
 
     result = evaluate_release_gates(report, load_release_gate_config(GATES))
@@ -37,6 +37,20 @@ def test_adversarial_dataset_is_enabled_and_release_gates_pass() -> None:
     assert result.measurements["unknown_issue_codes"] == 0
     assert result.measurements["missing_required_issue_codes"] == 0
     assert result.measurements["fatal_contract_failures"] == 0
+    assert result.measurements["event_precision"] == 1.0
+    assert result.measurements["event_recall"] == 1.0
+    assert result.measurements["description_precision"] == 1.0
+    assert result.measurements["description_recall"] == 1.0
+    assert result.measurements["story_precision"] == 1.0
+    assert result.measurements["story_recall"] == 1.0
+    assert result.measurements["event_participant_accuracy"] == 1.0
+    assert result.measurements["narrative_factual_support"] == 1.0
+    assert result.measurements["sensitive_story_recall"] == 1.0
+    assert result.measurements["unsupported_event_statements"] == 0
+    assert result.measurements["unsupported_story_statements"] == 0
+    assert result.measurements["sensitivity_underclassifications"] == 0
+    assert result.measurements["duplicate_semantic_events"] == 0
+    assert result.measurements["duplicate_semantic_stories"] == 0
 
 
 def test_release_gate_reports_regression_without_hiding_measurement() -> None:
@@ -59,7 +73,7 @@ def test_release_gate_reports_regression_without_hiding_measurement() -> None:
     result = evaluate_release_gates(report, strict)
     assert result.passed is False
     assert any("case_count" in failure for failure in result.failures)
-    assert result.measurements["case_count"] == 24
+    assert result.measurements["case_count"] == 32
 
 
 def test_cli_returns_nonzero_for_failed_release_gate(tmp_path: Path) -> None:
