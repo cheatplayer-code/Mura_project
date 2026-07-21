@@ -68,12 +68,21 @@ def snapshot_artifacts(snapshot_path: Path) -> SnapshotArtifacts:
     return SnapshotArtifacts(snapshot_path=snapshot_path, file_sha256=digests)
 
 
-def download_pinned_snapshot(*, token: str | None = None) -> SnapshotArtifacts:
-    from huggingface_hub import snapshot_download
+def _snapshot_download(**kwargs: Any) -> str:
+    """Load the optional Hugging Face client only in the live ASR environment."""
+    try:
+        from huggingface_hub import snapshot_download
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "huggingface-hub is required for ASR model download; install the kaggle extra"
+        ) from exc
+    return str(snapshot_download(**kwargs))
 
+
+def download_pinned_snapshot(*, token: str | None = None) -> SnapshotArtifacts:
     validate_artifact_pins()
     path = Path(
-        snapshot_download(
+        _snapshot_download(
             repo_id=GIGAAM_MODEL_ID,
             revision=GIGAAM_MODEL_COMMIT,
             token=token,
