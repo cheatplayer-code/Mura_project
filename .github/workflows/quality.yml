@@ -181,5 +181,15 @@ jobs:
             --json-output identity-report.json \
             --markdown-output identity-report.md 2>&1 | tee identity-gate-output.txt
 
+      - name: Enforce offline ASR contract gates
+        shell: bash
+        run: |
+          set -o pipefail
+          mura-evaluate-asr \
+            --dataset benchmarks/asr_contract_v1.json \
+            --release-gates benchmarks/asr_release_gates.json \
+            --json-output asr-report.json \
+            --markdown-output asr-report.md 2>&1 | tee asr-gate-output.txt
+
       - name: Static security scan
         run: bandit -q -r src apps services -ll

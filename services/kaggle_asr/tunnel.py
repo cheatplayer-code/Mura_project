@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import subprocess
@@ -8,16 +9,31 @@ from pathlib import Path
 
 import requests
 
+CLOUDFLARED_VERSION = "2026.5.2"
 CLOUDFLARED_URL = (
-    "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+    f"https://github.com/cloudflare/cloudflared/releases/download/{CLOUDFLARED_VERSION}/"
+    "cloudflared-linux-amd64"
 )
+CLOUDFLARED_SHA256 = "5286698547f03df745adb2355f04c12dde52ef425491e81f433642d695521886"
+
+
+def _sha256_bytes(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
+
+
+def _sha256_file(path: Path) -> str:
+    return _sha256_bytes(path.read_bytes())
 
 
 def ensure_cloudflared(binary_path: Path = Path("/kaggle/working/cloudflared")) -> Path:
     if binary_path.exists():
+        if _sha256_file(binary_path) != CLOUDFLARED_SHA256:
+            raise RuntimeError("existing cloudflared binary failed checksum verification")
         return binary_path
     response = requests.get(CLOUDFLARED_URL, timeout=(30, 300))
     response.raise_for_status()
+    if _sha256_bytes(response.content) != CLOUDFLARED_SHA256:
+        raise RuntimeError("downloaded cloudflared binary failed checksum verification")
     binary_path.write_bytes(response.content)
     binary_path.chmod(0o755)
     return binary_path
