@@ -8,8 +8,10 @@ from pydantic import Field, model_validator
 from mura.domain.models import (
     PersonCategory,
     RelationshipRole,
+    RelationshipState,
     RelationshipType,
     StrictModel,
+    TemporalKind,
     TranscriptEnvelope,
 )
 
@@ -69,6 +71,9 @@ class BenchmarkGold(StrictModel):
     quarantined_relationship_ids: list[str] = Field(default_factory=list)
     quarantined_object_ids: list[str] = Field(default_factory=list)
     required_issue_codes: list[str] = Field(default_factory=list)
+    uncertain_object_ids: list[str] = Field(default_factory=list)
+    temporal_kinds: dict[str, TemporalKind] = Field(default_factory=dict)
+    relationship_states: dict[str, RelationshipState] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_unique_keys(self) -> BenchmarkGold:
@@ -84,6 +89,8 @@ class BenchmarkGold(StrictModel):
             raise ValueError("gold quarantined object IDs must be unique")
         if len(self.required_issue_codes) != len(set(self.required_issue_codes)):
             raise ValueError("gold required issue codes must be unique")
+        if len(self.uncertain_object_ids) != len(set(self.uncertain_object_ids)):
+            raise ValueError("gold uncertain object IDs must be unique")
         return self
 
 
@@ -181,6 +188,22 @@ class CaseEvaluation(StrictModel):
     missing_required_issue_codes: int = Field(ge=0)
     fatal_contract_failures: int = Field(ge=0)
     evidence_recovery_counts: dict[str, int] = Field(default_factory=dict)
+    uncertainty_scope_accuracy: RatioMetric = Field(
+        default_factory=lambda: RatioMetric(numerator=0, denominator=0, value=1.0)
+    )
+    temporal_kind_accuracy: RatioMetric = Field(
+        default_factory=lambda: RatioMetric(numerator=0, denominator=0, value=1.0)
+    )
+    relationship_state_accuracy: RatioMetric = Field(
+        default_factory=lambda: RatioMetric(numerator=0, denominator=0, value=1.0)
+    )
+    approximate_dates_exactified: int = Field(default=0, ge=0)
+    invalid_calendar_dates_accepted: int = Field(default=0, ge=0)
+    unresolved_relative_dates_absolutized: int = Field(default=0, ge=0)
+    negated_relationship_false_positives: int = Field(default=0, ge=0)
+    figurative_relationship_false_positives: int = Field(default=0, ge=0)
+    former_relationships_active: int = Field(default=0, ge=0)
+    ended_relationships_active: int = Field(default=0, ge=0)
 
 
 class BenchmarkSummary(StrictModel):
@@ -201,6 +224,22 @@ class BenchmarkSummary(StrictModel):
     unknown_issue_codes: int = Field(ge=0)
     missing_required_issue_codes: int = Field(ge=0)
     fatal_contract_failures: int = Field(ge=0)
+    uncertainty_scope_accuracy: RatioMetric = Field(
+        default_factory=lambda: RatioMetric(numerator=0, denominator=0, value=1.0)
+    )
+    temporal_kind_accuracy: RatioMetric = Field(
+        default_factory=lambda: RatioMetric(numerator=0, denominator=0, value=1.0)
+    )
+    relationship_state_accuracy: RatioMetric = Field(
+        default_factory=lambda: RatioMetric(numerator=0, denominator=0, value=1.0)
+    )
+    approximate_dates_exactified: int = Field(default=0, ge=0)
+    invalid_calendar_dates_accepted: int = Field(default=0, ge=0)
+    unresolved_relative_dates_absolutized: int = Field(default=0, ge=0)
+    negated_relationship_false_positives: int = Field(default=0, ge=0)
+    figurative_relationship_false_positives: int = Field(default=0, ge=0)
+    former_relationships_active: int = Field(default=0, ge=0)
+    ended_relationships_active: int = Field(default=0, ge=0)
 
 
 class BenchmarkReport(StrictModel):

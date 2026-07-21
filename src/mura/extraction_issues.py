@@ -57,6 +57,24 @@ class ExtractionIssueCode(StrEnum):
     CONFLICT_REFERENCE_INVALID = "conflict_reference_invalid"
     VERIFICATION_STATUS_DOWNGRADED = "verification_status_downgraded"
     STORY_PRIVACY_FORCED_PRIVATE = "story_privacy_forced_private"
+    UNCERTAINTY_SCOPE_AMBIGUOUS = "uncertainty_scope_ambiguous"
+    UNCERTAINTY_MARKER_UNSUPPORTED = "uncertainty_marker_unsupported"
+    REPORTED_SPEECH_REQUIRES_REVIEW = "reported_speech_requires_review"
+    TEMPORAL_VALUE_INVALID = "temporal_value_invalid"
+    TEMPORAL_PRECISION_OVERSTATED = "temporal_precision_overstated"
+    TEMPORAL_RANGE_INVALID = "temporal_range_invalid"
+    TEMPORAL_ANCHOR_MISSING = "temporal_anchor_missing"
+    TEMPORAL_CONFLICT_DETECTED = "temporal_conflict_detected"
+    TEMPORAL_FORMAT_AMBIGUOUS = "temporal_format_ambiguous"
+    TEMPORAL_EXPRESSION_UNRESOLVED = "temporal_expression_unresolved"
+    TEMPORAL_EVIDENCE_UNSUPPORTED = "temporal_evidence_unsupported"
+    RELATIONSHIP_FORMER_NOT_ACTIVE = "relationship_former_not_active"
+    RELATIONSHIP_ENDED_NOT_ACTIVE = "relationship_ended_not_active"
+    RELATIONSHIP_NEGATED = "relationship_negated"
+    RELATIONSHIP_FIGURATIVE = "relationship_figurative"
+    RELATIONSHIP_STATE_CONFLICT = "relationship_state_conflict"
+    SELF_CORRECTION_APPLIED = "self_correction_applied"
+    SELF_CORRECTION_AMBIGUOUS = "self_correction_ambiguous"
     DERIVED_CLAIM_SELF_REFERENCE = "derived_claim_self_reference"
     DERIVED_CLAIM_DUPLICATE = "derived_claim_duplicate"
     FINAL_CONTRACT_INVALID = "final_contract_invalid"
@@ -137,6 +155,56 @@ _DETAIL_BY_CODE: dict[ExtractionIssueCode, str] = {
     ),
     ExtractionIssueCode.STORY_PRIVACY_FORCED_PRIVATE: (
         "A model-provided story privacy value was forced to private."
+    ),
+    ExtractionIssueCode.UNCERTAINTY_SCOPE_AMBIGUOUS: (
+        "An uncertainty marker could not be assigned to exactly one local claim scope."
+    ),
+    ExtractionIssueCode.UNCERTAINTY_MARKER_UNSUPPORTED: (
+        "An uncertain assertion lacked a supported local linguistic marker."
+    ),
+    ExtractionIssueCode.REPORTED_SPEECH_REQUIRES_REVIEW: (
+        "A quoted assertion was retained as reported speech and requires review."
+    ),
+    ExtractionIssueCode.TEMPORAL_VALUE_INVALID: "A temporal value was not a valid calendar value.",
+    ExtractionIssueCode.TEMPORAL_PRECISION_OVERSTATED: (
+        "A model-proposed temporal value claimed more precision than the source expression."
+    ),
+    ExtractionIssueCode.TEMPORAL_RANGE_INVALID: "A temporal range had invalid or reversed bounds.",
+    ExtractionIssueCode.TEMPORAL_ANCHOR_MISSING: (
+        "A relative temporal expression lacked a deterministic source-linked anchor."
+    ),
+    ExtractionIssueCode.TEMPORAL_CONFLICT_DETECTED: (
+        "Supported temporal claims disagreed and were retained for review."
+    ),
+    ExtractionIssueCode.TEMPORAL_FORMAT_AMBIGUOUS: (
+        "A numeric temporal format was locale-ambiguous and was not exactified."
+    ),
+    ExtractionIssueCode.TEMPORAL_EXPRESSION_UNRESOLVED: (
+        "A temporal expression was preserved without unsupported normalization."
+    ),
+    ExtractionIssueCode.TEMPORAL_EVIDENCE_UNSUPPORTED: (
+        "A temporal expression was absent from the object's source evidence."
+    ),
+    ExtractionIssueCode.RELATIONSHIP_FORMER_NOT_ACTIVE: (
+        "A former relationship was retained as history and excluded from the active graph."
+    ),
+    ExtractionIssueCode.RELATIONSHIP_ENDED_NOT_ACTIVE: (
+        "An ended relationship was retained as history and excluded from the active graph."
+    ),
+    ExtractionIssueCode.RELATIONSHIP_NEGATED: (
+        "A negated relationship was excluded from positive family memory."
+    ),
+    ExtractionIssueCode.RELATIONSHIP_FIGURATIVE: (
+        "A figurative or social comparison was excluded from biological/legal kinship."
+    ),
+    ExtractionIssueCode.RELATIONSHIP_STATE_CONFLICT: (
+        "Relationship-state evidence conflicted and requires review."
+    ),
+    ExtractionIssueCode.SELF_CORRECTION_APPLIED: (
+        "An explicit speaker self-correction prevented the superseded claim from becoming active."
+    ),
+    ExtractionIssueCode.SELF_CORRECTION_AMBIGUOUS: (
+        "A possible self-correction could not be assigned safely and requires review."
     ),
     ExtractionIssueCode.DERIVED_CLAIM_SELF_REFERENCE: (
         "A claim self-reference was removed from derived provenance."

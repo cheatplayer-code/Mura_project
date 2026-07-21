@@ -1,7 +1,7 @@
 {
-  "schema_version": "release-gates-v2",
-  "minimum_case_count": 13,
-  "minimum_adversarial_case_count": 7,
+  "schema_version": "release-gates-v3",
+  "minimum_case_count": 24,
+  "minimum_adversarial_case_count": 18,
   "minimum_person_f1": 0.95,
   "minimum_relationship_precision": 0.95,
   "minimum_relationship_recall": 0.95,
@@ -20,5 +20,15 @@
   "maximum_unsafe_story_privacy": 0,
   "maximum_unknown_issue_codes": 0,
   "maximum_missing_required_issue_codes": 0,
-  "maximum_fatal_contract_failures": 0
+  "maximum_fatal_contract_failures": 0,
+  "minimum_uncertainty_scope_accuracy": 1.0,
+  "minimum_temporal_kind_accuracy": 1.0,
+  "minimum_relationship_state_accuracy": 1.0,
+  "maximum_approximate_dates_exactified": 0,
+  "maximum_invalid_calendar_dates_accepted": 0,
+  "maximum_unresolved_relative_dates_absolutized": 0,
+  "maximum_negated_relationship_false_positives": 0,
+  "maximum_figurative_relationship_false_positives": 0,
+  "maximum_former_relationships_active": 0,
+  "maximum_ended_relationships_active": 0
 }

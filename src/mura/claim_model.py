@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any, TypeVar, cast
 
+from mura.claim_semantics import relationship_is_active_candidate
 from mura.domain.models import (
     AssertionMode,
     ClaimObjectType,
@@ -215,6 +216,8 @@ def _infer_person_evidence_class(
     transcript: TranscriptEnvelope,
     speaker_name: str,
 ) -> EvidenceClass:
+    if person.uncertainty is not None:
+        return EvidenceClass.U_UNCERTAIN
     source_text = joined_segment_text(person.source_segment_ids, transcript)
     surfaces = person_name_surfaces(person)
     if any(contains_exact_surface(source_text, surface) for surface in surfaces):
@@ -237,6 +240,8 @@ def _infer_relationship_evidence_class(
     speaker_name: str,
     coreference_by_id: dict[str, CoreferenceLink],
 ) -> EvidenceClass:
+    if not relationship_is_active_candidate(relationship):
+        return EvidenceClass.U_UNCERTAIN
     analysis = analyze_relationship_evidence(
         relationship=relationship,
         transcript=transcript,
@@ -267,6 +272,8 @@ def _infer_relationship_evidence_class(
 
 
 def _infer_generic_evidence_class(item: EvidenceBackedObject) -> EvidenceClass:
+    if item.uncertainty is not None:
+        return EvidenceClass.U_UNCERTAIN
     assertion_mode = getattr(item, "assertion_mode", None)
     if assertion_mode is AssertionMode.EXPLICIT:
         return EvidenceClass.A_EXPLICIT
@@ -342,8 +349,7 @@ def _weakest_evidence_class(
     classes = [
         evidence_by_id[item].evidence_class for item in evidence_ids if item in evidence_by_id
     ]
-    if not classes:
-        return fallback
+    classes.append(fallback)
     return max(classes, key=_EVIDENCE_CLASS_RANK.__getitem__)
 
 
@@ -880,6 +886,22 @@ def _materialize_item(
     }
     if hasattr(item, "verification_status"):
         update["verification_status"] = VerificationStatus.UNREVIEWED
+    if item.uncertainty is not None:
+        update["uncertainty"] = item.uncertainty.model_copy(
+            update={
+                "source_segment_ids": list(item.source_segment_ids),
+                "evidence_ids": list(valid_evidence_ids),
+            }
+        )
+    if isinstance(item, RelationshipClaim):
+        update["state_evidence_ids"] = list(valid_evidence_ids)
+    if isinstance(item, FamilyEvent) and item.date is not None:
+        update["date"] = item.date.model_copy(
+            update={
+                "source_evidence_ids": list(valid_evidence_ids),
+                "verification_status": VerificationStatus.UNREVIEWED,
+            }
+        )
     if isinstance(item, PersonMention):
         variants = _materialize_name_variants(
             item,

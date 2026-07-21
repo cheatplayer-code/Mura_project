@@ -19,8 +19,8 @@ def test_adversarial_dataset_is_enabled_and_release_gates_pass() -> None:
     report = run_benchmark(RELEASE_MANIFEST)
     adversarial = [case for case in report.cases if "adversarial" in case.construction_tags]
 
-    assert report.summary.case_count == 13
-    assert len(adversarial) == 7
+    assert report.summary.case_count == 24
+    assert len(adversarial) == 18
     assert {case.split.value for case in adversarial} == {"test"}
 
     result = evaluate_release_gates(report, load_release_gate_config(GATES))
@@ -59,7 +59,7 @@ def test_release_gate_reports_regression_without_hiding_measurement() -> None:
     result = evaluate_release_gates(report, strict)
     assert result.passed is False
     assert any("case_count" in failure for failure in result.failures)
-    assert result.measurements["case_count"] == 13
+    assert result.measurements["case_count"] == 24
 
 
 def test_cli_returns_nonzero_for_failed_release_gate(tmp_path: Path) -> None:

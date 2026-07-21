@@ -5,16 +5,25 @@ import unicodedata
 from collections.abc import Iterable
 
 from mura.claim_model import validate_extraction_contract_v2
+from mura.claim_semantics import (
+    date_is_invalid_calendar_value,
+    date_is_silently_exactified,
+    infer_relationship_state,
+    relationship_semantic_text,
+)
 from mura.domain.models import (
     ClaimObjectType,
     CleanerResult,
     ConflictStatus,
     CoreferenceStatus,
     CorrectionKind,
+    EvidenceBackedObject,
     EvidenceClass,
     ExtractionResult,
     PersonMention,
     RelationshipClaim,
+    RelationshipState,
+    TemporalKind,
     TranscriptEnvelope,
     VerificationStatus,
 )
@@ -334,6 +343,40 @@ def _ensure_question_text_supported(question: str, evidence_text: str, object_na
         raise ContractValidationError(f"{object_name} question adds unsupported facts")
 
 
+def _validate_claim_uncertainty(
+    item: EvidenceBackedObject,
+    *,
+    result: ExtractionResult,
+    valid_segments: set[str],
+    object_name: str,
+) -> None:
+    uncertainty = item.uncertainty
+    if uncertainty is None:
+        return
+    if set(uncertainty.source_segment_ids) - valid_segments:
+        raise ContractValidationError(f"{object_name} uncertainty references unknown segments")
+    if not set(uncertainty.source_segment_ids).issubset(item.source_segment_ids):
+        raise ContractValidationError(f"{object_name} uncertainty is outside claim scope")
+    if set(uncertainty.evidence_ids) - set(item.evidence_ids):
+        raise ContractValidationError(f"{object_name} uncertainty references unrelated evidence")
+    evidence_by_id = {evidence.evidence_id: evidence for evidence in result.evidence_spans}
+    cited_text = " ".join(
+        evidence_by_id[evidence_id].text
+        for evidence_id in uncertainty.evidence_ids
+        if evidence_id in evidence_by_id
+    )
+    if uncertainty.markers and cited_text:
+        if any(not _contains_evidence(cited_text, marker) for marker in uncertainty.markers):
+            raise ContractValidationError(f"{object_name} uncertainty marker is unsupported")
+    assertion_mode = getattr(item, "assertion_mode", None)
+    if assertion_mode is not None and assertion_mode.value != "uncertain":
+        raise ContractValidationError(
+            f"{object_name} uncertainty is not reflected in assertion mode"
+        )
+    if item.provenance is not None and item.evidence_class is not EvidenceClass.U_UNCERTAIN:
+        raise ContractValidationError(f"{object_name} uncertainty is auto-materializable")
+
+
 def validate_extraction_result(
     transcript: TranscriptEnvelope,
     result: ExtractionResult,
@@ -365,6 +408,12 @@ def validate_extraction_result(
         _ensure_known_segments(person.source_segment_ids, valid_segments, person.mention_id)
         if person.verification_status is not VerificationStatus.UNREVIEWED:
             raise ContractValidationError(f"{person.mention_id} is not unreviewed")
+        _validate_claim_uncertainty(
+            person,
+            result=result,
+            valid_segments=valid_segments,
+            object_name=person.mention_id,
+        )
         source_text = _joined_segment_text(person.source_segment_ids, segment_text_by_id)
         named = any(
             contains_surface(source_text, surface) for surface in person_name_surfaces(person)
@@ -382,6 +431,42 @@ def validate_extraction_result(
         if relationship.verification_status is not VerificationStatus.UNREVIEWED:
             raise ContractValidationError(f"{relationship.relationship_id} is not unreviewed")
         _ensure_known_segments(relationship.source_segment_ids, valid_segments, object_name)
+        _validate_claim_uncertainty(
+            relationship,
+            result=result,
+            valid_segments=valid_segments,
+            object_name=object_name,
+        )
+        relationship_text = relationship_semantic_text(
+            relationship,
+            evidence_spans=result.evidence_spans,
+            people=result.people_mentions,
+            fallback_text=_joined_segment_text(
+                relationship.source_segment_ids,
+                segment_text_by_id,
+            ),
+        )
+        inferred_state = infer_relationship_state(relationship_text)
+        if (
+            inferred_state is not RelationshipState.CURRENT
+            and relationship.relationship_state is RelationshipState.CURRENT
+        ):
+            raise ContractValidationError(
+                f"{relationship.relationship_id} loses historical or negative relationship state"
+            )
+        if relationship.relationship_state is not RelationshipState.CURRENT:
+            if (
+                relationship.provenance is not None
+                and relationship.evidence_class is not EvidenceClass.U_UNCERTAIN
+            ):
+                raise ContractValidationError(
+                    f"{relationship.relationship_id} non-current state is auto-materializable"
+                )
+            if set(relationship.state_evidence_ids) - set(relationship.evidence_ids):
+                raise ContractValidationError(
+                    f"{relationship.relationship_id} state evidence is outside "
+                    "relationship evidence"
+                )
         if relationship.subject_mention_id not in mention_set:
             raise ContractValidationError(
                 f"{relationship.relationship_id} has unknown subject mention"
@@ -427,14 +512,19 @@ def validate_extraction_result(
             relationship.relationship_id in open_conflicted_relationship_ids
             and evidence.grounding_decision == "insufficient_deterministic_signal"
         )
-        if evidence.role_consistent is False and not preserve_open_conflict:
+        if (
+            relationship.relationship_state is RelationshipState.CURRENT
+            and evidence.role_consistent is False
+            and not preserve_open_conflict
+        ):
             raise ContractValidationError(
                 f"{relationship.relationship_id} contradicts deterministic multilingual "
                 f"kinship evidence: {evidence.linguistic_relationship_signals}; "
                 f"possessive_markers={evidence.third_person_possessive_markers}"
             )
         if (
-            evidence.evidence_class == EvidenceClass.C_SPEAKER_ANCHORED.value
+            relationship.relationship_state is RelationshipState.CURRENT
+            and evidence.evidence_class == EvidenceClass.C_SPEAKER_ANCHORED.value
             and evidence.role_consistent is not True
         ):
             raise ContractValidationError(
@@ -446,6 +536,12 @@ def validate_extraction_result(
         _ensure_known_segments(event.source_segment_ids, valid_segments, event.event_id)
         if event.verification_status is not VerificationStatus.UNREVIEWED:
             raise ContractValidationError(f"{event.event_id} is not unreviewed")
+        _validate_claim_uncertainty(
+            event,
+            result=result,
+            valid_segments=valid_segments,
+            object_name=event.event_id,
+        )
         unknown = set(event.participant_mention_ids) - mention_set
         if unknown:
             raise ContractValidationError(
@@ -473,12 +569,36 @@ def validate_extraction_result(
             field_name="location",
         )
         if event.date is not None:
+            if event.date.verification_status is not VerificationStatus.UNREVIEWED:
+                raise ContractValidationError(f"{event.event_id} temporal value is not unreviewed")
+            if not event.date.original_expression:
+                raise ContractValidationError(
+                    f"{event.event_id} temporal value lost original expression"
+                )
             _ensure_claim_text_supported(
-                value=event.date.original_expression or event.date.value,
+                value=event.date.original_expression,
                 evidence_text=evidence_text,
                 object_name=event.event_id,
                 field_name="date",
             )
+            if set(event.date.source_evidence_ids) - set(event.evidence_ids):
+                raise ContractValidationError(
+                    f"{event.event_id} temporal evidence is outside event evidence"
+                )
+            if date_is_silently_exactified(event.date):
+                raise ContractValidationError(
+                    f"{event.event_id} silently exactifies an approximate date"
+                )
+            if date_is_invalid_calendar_value(event.date):
+                raise ContractValidationError(f"{event.event_id} contains an invalid calendar date")
+            if (
+                event.date.kind is TemporalKind.RELATIVE
+                and event.date.normalized_value is not None
+                and event.date.anchor_event_id is None
+            ):
+                raise ContractValidationError(
+                    f"{event.event_id} resolves a relative date without an anchor"
+                )
         explicit_people = _explicit_people_in_segments(
             event.source_segment_ids, segment_text_by_id, result.people_mentions
         )
@@ -498,6 +618,12 @@ def validate_extraction_result(
     for description in result.descriptions:
         object_name = f"description {description.description_id}"
         _ensure_known_segments(description.source_segment_ids, valid_segments, object_name)
+        _validate_claim_uncertainty(
+            description,
+            result=result,
+            valid_segments=valid_segments,
+            object_name=object_name,
+        )
         if description.person_mention_id not in mention_set:
             raise ContractValidationError(
                 f"{description.description_id} references an unknown person"

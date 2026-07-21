@@ -33,6 +33,16 @@ class ReleaseGateConfig(StrictModel):
     maximum_unknown_issue_codes: int = Field(default=0, ge=0)
     maximum_missing_required_issue_codes: int = Field(default=0, ge=0)
     maximum_fatal_contract_failures: int = Field(default=0, ge=0)
+    minimum_uncertainty_scope_accuracy: float = Field(default=1.0, ge=0, le=1)
+    minimum_temporal_kind_accuracy: float = Field(default=1.0, ge=0, le=1)
+    minimum_relationship_state_accuracy: float = Field(default=1.0, ge=0, le=1)
+    maximum_approximate_dates_exactified: int = Field(default=0, ge=0)
+    maximum_invalid_calendar_dates_accepted: int = Field(default=0, ge=0)
+    maximum_unresolved_relative_dates_absolutized: int = Field(default=0, ge=0)
+    maximum_negated_relationship_false_positives: int = Field(default=0, ge=0)
+    maximum_figurative_relationship_false_positives: int = Field(default=0, ge=0)
+    maximum_former_relationships_active: int = Field(default=0, ge=0)
+    maximum_ended_relationships_active: int = Field(default=0, ge=0)
 
 
 class ReleaseGateResult(StrictModel):
@@ -87,6 +97,20 @@ def evaluate_release_gates(
         "unknown_issue_codes": report.summary.unknown_issue_codes,
         "missing_required_issue_codes": report.summary.missing_required_issue_codes,
         "fatal_contract_failures": report.summary.fatal_contract_failures,
+        "uncertainty_scope_accuracy": report.summary.uncertainty_scope_accuracy.value,
+        "temporal_kind_accuracy": report.summary.temporal_kind_accuracy.value,
+        "relationship_state_accuracy": report.summary.relationship_state_accuracy.value,
+        "approximate_dates_exactified": report.summary.approximate_dates_exactified,
+        "invalid_calendar_dates_accepted": report.summary.invalid_calendar_dates_accepted,
+        "unresolved_relative_dates_absolutized": (
+            report.summary.unresolved_relative_dates_absolutized
+        ),
+        "negated_relationship_false_positives": report.summary.negated_relationship_false_positives,
+        "figurative_relationship_false_positives": (
+            report.summary.figurative_relationship_false_positives
+        ),
+        "former_relationships_active": report.summary.former_relationships_active,
+        "ended_relationships_active": report.summary.ended_relationships_active,
     }
 
     failures: list[str] = []
@@ -137,6 +161,31 @@ def evaluate_release_gates(
         config.maximum_missing_required_issue_codes,
     )
     require_maximum("fatal_contract_failures", config.maximum_fatal_contract_failures)
+    require_minimum("uncertainty_scope_accuracy", config.minimum_uncertainty_scope_accuracy)
+    require_minimum("temporal_kind_accuracy", config.minimum_temporal_kind_accuracy)
+    require_minimum("relationship_state_accuracy", config.minimum_relationship_state_accuracy)
+    require_maximum(
+        "approximate_dates_exactified",
+        config.maximum_approximate_dates_exactified,
+    )
+    require_maximum(
+        "invalid_calendar_dates_accepted",
+        config.maximum_invalid_calendar_dates_accepted,
+    )
+    require_maximum(
+        "unresolved_relative_dates_absolutized",
+        config.maximum_unresolved_relative_dates_absolutized,
+    )
+    require_maximum(
+        "negated_relationship_false_positives",
+        config.maximum_negated_relationship_false_positives,
+    )
+    require_maximum(
+        "figurative_relationship_false_positives",
+        config.maximum_figurative_relationship_false_positives,
+    )
+    require_maximum("former_relationships_active", config.maximum_former_relationships_active)
+    require_maximum("ended_relationships_active", config.maximum_ended_relationships_active)
     return ReleaseGateResult(passed=not failures, failures=failures, measurements=measurements)
 
 

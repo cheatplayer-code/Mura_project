@@ -84,7 +84,7 @@ def run_benchmark(manifest_path: str | Path) -> BenchmarkReport:
         raise ValueError("benchmark manifest contains no enabled cases")
 
     return BenchmarkReport(
-        report_schema_version="evaluation-report-v2",
+        report_schema_version="evaluation-report-v3",
         manifest_path=_display_path(resolved_manifest_path),
         pipeline_versions=get_pipeline_versions().model_dump(mode="json"),
         cases=evaluations,

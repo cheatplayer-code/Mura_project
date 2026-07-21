@@ -7,6 +7,7 @@ from typing import Any, TypeVar
 from pydantic import BaseModel, ValidationError
 
 from mura.claim_model import close_extraction_conflicts, materialize_extraction_contract_v2
+from mura.claim_semantics import add_temporal_conflicts, harden_claim_semantics
 from mura.domain.models import (
     CleanerResult,
     ConflictSet,
@@ -395,6 +396,35 @@ def process_extraction_candidate(
         issues=issues,
     )
 
+    semantic_seed = _base_result(
+        recording_id=transcript.recording_id,
+        speaker_id=speaker_id,
+        speaker_name=speaker_name,
+        languages=languages,
+        activities=activities,
+        evidence=evidence,
+        coreference_links=coreference_links,
+        conflicts=conflicts,
+        people=people,
+        relationships=relationships,
+        events=events,
+        descriptions=descriptions,
+        stories=stories,
+        questions=questions,
+    )
+    semantic_seed, semantic_issues = harden_claim_semantics(
+        semantic_seed,
+        transcript,
+        cleaned=cleaned,
+    )
+    issues.extend(semantic_issues)
+    people = list(semantic_seed.people_mentions)
+    relationships = list(semantic_seed.relationship_claims)
+    events = list(semantic_seed.events)
+    descriptions = list(semantic_seed.descriptions)
+    stories = list(semantic_seed.stories)
+    questions = list(semantic_seed.unresolved_questions)
+
     def build_result(
         *,
         selected_people: list[PersonMention] | None = None,
@@ -520,6 +550,8 @@ def process_extraction_candidate(
         cleaned=cleaned,
     )
     issues.extend(claim_model_issues)
+    result, temporal_conflict_issues = add_temporal_conflicts(result)
+    issues.extend(temporal_conflict_issues)
 
     def post_candidate(
         *,

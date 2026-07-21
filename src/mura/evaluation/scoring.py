@@ -1,15 +1,24 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any
 
+from mura.claim_semantics import (
+    date_is_invalid_calendar_value,
+    date_is_silently_exactified,
+    infer_relationship_state,
+    relationship_is_active_candidate,
+    relationship_semantic_text,
+)
 from mura.domain.models import (
     EvidenceSourceLayer,
     ExtractionResult,
     PersonMention,
     RelationshipClaim,
+    RelationshipState,
     RelationshipType,
+    TemporalKind,
     VerificationStatus,
 )
 from mura.evaluation.models import (
@@ -333,6 +342,31 @@ def _unknown_segment_reference_count(
     )
 
 
+def _uncertain_object_refs(extraction: ExtractionResult) -> set[str]:
+    refs: set[str] = set()
+    for prefix, items, id_field in (
+        ("person", extraction.people_mentions, "mention_id"),
+        ("relationship", extraction.relationship_claims, "relationship_id"),
+        ("event", extraction.events, "event_id"),
+        ("description", extraction.descriptions, "description_id"),
+        ("story", extraction.stories, "story_id"),
+        ("question", extraction.unresolved_questions, "question_id"),
+    ):
+        refs.update(
+            f"{prefix}:{getattr(item, id_field)}"
+            for item in items
+            if getattr(item, "uncertainty", None) is not None
+        )
+    return refs
+
+
+def _ratio_for_mapping(actual: Mapping[str, str], expected: Mapping[str, object]) -> RatioMetric:
+    numerator = sum(
+        actual.get(key) == getattr(value, "value", value) for key, value in expected.items()
+    )
+    return ratio_metric(numerator, len(expected))
+
+
 def score_case(
     *,
     case: BenchmarkCase,
@@ -363,7 +397,9 @@ def score_case(
     quarantined_relationship_ids = {
         str(issue["object_id"])
         for issue in issues
-        if issue.get("object_type") == "relationship" and issue.get("object_id")
+        if issue.get("object_type") == "relationship"
+        and issue.get("object_id")
+        and issue.get("severity") in {"error", "fatal"}
     }
     expected_quarantine = set(case.gold.quarantined_relationship_ids)
     provenance_complete, provenance_total = _provenance_counts(extraction)
@@ -397,6 +433,33 @@ def score_case(
         f"relationship:{relationship_id}"
         for relationship_id in case.gold.quarantined_relationship_ids
     )
+    uncertain_actual = _uncertain_object_refs(extraction)
+    uncertainty_expected = set(case.gold.uncertain_object_ids)
+    uncertainty_correct = len(uncertain_actual.intersection(uncertainty_expected))
+    uncertainty_denominator = len(uncertainty_expected.union(uncertain_actual))
+    temporal_actual = {
+        event.event_id: event.date.kind.value
+        for event in extraction.events
+        if event.date is not None
+    }
+    relationship_state_actual = {
+        item.relationship_id: item.relationship_state.value
+        for item in extraction.relationship_claims
+    }
+    segment_text = {segment.segment_id: segment.text for segment in case.transcript.segments}
+    inferred_states = {
+        item.relationship_id: infer_relationship_state(
+            relationship_semantic_text(
+                item,
+                evidence_spans=extraction.evidence_spans,
+                people=extraction.people_mentions,
+                fallback_text=" ".join(
+                    segment_text[sid] for sid in item.source_segment_ids if sid in segment_text
+                ),
+            )
+        )
+        for item in extraction.relationship_claims
+    }
 
     return CaseEvaluation(
         case_id=case.case_id,
@@ -449,6 +512,45 @@ def score_case(
             for issue in issues
         ),
         evidence_recovery_counts=evidence_recovery.to_dict(),
+        uncertainty_scope_accuracy=ratio_metric(uncertainty_correct, uncertainty_denominator),
+        temporal_kind_accuracy=_ratio_for_mapping(temporal_actual, case.gold.temporal_kinds),
+        relationship_state_accuracy=_ratio_for_mapping(
+            relationship_state_actual,
+            case.gold.relationship_states,
+        ),
+        approximate_dates_exactified=sum(
+            date_is_silently_exactified(event.date) for event in extraction.events
+        ),
+        invalid_calendar_dates_accepted=sum(
+            date_is_invalid_calendar_value(event.date) for event in extraction.events
+        ),
+        unresolved_relative_dates_absolutized=sum(
+            event.date is not None
+            and event.date.kind is TemporalKind.RELATIVE
+            and event.date.normalized_value is not None
+            and event.date.anchor_event_id is None
+            for event in extraction.events
+        ),
+        negated_relationship_false_positives=sum(
+            inferred_states[item.relationship_id] is RelationshipState.NEGATED
+            and relationship_is_active_candidate(item)
+            for item in extraction.relationship_claims
+        ),
+        figurative_relationship_false_positives=sum(
+            inferred_states[item.relationship_id] is RelationshipState.FIGURATIVE
+            and relationship_is_active_candidate(item)
+            for item in extraction.relationship_claims
+        ),
+        former_relationships_active=sum(
+            inferred_states[item.relationship_id] is RelationshipState.FORMER
+            and relationship_is_active_candidate(item)
+            for item in extraction.relationship_claims
+        ),
+        ended_relationships_active=sum(
+            inferred_states[item.relationship_id] is RelationshipState.ENDED
+            and relationship_is_active_candidate(item)
+            for item in extraction.relationship_claims
+        ),
     )
 
 
@@ -465,6 +567,12 @@ def aggregate_case_metrics(cases: list[CaseEvaluation]) -> BenchmarkSummary:
     direction_denominator = sum(case.relationship_direction_accuracy.denominator for case in cases)
     provenance_numerator = sum(case.provenance_completeness.numerator for case in cases)
     provenance_denominator = sum(case.provenance_completeness.denominator for case in cases)
+    uncertainty_numerator = sum(case.uncertainty_scope_accuracy.numerator for case in cases)
+    uncertainty_denominator = sum(case.uncertainty_scope_accuracy.denominator for case in cases)
+    temporal_numerator = sum(case.temporal_kind_accuracy.numerator for case in cases)
+    temporal_denominator = sum(case.temporal_kind_accuracy.denominator for case in cases)
+    state_numerator = sum(case.relationship_state_accuracy.numerator for case in cases)
+    state_denominator = sum(case.relationship_state_accuracy.denominator for case in cases)
 
     return BenchmarkSummary(
         case_count=len(cases),
@@ -490,4 +598,20 @@ def aggregate_case_metrics(cases: list[CaseEvaluation]) -> BenchmarkSummary:
         unknown_issue_codes=sum(case.unknown_issue_codes for case in cases),
         missing_required_issue_codes=sum(case.missing_required_issue_codes for case in cases),
         fatal_contract_failures=sum(case.fatal_contract_failures for case in cases),
+        uncertainty_scope_accuracy=ratio_metric(uncertainty_numerator, uncertainty_denominator),
+        temporal_kind_accuracy=ratio_metric(temporal_numerator, temporal_denominator),
+        relationship_state_accuracy=ratio_metric(state_numerator, state_denominator),
+        approximate_dates_exactified=sum(case.approximate_dates_exactified for case in cases),
+        invalid_calendar_dates_accepted=sum(case.invalid_calendar_dates_accepted for case in cases),
+        unresolved_relative_dates_absolutized=sum(
+            case.unresolved_relative_dates_absolutized for case in cases
+        ),
+        negated_relationship_false_positives=sum(
+            case.negated_relationship_false_positives for case in cases
+        ),
+        figurative_relationship_false_positives=sum(
+            case.figurative_relationship_false_positives for case in cases
+        ),
+        former_relationships_active=sum(case.former_relationships_active for case in cases),
+        ended_relationships_active=sum(case.ended_relationships_active for case in cases),
     )

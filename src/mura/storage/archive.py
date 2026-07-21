@@ -336,6 +336,32 @@ def _relationship_signature(row: ArchiveClaimRow) -> tuple[str, ...]:
     return relationship_type, subject_id, subject_role, object_id, object_role
 
 
+def _relationship_state_status(row: ArchiveClaimRow) -> str:
+    if row.subject_person_id is None or row.object_person_id is None:
+        return "unresolved"
+    state = str(row.payload.get("relationship_state", "current"))
+    if (
+        row.payload.get("uncertainty") is not None
+        or row.assertion_mode == AssertionMode.UNCERTAIN.value
+    ):
+        return "unresolved"
+    if state == "former":
+        return "historical"
+    if state == "ended":
+        return "ended"
+    if state == "negated":
+        return "negated"
+    if state == "figurative":
+        return "figurative"
+    if state != "current":
+        return "unresolved"
+    return "active"
+
+
+def _relationship_claim_is_active(row: ArchiveClaimRow) -> bool:
+    return _relationship_state_status(row) == "active" and row.status in {"active", "accepted"}
+
+
 def _relationship_pair(row: ArchiveClaimRow) -> tuple[str, str]:
     first, second = sorted((row.subject_person_id or "", row.object_person_id or ""))
     return first, second
@@ -487,6 +513,16 @@ class ArchiveRepository:
                 object_person_id = mapped_people.get(item.object_mention_id)
                 if subject_person_id is None or object_person_id is None:
                     status = "unresolved"
+                elif item.relationship_state.value == "former":
+                    status = "historical"
+                elif item.relationship_state.value == "ended":
+                    status = "ended"
+                elif item.relationship_state.value == "negated":
+                    status = "negated"
+                elif item.relationship_state.value == "figurative":
+                    status = "figurative"
+                elif item.relationship_state.value != "current" or item.uncertainty is not None:
+                    status = "unresolved"
             assertion_mode = getattr(item, "assertion_mode", None)
             verification_status = getattr(
                 item,
@@ -581,16 +617,12 @@ class ArchiveRepository:
             )
         )
         for claim in claims:
-            claim.status = (
-                "active"
-                if claim.subject_person_id is not None and claim.object_person_id is not None
-                else "unresolved"
-            )
+            claim.status = _relationship_state_status(claim)
 
         eligible = [
             claim
             for claim in claims
-            if claim.status == "active"
+            if _relationship_claim_is_active(claim)
             and claim.evidence_class in _AUTO_MATERIALIZABLE_CLASSES
             and claim.evidence_ids
         ]
@@ -632,14 +664,14 @@ class ArchiveRepository:
                 select(ArchiveClaimRow).where(
                     ArchiveClaimRow.family_id == family_id,
                     ArchiveClaimRow.object_type == ClaimObjectType.RELATIONSHIP.value,
-                    ArchiveClaimRow.status == "active",
                 )
             )
         )
         eligible = [
             claim
             for claim in claims
-            if claim.evidence_class in _AUTO_MATERIALIZABLE_CLASSES
+            if _relationship_claim_is_active(claim)
+            and claim.evidence_class in _AUTO_MATERIALIZABLE_CLASSES
             and claim.evidence_ids
             and claim.subject_person_id is not None
             and claim.object_person_id is not None

@@ -17,6 +17,7 @@ from mura.domain.models import (
     ReadableSegment,
     RelationshipClaim,
     RelationshipRole,
+    RelationshipState,
     RelationshipType,
     ResolutionStatus,
     TranscriptEnvelope,
@@ -47,6 +48,7 @@ def _result(
     person_ids: dict[str, str] | None = None,
     evidence_class: EvidenceClass = EvidenceClass.A_EXPLICIT,
     include_correction: bool = False,
+    relationship_state: RelationshipState = RelationshipState.CURRENT,
 ) -> PipelineResult:
     text = "Ерлан мен Нұрлан туралы отбасылық әңгіме."
     transcript = _transcript(recording_id, text)
@@ -82,6 +84,7 @@ def _result(
     relationship = RelationshipClaim(
         relationship_id="relationship_001",
         relationship_type=relationship_type,
+        relationship_state=relationship_state,
         subject_mention_id="mention_erlan",
         subject_role=subject_role,
         object_mention_id="mention_nurlan",
@@ -301,3 +304,31 @@ def test_uncertain_competing_relationship_does_not_block_grounded_graph(
     assert report.open_conflicts == 0
     assert report.graph_edges == 1
     assert len(archive.list_graph_edges("family_1")) == 1
+
+
+def test_former_relationship_is_preserved_but_not_materialized_as_active_graph(
+    tmp_path: Path,
+) -> None:
+    database = Database(f"sqlite+pysqlite:///{tmp_path / 'former.db'}")
+    database.create_schema()
+    recording_repository = RecordingRepository(database)
+    archive = ArchiveRepository(database)
+    _create_recording(recording_repository, tmp_path, "rec_former")
+
+    result = _result(
+        recording_id="rec_former",
+        relationship_type=RelationshipType.SPOUSE,
+        subject_role=RelationshipRole.SPOUSE,
+        object_role=RelationshipRole.SPOUSE,
+        relationship_state=RelationshipState.FORMER,
+        evidence_class=EvidenceClass.U_UNCERTAIN,
+    )
+    report = _persist(database, recording_id="rec_former", result=result)
+
+    relationship_claims = [
+        claim for claim in archive.list_claims("family_1") if claim.object_type == "relationship"
+    ]
+    assert len(relationship_claims) == 1
+    assert relationship_claims[0].status == "historical"
+    assert report.graph_edges == 0
+    assert archive.list_graph_edges("family_1") == []
