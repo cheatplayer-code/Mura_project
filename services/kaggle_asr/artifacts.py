@@ -68,9 +68,7 @@ def snapshot_artifacts(snapshot_path: Path) -> SnapshotArtifacts:
     return SnapshotArtifacts(snapshot_path=snapshot_path, file_sha256=digests)
 
 
-def _snapshot_download(
-    *, repo_id: str, revision: str, token: str | None = None
-) -> str:
+def _snapshot_download(*, repo_id: str, revision: str, token: str | None = None) -> str:
     """Load the optional Hugging Face client only in the live ASR environment."""
     try:
         from huggingface_hub import snapshot_download
