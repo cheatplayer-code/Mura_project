@@ -41,6 +41,9 @@ class KinshipOccurrence:
 _SINGULAR_ANAPHORS: dict[str, str] = {
     "оның": "kk",
     "ол": "kk",
+    "онымен": "kk",
+    "онда": "kk",
+    "соның": "kk",
     "его": "ru",
     "ее": "ru",
     "её": "ru",
@@ -52,6 +55,9 @@ _SINGULAR_ANAPHORS: dict[str, str] = {
 _PLURAL_ANAPHORS: dict[str, str] = {
     "олардың": "kk",
     "олар": "kk",
+    "олармен": "kk",
+    "оларда": "kk",
+    "солардың": "kk",
     "их": "ru",
     "они": "ru",
     "their": "en",
@@ -63,6 +69,23 @@ _RU_U_ANAPHORS: dict[str, GrammaticalNumber] = {
     "неё": GrammaticalNumber.SINGULAR,
     "них": GrammaticalNumber.PLURAL,
 }
+
+_COMPOUND_ANAPHORS: tuple[tuple[tuple[str, ...], str, GrammaticalNumber], ...] = (
+    (("с", "ними"), "ru", GrammaticalNumber.PLURAL),
+    (("для", "них"), "ru", GrammaticalNumber.PLURAL),
+    (("with", "them"), "en", GrammaticalNumber.PLURAL),
+    (("for", "them"), "en", GrammaticalNumber.PLURAL),
+    (("с", "ним"), "ru", GrammaticalNumber.SINGULAR),
+    (("с", "ней"), "ru", GrammaticalNumber.SINGULAR),
+    (("для", "него"), "ru", GrammaticalNumber.SINGULAR),
+    (("для", "нее"), "ru", GrammaticalNumber.SINGULAR),
+    (("для", "неё"), "ru", GrammaticalNumber.SINGULAR),
+    (("with", "him"), "en", GrammaticalNumber.SINGULAR),
+    (("with", "her"), "en", GrammaticalNumber.SINGULAR),
+    (("for", "him"), "en", GrammaticalNumber.SINGULAR),
+    (("for", "her"), "en", GrammaticalNumber.SINGULAR),
+)
+
 _KINSHIP_WINDOW_CHARS = 32
 _PARENT = RelationshipRole.PARENT
 _CHILD = RelationshipRole.CHILD
@@ -83,33 +106,58 @@ _ADDITIONAL_EN_KINSHIP_FRAMES: dict[str, english.KinshipFrame] = {
 def find_anaphors(text: str) -> list[AnaphorOccurrence]:
     tokens = tokenize(text)
     matches: list[AnaphorOccurrence] = []
+    covered_token_indexes: set[int] = set()
+
+    for index in range(len(tokens)):
+        for surfaces, language, number in _COMPOUND_ANAPHORS:
+            if index + len(surfaces) > len(tokens):
+                continue
+            window = tuple(token.normalized for token in tokens[index : index + len(surfaces)])
+            if window != surfaces:
+                continue
+            first = tokens[index]
+            last = tokens[index + len(surfaces) - 1]
+            matches.append(
+                AnaphorOccurrence(
+                    surface=text[first.start : last.end],
+                    start=first.start,
+                    end=last.end,
+                    language=language,
+                    grammatical_number=number,
+                )
+            )
+            covered_token_indexes.update(range(index, index + len(surfaces)))
+            break
+
     for index, token in enumerate(tokens):
-        language = _SINGULAR_ANAPHORS.get(token.normalized)
-        if language is not None:
+        if index in covered_token_indexes:
+            continue
+        single_language = _SINGULAR_ANAPHORS.get(token.normalized)
+        if single_language is not None:
             matches.append(
                 AnaphorOccurrence(
                     surface=token.surface,
                     start=token.start,
                     end=token.end,
-                    language=language,
+                    language=single_language,
                     grammatical_number=GrammaticalNumber.SINGULAR,
                 )
             )
             continue
-        language = _PLURAL_ANAPHORS.get(token.normalized)
-        if language is not None:
+        plural_language = _PLURAL_ANAPHORS.get(token.normalized)
+        if plural_language is not None:
             matches.append(
                 AnaphorOccurrence(
                     surface=token.surface,
                     start=token.start,
                     end=token.end,
-                    language=language,
+                    language=plural_language,
                     grammatical_number=GrammaticalNumber.PLURAL,
                 )
             )
             continue
-        number = _RU_U_ANAPHORS.get(token.normalized)
-        if number is None or index == 0 or tokens[index - 1].normalized != "у":
+        ru_number = _RU_U_ANAPHORS.get(token.normalized)
+        if ru_number is None or index == 0 or tokens[index - 1].normalized != "у":
             continue
         prefix = tokens[index - 1]
         matches.append(
@@ -118,7 +166,7 @@ def find_anaphors(text: str) -> list[AnaphorOccurrence]:
                 start=prefix.start,
                 end=token.end,
                 language="ru",
-                grammatical_number=number,
+                grammatical_number=ru_number,
             )
         )
     unique: dict[tuple[int, int, str], AnaphorOccurrence] = {}

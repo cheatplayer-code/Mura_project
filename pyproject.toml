@@ -24,6 +24,7 @@ dependencies = [
 
 [project.scripts]
 mura-evaluate-core = "mura.evaluation.cli:main"
+mura-evaluate-identity = "mura.evaluation.identity_cli:main"
 mura-release-smoke = "mura.smoke:main"
 
 [project.optional-dependencies]
@@ -71,6 +72,7 @@ known-first-party = ["mura"]
 [tool.ruff.lint.per-file-ignores]
 "src/mura/_relationship_grounding_impl.py" = ["RUF001"]
 "src/mura/coreference.py" = ["B009", "RUF001"]
+"src/mura/coreference_units.py" = ["RUF001"]
 "src/mura/coreference_language.py" = ["RUF001"]
 "src/mura/deepseek/anchor_prompts.py" = ["I001"]
 "src/mura/deepseek/anchors.py" = ["RUF001"]
@@ -94,6 +96,7 @@ known-first-party = ["mura"]
 "tests/test_bounded_coreference_telemetry.py" = ["RUF001"]
 "tests/test_coreference_language_boundaries.py" = ["RUF001"]
 "tests/test_entity_resolution_v2.py" = ["RUF001"]
+"tests/test_identity_safety_v3.py" = ["RUF001"]
 "tests/test_extraction_safety_hardening.py" = ["RUF001"]
 "tests/test_kazakh_linguistics.py" = ["RUF001"]
 "tests/test_kazakh_public_kinship_api.py" = ["RUF001"]

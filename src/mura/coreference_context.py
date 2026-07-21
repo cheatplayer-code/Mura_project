@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from mura.coreference_boundaries import quote_scope_for_span
 from mura.coreference_language import (
     AnaphorOccurrence,
     KinshipOccurrence,
@@ -54,6 +55,7 @@ def bounded_coreference_contexts(
 ) -> list[BoundedCoreferenceContext]:
     units = ordered_units(transcript)
     people_by_id = {person.mention_id: person for person in people}
+    segment_text_by_id = {segment.segment_id: segment.text for segment in transcript.segments}
     occurrences_by_segment = {
         segment.segment_id: person_occurrences(
             segment.text,
@@ -79,10 +81,20 @@ def bounded_coreference_contexts(
                 current_unit.start <= kinship.start and kinship.end <= current_unit.end
             ):
                 continue
+            anaphor_scope = quote_scope_for_span(segment.text, anaphor.start, anaphor.end)
+            kinship_scope = quote_scope_for_span(segment.text, kinship.start, kinship.end)
+            if (
+                anaphor_scope.scope_id != "outside"
+                or anaphor_scope.malformed
+                or kinship_scope.scope_id != anaphor_scope.scope_id
+                or kinship_scope.malformed
+            ):
+                continue
             targets = target_ids(
                 occurrences,
                 kinship_end=kinship.end,
                 unit_end=current_unit.end,
+                quote_scope=anaphor_scope.scope_id,
             )
             selected_units = context_units(units, current_index=unit_index)
             candidates = candidate_ids(
@@ -91,6 +103,7 @@ def bounded_coreference_contexts(
                 anaphor=anaphor,
                 excluded_ids=set(targets),
                 occurrences_by_segment=occurrences_by_segment,
+                segment_text_by_id=segment_text_by_id,
             )
             if not candidates:
                 continue

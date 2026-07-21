@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from mura.coreference_boundaries import quote_scope_for_span
 from mura.coreference_language import AnaphorOccurrence
 from mura.domain.models import PersonMention, TranscriptEnvelope
 from mura.linguistics.multilingual import find_known_name_matches
@@ -14,6 +15,7 @@ class NameOccurrence:
     mention_id: str
     start: int
     end: int
+    quote_scope: str = "outside"
 
 
 @dataclass(frozen=True)
@@ -28,6 +30,11 @@ _MAX_CONTEXT_UNITS = 2
 MAX_CONTEXT_CHARS = 420
 _TARGET_WINDOW_CHARS = 110
 _UNIT_RE = re.compile(r"[^.!?…;\n]+(?:[.!?…;\n]+|$)", flags=re.UNICODE)
+_STRONG_SWITCH_RE = re.compile(
+    r"(?:,\s*|\s+)(?:(?:но|однако|зато|бірақ|алайда|дегенмен|however|but)\s+|"
+    r"(?:а|ал)\s+(?=(?:он|она|они|ол|олар)\b))",
+    flags=re.IGNORECASE | re.UNICODE,
+)
 
 
 def _trimmed_span(text: str, start: int, end: int) -> tuple[int, int] | None:
@@ -75,12 +82,28 @@ def _chunk_span(text: str, start: int, end: int) -> list[tuple[int, int]]:
     return chunks
 
 
+def _split_strong_switches(text: str, start: int, end: int) -> list[tuple[int, int]]:
+    spans: list[tuple[int, int]] = []
+    cursor = start
+    for match in _STRONG_SWITCH_RE.finditer(text, start, end):
+        boundary = match.start()
+        trimmed = _trimmed_span(text, cursor, boundary)
+        if trimmed is not None:
+            spans.append(trimmed)
+        cursor = boundary
+    trimmed = _trimmed_span(text, cursor, end)
+    if trimmed is not None:
+        spans.append(trimmed)
+    return spans
+
+
 def segment_units(segment_id: str, text: str) -> list[TextUnit]:
     spans: list[tuple[int, int]] = []
     for match in _UNIT_RE.finditer(text):
         trimmed = _trimmed_span(text, match.start(), match.end())
         if trimmed is not None:
-            spans.extend(_chunk_span(text, *trimmed))
+            for clause_span in _split_strong_switches(text, *trimmed):
+                spans.extend(_chunk_span(text, *clause_span))
     if not spans:
         trimmed = _trimmed_span(text, 0, len(text))
         if trimmed is not None:
@@ -120,6 +143,7 @@ def person_occurrences(
                         mention_id=person.mention_id,
                         start=match.start,
                         end=match.end,
+                        quote_scope=quote_scope_for_span(text, match.start, match.end).scope_id,
                     ),
                 )
     return sorted(
@@ -133,12 +157,14 @@ def target_ids(
     *,
     kinship_end: int,
     unit_end: int,
+    quote_scope: str = "outside",
 ) -> list[str]:
     return sorted(
         {
             item.mention_id
             for item in occurrences
-            if kinship_end <= item.start < unit_end
+            if item.quote_scope == quote_scope
+            and kinship_end <= item.start < unit_end
             and item.start - kinship_end <= _TARGET_WINDOW_CHARS
         }
     )
@@ -186,11 +212,18 @@ def candidate_ids(
     anaphor: AnaphorOccurrence,
     excluded_ids: set[str],
     occurrences_by_segment: dict[str, list[NameOccurrence]],
+    segment_text_by_id: dict[str, str],
 ) -> list[str]:
+    anaphor_scope = quote_scope_for_span(
+        segment_text_by_id[current_unit.segment_id], anaphor.start, anaphor.end
+    )
+    if anaphor_scope.scope_id != "outside" or anaphor_scope.malformed:
+        return []
     local = {
         occurrence.mention_id
         for occurrence in occurrences_by_segment[current_unit.segment_id]
         if occurrence.mention_id not in excluded_ids
+        and occurrence.quote_scope == anaphor_scope.scope_id
         and current_unit.start <= occurrence.start
         and occurrence.end <= anaphor.start
     }
@@ -204,6 +237,7 @@ def candidate_ids(
             occurrence.mention_id
             for occurrence in occurrences_by_segment[previous.segment_id]
             if occurrence.mention_id not in excluded_ids
+            and occurrence.quote_scope == anaphor_scope.scope_id
             and previous.start <= occurrence.start
             and occurrence.end <= previous.end
         }

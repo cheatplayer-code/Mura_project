@@ -4,7 +4,10 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
+from mura.claim_semantics import relationship_is_active_candidate
 from mura.domain.models import (
+    AssertionMode,
+    EpistemicStatus,
     EvidenceClass,
     ExtractionResult,
     KnownPerson,
@@ -27,7 +30,6 @@ from mura.entity_resolution import (
     categories_conflict,
     legacy_resolution_context,
 )
-from mura.relationship_evidence import person_name_surfaces
 
 
 @dataclass
@@ -150,53 +152,85 @@ def _candidate_name_signals(
     verified_aliases = {
         normalize_name(alias) for alias in profile.verified_aliases if normalize_name(alias)
     }
-    known_surfaces = {canonical, *aliases}
     signals: list[ResolutionSignal] = []
 
     normalized_primary = normalize_name(mention.name)
     if normalized_primary and normalized_primary == canonical:
         signals.append(
             ResolutionSignal(
-                rule_id="resolution.name.canonical_exact.v2",
+                rule_id="resolution.name.canonical_exact.v3",
                 kind=ResolutionSignalKind.CANONICAL_NAME,
-                detail=(
-                    f"mention primary name matches canonical archive name {person.canonical_name!r}"
-                ),
+                detail="mention primary name matches the archive canonical name",
                 person_id=person.person_id,
             )
         )
     if normalized_primary and normalized_primary in aliases:
         signals.append(
             ResolutionSignal(
-                rule_id="resolution.name.archive_alias_candidate.v2",
+                rule_id="resolution.name.archive_alias_candidate.v3",
                 kind=ResolutionSignalKind.ARCHIVE_ALIAS,
-                detail=f"mention primary name matches an archive alias of {person.person_id}",
+                detail="mention primary name matches an archive alias candidate",
                 person_id=person.person_id,
             )
         )
     if normalized_primary and normalized_primary in verified_aliases:
         signals.append(
             ResolutionSignal(
-                rule_id="resolution.name.verified_alias.v2",
+                rule_id="resolution.name.verified_alias.v3",
                 kind=ResolutionSignalKind.ESTABLISHED_ALIAS,
-                detail=f"mention primary name matches a verified alias of {person.person_id}",
+                detail="mention primary name matches a human-verified archive alias",
                 person_id=person.person_id,
             )
         )
+
+    # Plain model aliases can nominate candidates, but never authorize an auto-merge.
+    for alias in mention.aliases:
+        normalized = normalize_name(alias)
+        if not normalized:
+            continue
+        if normalized == canonical or normalized in aliases:
+            signals.append(
+                ResolutionSignal(
+                    rule_id="resolution.name.mention_alias_candidate.v1",
+                    kind=ResolutionSignalKind.ARCHIVE_ALIAS,
+                    detail="evidence-backed mention alias overlaps an archive name surface",
+                    person_id=person.person_id,
+                )
+            )
 
     for variant in mention.name_variants:
         if variant.variant_type not in _STRONG_ALIAS_VARIANTS or not variant.evidence_ids:
             continue
         normalized = normalize_name(variant.surface)
-        if normalized and normalized in known_surfaces:
+        if not normalized:
+            continue
+        if normalized == canonical:
             signals.append(
                 ResolutionSignal(
-                    rule_id="resolution.name.structured_variant.v2",
+                    rule_id="resolution.name.structured_canonical_variant.v3",
                     kind=ResolutionSignalKind.STRUCTURED_ALIAS,
                     detail=(
-                        f"evidence-backed {variant.variant_type.value} variant {variant.surface!r} "
-                        f"links to archive person {person.person_id}"
+                        "an evidence-backed transliteration, script, ASR, nickname, or "
+                        "diminutive variant matches the canonical archive name"
                     ),
+                    person_id=person.person_id,
+                )
+            )
+        elif normalized in verified_aliases:
+            signals.append(
+                ResolutionSignal(
+                    rule_id="resolution.name.structured_verified_alias.v3",
+                    kind=ResolutionSignalKind.ESTABLISHED_ALIAS,
+                    detail="an evidence-backed structured variant matches a verified alias",
+                    person_id=person.person_id,
+                )
+            )
+        elif normalized in aliases:
+            signals.append(
+                ResolutionSignal(
+                    rule_id="resolution.name.structured_unverified_alias.v3",
+                    kind=ResolutionSignalKind.ARCHIVE_ALIAS,
+                    detail="a structured variant matches an unverified archive alias candidate",
                     person_id=person.person_id,
                 )
             )
@@ -206,21 +240,7 @@ def _candidate_name_signals(
 def _candidate_state(mention: PersonMention, profile: KnownPersonProfile) -> _CandidateState | None:
     name_signals = _candidate_name_signals(mention, profile)
     if not name_signals:
-        mention_names = {normalize_name(surface) for surface in person_name_surfaces(mention)}
-        known_names = {
-            normalize_name(profile.person.canonical_name),
-            *(normalize_name(alias) for alias in profile.person.aliases),
-        }
-        if not (mention_names & known_names):
-            return None
-        name_signals = [
-            ResolutionSignal(
-                rule_id="resolution.name.surface_exact.v2",
-                kind=ResolutionSignalKind.CANONICAL_NAME,
-                detail="a normalized mention surface matches a canonical name or archive alias",
-                person_id=profile.person.person_id,
-            )
-        ]
+        return None
 
     state = _CandidateState(profile=profile, supporting=name_signals)
     state.supporting.append(
@@ -231,6 +251,23 @@ def _candidate_state(mention: PersonMention, profile: KnownPersonProfile) -> _Ca
             person_id=profile.person.person_id,
         )
     )
+
+    uncertainty_status = mention.uncertainty.status if mention.uncertainty is not None else None
+    if mention.assertion_mode is AssertionMode.UNCERTAIN or uncertainty_status in {
+        EpistemicStatus.UNCERTAIN,
+        EpistemicStatus.REMEMBERED_IMPRECISELY,
+        EpistemicStatus.REPORTED,
+        EpistemicStatus.COMPETING,
+        EpistemicStatus.UNRESOLVED,
+    }:
+        state.conflicting.append(
+            ResolutionSignal(
+                rule_id="resolution.guard.uncertain_mention.v1",
+                kind=ResolutionSignalKind.UNCERTAIN_MENTION,
+                detail="uncertain or reported identity mention requires human review",
+                person_id=profile.person.person_id,
+            )
+        )
 
     mention_relation = _normalize_relation(mention.relation_to_speaker)
     known_relation = _normalize_relation(profile.person.relation_to_speaker)
@@ -367,6 +404,8 @@ def _add_graph_signals(
     seed_person_by_mention: dict[str, str],
 ) -> None:
     for relationship in extraction.relationship_claims:
+        if not relationship_is_active_candidate(relationship):
+            continue
         if (
             relationship.evidence_class not in _GRAPH_ELIGIBLE_EVIDENCE_CLASSES
             or not relationship.evidence_ids
@@ -419,25 +458,103 @@ def _trace_to_resolution(trace: ResolutionTrace) -> MentionResolution:
     )
 
 
+def _verified_alias_collision(states: list[_CandidateState]) -> bool:
+    return sum(state.has_support(ResolutionSignalKind.ESTABLISHED_ALIAS) for state in states) > 1
+
+
+def _incompatible_mention_pairs(extraction: ExtractionResult) -> set[frozenset[str]]:
+    return {
+        frozenset((relationship.subject_mention_id, relationship.object_mention_id))
+        for relationship in extraction.relationship_claims
+        if relationship_is_active_candidate(relationship)
+        and relationship.evidence_class in _GRAPH_ELIGIBLE_EVIDENCE_CLASSES
+        and relationship.evidence_ids
+    }
+
+
+def _identity_collision_pairs(
+    selected: dict[str, _CandidateState],
+    incompatible_pairs: set[frozenset[str]],
+) -> set[frozenset[str]]:
+    collisions: set[frozenset[str]] = set()
+    for pair in incompatible_pairs:
+        mention_ids = sorted(pair)
+        if len(mention_ids) != 2:
+            continue
+        first = selected.get(mention_ids[0])
+        second = selected.get(mention_ids[1])
+        if first is not None and second is not None and first.person_id == second.person_id:
+            collisions.add(pair)
+    return collisions
+
+
+def _add_collision_signal(
+    states: list[_CandidateState],
+    *,
+    rule_id: str,
+    kind: ResolutionSignalKind,
+    detail: str,
+) -> None:
+    for state in states:
+        state.conflicting.append(
+            ResolutionSignal(
+                rule_id=rule_id,
+                kind=kind,
+                detail=detail,
+                person_id=state.person_id,
+            )
+        )
+        state.conflicting = _unique_signals(state.conflicting)
+
+
 def resolve_mentions_with_report(
     extraction: ExtractionResult,
     context: EntityResolutionContext,
 ) -> EntityResolutionRun:
     states_by_mention: dict[str, list[_CandidateState]] = {}
+    verified_alias_collision_mentions: set[str] = set()
     for mention in extraction.people_mentions:
         states = [
             state
             for profile in context.profiles
             if (state := _candidate_state(mention, profile)) is not None
         ]
-        states_by_mention[mention.mention_id] = sorted(states, key=lambda item: item.person_id)
+        states = sorted(states, key=lambda item: item.person_id)
+        states_by_mention[mention.mention_id] = states
+        if _verified_alias_collision(states):
+            verified_alias_collision_mentions.add(mention.mention_id)
+            _add_collision_signal(
+                states,
+                rule_id="resolution.guard.verified_alias_collision.v1",
+                kind=ResolutionSignalKind.VERIFIED_ALIAS_COLLISION,
+                detail="the same mention surface is a verified alias for multiple people",
+            )
 
-    seed_person_by_mention: dict[str, str] = {}
+    incompatible_pairs = _incompatible_mention_pairs(extraction)
+    seed_state_by_mention: dict[str, _CandidateState] = {}
     for mention_id, states in states_by_mention.items():
         compatible = [state for state in states if not state.conflicting]
-        if len(compatible) == 1 and _is_seed_resolvable(compatible[0]):
-            seed_person_by_mention[mention_id] = compatible[0].person_id
+        if (
+            mention_id not in verified_alias_collision_mentions
+            and len(compatible) == 1
+            and _is_seed_resolvable(compatible[0])
+        ):
+            seed_state_by_mention[mention_id] = compatible[0]
 
+    seed_collisions = _identity_collision_pairs(seed_state_by_mention, incompatible_pairs)
+    collision_mentions = {mention_id for pair in seed_collisions for mention_id in pair}
+    for mention_id in collision_mentions:
+        seed_state_by_mention.pop(mention_id, None)
+        _add_collision_signal(
+            states_by_mention[mention_id],
+            rule_id="resolution.guard.relationship_endpoint_collision.v1",
+            kind=ResolutionSignalKind.MENTION_COLLISION,
+            detail="distinct relationship endpoints cannot resolve to the same archive person",
+        )
+
+    seed_person_by_mention = {
+        mention_id: state.person_id for mention_id, state in seed_state_by_mention.items()
+    }
     for mention_id, states in states_by_mention.items():
         for state in states:
             _add_graph_signals(
@@ -449,15 +566,37 @@ def resolve_mentions_with_report(
             state.supporting = _unique_signals(state.supporting)
             state.conflicting = _unique_signals(state.conflicting)
 
+    selected_by_mention: dict[str, _CandidateState] = {}
+    for mention in extraction.people_mentions:
+        states = states_by_mention[mention.mention_id]
+        compatible = [state for state in states if not state.conflicting]
+        resolvable = [state for state in compatible if _is_final_resolvable(state)]
+        if (
+            mention.mention_id not in verified_alias_collision_mentions
+            and len(resolvable) == 1
+            and len(compatible) == 1
+        ):
+            selected_by_mention[mention.mention_id] = resolvable[0]
+
+    final_collisions = _identity_collision_pairs(selected_by_mention, incompatible_pairs)
+    all_collisions = seed_collisions | final_collisions
+    final_collision_mentions = {mention_id for pair in final_collisions for mention_id in pair}
+    for mention_id in final_collision_mentions:
+        selected_by_mention.pop(mention_id, None)
+        _add_collision_signal(
+            states_by_mention[mention_id],
+            rule_id="resolution.guard.relationship_endpoint_collision.v1",
+            kind=ResolutionSignalKind.MENTION_COLLISION,
+            detail="distinct relationship endpoints cannot resolve to the same archive person",
+        )
+
     traces: list[ResolutionTrace] = []
     for mention in extraction.people_mentions:
         states = states_by_mention[mention.mention_id]
         candidate_ids = [state.person_id for state in states]
-        compatible = [state for state in states if not state.conflicting]
-        resolvable = [state for state in compatible if _is_final_resolvable(state)]
+        selected = selected_by_mention.get(mention.mention_id)
 
-        if len(resolvable) == 1 and len(compatible) == 1:
-            selected = resolvable[0]
+        if selected is not None:
             rule_ids = list(dict.fromkeys(signal.rule_id for signal in selected.supporting))
             traces.append(
                 ResolutionTrace(
@@ -470,7 +609,7 @@ def resolve_mentions_with_report(
                     rule_ids=rule_ids,
                     reason=(
                         "one archive candidate has deterministic identity support beyond name "
-                        "equality and no conflicting family context"
+                        "equality and no conflicting family or mention context"
                     ),
                 )
             )
@@ -495,7 +634,7 @@ def resolve_mentions_with_report(
                     ),
                     reason=(
                         "name overlap exists, but identity is ambiguous, insufficiently "
-                        "corroborated, or contradicted by archive context"
+                        "corroborated, or contradicted by archive or mention context"
                     ),
                 )
             )
@@ -506,7 +645,7 @@ def resolve_mentions_with_report(
                 mention_id=mention.mention_id,
                 status=ResolutionStatus.NEW_PERSON,
                 candidate_person_ids=[],
-                rule_ids=["resolution.decision.no_in_scope_name_candidate.v2"],
+                rule_ids=["resolution.decision.no_in_scope_name_candidate.v3"],
                 reason=(
                     "no same-family canonical-name, archive-alias, or structured-variant candidate"
                 ),
@@ -514,6 +653,10 @@ def resolve_mentions_with_report(
         )
 
     resolutions = [_trace_to_resolution(trace) for trace in traces]
+    inactive_relationships_ignored = sum(
+        not relationship_is_active_candidate(relationship)
+        for relationship in extraction.relationship_claims
+    )
     return EntityResolutionRun(
         family_id=context.family_id,
         resolutions=resolutions,
@@ -524,6 +667,9 @@ def resolve_mentions_with_report(
             needs_review=sum(trace.status is ResolutionStatus.NEEDS_REVIEW for trace in traces),
             new_person=sum(trace.status is ResolutionStatus.NEW_PERSON for trace in traces),
             family_scope_violations=0,
+            verified_alias_collisions=len(verified_alias_collision_mentions),
+            mention_identity_collisions=len(all_collisions),
+            inactive_relationships_ignored=inactive_relationships_ignored,
         ),
     )
 

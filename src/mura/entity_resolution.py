@@ -29,6 +29,9 @@ class ResolutionSignalKind(StrEnum):
     RELATION_CONFLICT = "relation_conflict"
     GENERATION_CONFLICT = "generation_conflict"
     CATEGORY_CONFLICT = "category_conflict"
+    UNCERTAIN_MENTION = "uncertain_mention"
+    VERIFIED_ALIAS_COLLISION = "verified_alias_collision"
+    MENTION_COLLISION = "mention_collision"
 
 
 class ResolutionSignal(StrictModel):
@@ -90,7 +93,7 @@ class KnownPersonProfile(StrictModel):
 
 
 class EntityResolutionContext(StrictModel):
-    schema_version: str = "entity-resolution-context-v1"
+    schema_version: str = "entity-resolution-context-v2"
     family_id: str = Field(min_length=1)
     speaker_id: str | None = None
     profiles: list[KnownPersonProfile] = Field(default_factory=list)
@@ -145,10 +148,13 @@ class EntityResolutionMetrics(StrictModel):
     needs_review: int = Field(ge=0)
     new_person: int = Field(ge=0)
     family_scope_violations: int = Field(default=0, ge=0)
+    verified_alias_collisions: int = Field(default=0, ge=0)
+    mention_identity_collisions: int = Field(default=0, ge=0)
+    inactive_relationships_ignored: int = Field(default=0, ge=0)
 
 
 class EntityResolutionRun(StrictModel):
-    schema_version: str = "entity-resolution-run-v1"
+    schema_version: str = "entity-resolution-run-v2"
     family_id: str = Field(min_length=1)
     resolutions: list[MentionResolution] = Field(default_factory=list)
     traces: list[ResolutionTrace] = Field(default_factory=list)
