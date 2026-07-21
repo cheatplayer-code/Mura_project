@@ -26,6 +26,11 @@ class PipelineVersions(StrictModel):
     asr_vad: str
     asr_chunker: str
     asr_evaluator: str
+    long_form_planner: str
+    long_form_window_policy: str
+    long_form_executor: str
+    long_form_merge: str
+    long_form_registry: str
 
 
 CURRENT_PIPELINE_VERSIONS = PipelineVersions(
@@ -49,6 +54,11 @@ CURRENT_PIPELINE_VERSIONS = PipelineVersions(
     asr_vad="silero-vad-6.2.1",
     asr_chunker="silero-smart-v2-exact-overlap",
     asr_evaluator="asr-evaluator-v1-wer-cer-boundary",
+    long_form_planner="long-form-planner-v1",
+    long_form_window_policy="long-form-window-policy-v1",
+    long_form_executor="long-form-executor-v1-single-pass-partial",
+    long_form_merge="long-form-merge-v1",
+    long_form_registry="recording-mention-registry-v1-conservative",
 )
 
 

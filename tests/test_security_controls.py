@@ -70,6 +70,8 @@ def test_worker_callback_requires_registration_token() -> None:
             {
                 "KAGGLE_ASR_API_KEY": ASR_TOKEN,
                 "CORE_BACKEND_URL": "https://mura.example.com",
+                # Keep this test independent from a developer's local .env.
+                "WORKER_REGISTRATION_TOKEN": None,
             }
         )
 

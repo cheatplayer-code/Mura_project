@@ -162,6 +162,24 @@ class DeepSeekPipelineService:
         validate_cleaner_result(transcript, fallback)
         return fallback
 
+    def clean_raw_preserving(
+        self,
+        *,
+        transcript: TranscriptEnvelope,
+    ) -> tuple[CleanerResult, dict[str, Any]]:
+        """Return the deterministic source-preserving cleaner used by bounded windows."""
+
+        return self._raw_preserving_cleaner_fallback(transcript), {
+            "model_calls": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "repair_attempted": False,
+            "repair_succeeded": False,
+            "fallback_used": True,
+            "fallback_strategy": "raw_transcript",
+        }
+
     def extract(
         self,
         *,
@@ -289,6 +307,47 @@ class DeepSeekPipelineService:
                     initial_outcome.issues
                 )
         return outcome.result, telemetry
+
+    def extract_window(
+        self,
+        *,
+        transcript: TranscriptEnvelope,
+        cleaned: CleanerResult,
+        speaker_id: str,
+        speaker_name: str,
+        known_people: list[KnownPerson] | None = None,
+    ) -> tuple[ExtractionResult, dict[str, Any]]:
+        """Run the bounded single-pass policy regardless of the short-path focused setting."""
+
+        result, telemetry = self._extract_single(
+            transcript=transcript,
+            cleaned=cleaned,
+            speaker_id=speaker_id,
+            speaker_name=speaker_name,
+            known_people=known_people,
+        )
+        telemetry["extraction_mode"] = "long_form_window_single_pass"
+        telemetry["model_calls"] = 1 + int(bool(telemetry.get("repair_attempted")))
+        return result, telemetry
+
+    def validate_merged_candidate(
+        self,
+        *,
+        result: ExtractionResult,
+        transcript: TranscriptEnvelope,
+        cleaned: CleanerResult,
+        speaker_id: str,
+        speaker_name: str,
+    ) -> ExtractionSanitizationOutcome:
+        """Apply the normal sanitizer and provenance contract once after global merge."""
+
+        return self._process_extraction_candidate(
+            raw=result.model_dump(mode="json"),
+            transcript=transcript,
+            cleaned=cleaned,
+            speaker_id=speaker_id,
+            speaker_name=speaker_name,
+        )
 
     def _extract_focused(
         self,

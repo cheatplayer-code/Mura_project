@@ -1,161 +1,127 @@
-# Mura (Мұра)
+# Mura · Мұра
 
-Mura turns informal Kazakh, Russian, and mixed-language family voice stories into a source-linked family archive: readable transcripts, people, relationships, events, stories, corrections, and unresolved questions.
+> Family voices become a source-linked archive — in Kazakh, Russian, or both.
 
-## Current pipeline
+Mura accepts a family recording, preserves the original transcript, cleans it with DeepSeek, and extracts people, relationships, events, stories, and review questions. Every fact keeps a link to the exact transcript segment it came from.
 
-```text
-mobile application
-  -> Core FastAPI upload endpoint
-  -> PostgreSQL processing job
-  -> Kaggle GPU worker (FFmpeg -> Silero VAD -> smart chunks -> GigaAM large_ctc)
-  -> immutable raw transcript with timestamps
-  -> DeepSeek faithful cleaner
-  -> DeepSeek family-memory extractor
-  -> Pydantic, reference, and semantic validation
-  -> quarantine and mention resolution
-  -> PostgreSQL pipeline result
-  -> polling and review endpoints for the application
-```
+## What is production-ready
 
-The GPU worker and the core API are deliberately separate. Kaggle provides temporary T4 compute. The core API owns authentication, durable jobs, DeepSeek calls, PostgreSQL persistence, and the application-facing contract. No model fine-tuning is required for the MVP.
+- Russian, Kazakh, and mixed-language transcripts.
+- A bounded long-form pipeline: deterministic windows, overlap, partial recovery, and a strict LLM-call budget.
+- Stable global IDs and conservative person deduplication across windows.
+- Evidence, reference, and semantic validation before anything reaches the archive.
+- Durable PostgreSQL jobs, retryable Kaggle ASR, and explicit human-review items.
+- Immutable raw ASR text; cleaned text is stored separately.
 
-## Repository layout
+## Architecture
 
 ```text
-apps/api/                 Core FastAPI service
-services/kaggle_asr/      Kaggle T4 ASR worker and tunnel bootstrap
-src/mura/asr/             Remote ASR worker client
-src/mura/deepseek/        HTTP client, prompts, cleaner, extractor
-src/mura/orchestration/   Audio storage and background job worker
-src/mura/storage/         SQLAlchemy models and repository
-src/mura/domain/          Stable Pydantic contracts
-src/mura/evaluation/      Deterministic benchmark schemas, scorer, and reports
-benchmarks/               Versioned synthetic and approved evaluation fixtures
-migrations/               Alembic PostgreSQL migrations
-tests/                    Unit and contract tests
-docs/                     Architecture, decisions, and frozen baselines
-notebooks/                Kaggle launch instructions
+Web / mobile client
+        │
+        ▼
+FastAPI Core ── PostgreSQL jobs and results
+        │
+        ├── Kaggle GPU worker: FFmpeg → Silero VAD → GigaAM ASR
+        │
+        └── DeepSeek: faithful cleanup → structured extraction
+                                      │
+                                      ▼
+                    validate → merge → resolve → review
 ```
 
-## Local Core API with PostgreSQL
+Short transcripts use one extraction pass. Long transcripts are split into stable overlapping windows; each window can fail independently, successful results are merged with globally remapped IDs, and the final document is validated again. The planner targets 3–6 extraction windows for the checked-in 18-segment long-form fixture.
+
+## Quick start
+
+Requirements: Python 3.11+, PostgreSQL for a deployed environment, and a DeepSeek API key.
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate       # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env
+```
+
+Set the required secrets in `.env`:
+
+```dotenv
+DEEPSEEK_API_KEY=sk-your-real-key
+CORE_API_KEY=generate-an-independent-random-value
+WORKER_REGISTRATION_TOKEN=generate-another-random-value
+KAGGLE_ASR_API_KEY=generate-a-third-random-value
+```
+
+Then start the API:
+
+```bash
 alembic upgrade head
 uvicorn apps.api.main:app --reload --port 8001
 ```
 
-For hackathon development `DATABASE_AUTO_CREATE=true` can create the initial schema automatically. A deployed environment should run `alembic upgrade head` and set `DATABASE_AUTO_CREATE=false`.
+For a local hackathon run, `DATABASE_AUTO_CREATE=true` is convenient. Production should run migrations explicitly and set it to `false`. API docs are available at `http://localhost:8001/docs`.
 
-The Core API does not need a GPU. It requires PostgreSQL, `DEEPSEEK_API_KEY`, `CORE_API_KEY`, `KAGGLE_ASR_API_KEY`, and `WORKER_REGISTRATION_TOKEN`.
+## API flow
 
-## Application API contract
+All application endpoints require `Authorization: Bearer <CORE_API_KEY>`.
 
-All application endpoints require:
-
-```http
-Authorization: Bearer <CORE_API_KEY>
+```text
+POST /v1/recordings                    upload audio, receive job_id
+GET  /v1/jobs/{job_id}                 poll pipeline progress
+GET  /v1/recordings/{recording_id}     read the completed archive result
+GET  /v1/recordings/{id}/review-items  read ambiguous items only
 ```
 
-Upload a recording:
+Job states are `queued`, `transcribing`, `cleaning`, `extracting`, `resolving`, `completed`, and `failed`. If Kaggle is offline, the job remains queued at `waiting_for_asr` and resumes after worker registration.
 
-```http
-POST /v1/recordings
-Content-Type: multipart/form-data
+## Kaggle ASR worker
 
-file=<audio>
-family_id=family_001
-speaker_id=person_kulash
-speaker_name=Күләш
-```
+1. Create a Kaggle notebook with a T4 GPU and Internet enabled.
+2. Add `KAGGLE_ASR_API_KEY` and, if needed, `HF_TOKEN` as Kaggle secrets.
+3. Set `CORE_BACKEND_URL` and `WORKER_REGISTRATION_TOKEN`.
+4. Follow [`notebooks/KAGGLE.md`](notebooks/KAGGLE.md).
 
-The API responds immediately with HTTP `202`:
+The tunnel URL is temporary; the Core API stores the latest registered worker URL in PostgreSQL.
 
-```json
-{
-  "recording_id": "rec_...",
-  "job_id": "job_...",
-  "status": "queued"
-}
-```
-
-Poll processing state:
-
-```http
-GET /v1/jobs/{job_id}
-```
-
-Possible statuses are `queued`, `transcribing`, `cleaning`, `extracting`, `resolving`, `completed`, and `failed`. When Kaggle is offline, the job stays queued with stage `waiting_for_asr` and is retried after the worker registers again.
-
-Read the completed source-linked result:
-
-```http
-GET /v1/recordings/{recording_id}
-```
-
-Read only items that require a human decision:
-
-```http
-GET /v1/recordings/{recording_id}/review-items
-```
-
-FastAPI publishes the exact interactive contract at `/docs` and the OpenAPI document at `/openapi.json`.
-
-## Kaggle GPU worker
-
-1. Select **GPU T4** and enable Internet.
-2. Add Kaggle secrets: `KAGGLE_ASR_API_KEY` and optionally `HF_TOKEN`.
-3. Set `CORE_BACKEND_URL` and `WORKER_REGISTRATION_TOKEN` to register the current tunnel URL.
-4. Clone this repository.
-5. Run the commands in [`notebooks/KAGGLE.md`](notebooks/KAGGLE.md).
-
-The worker exposes:
-
-- `GET /health`
-- `GET /model-info`
-- `POST /v1/transcribe` with `Authorization: Bearer <KAGGLE_ASR_API_KEY>`
-
-Quick Tunnel URLs are temporary and live only while the Kaggle session and `cloudflared` process remain active. The latest URL is persisted in PostgreSQL by the Core API.
-
-## ML core benchmark
-
-The benchmark runs without a GPU or API keys. It feeds fixed extraction candidates through the current deterministic sanitizer and evidence validator, then measures person recall, relationship precision/recall, direction accuracy, expected quarantine, and provenance completeness.
+## Quality gates
 
 ```bash
-pip install -e ".[dev]"
+pytest
+ruff check .
+ruff format --check .
+mypy src apps services scripts
+python -m compileall -q src apps services scripts
+```
+
+The deterministic benchmark does not need a GPU or API key:
+
+```bash
 mura-evaluate-core \
   --manifest benchmarks/manifest.json \
   --json-output /tmp/mura-core-report.json \
   --markdown-output /tmp/mura-core-report.md
 ```
 
-The checked-in baseline is available at:
+Frozen results live in [`docs/baselines/current_main.md`](docs/baselines/current_main.md). The mixed RU/KK long-form fixture is in [`benchmarks/long_form_mixed_ru_kk_v1.json`](benchmarks/long_form_mixed_ru_kk_v1.json).
 
-- `docs/baselines/current_main.json`
-- `docs/baselines/current_main.md`
+## Repository map
 
-This evaluator intentionally does not call GigaAM or DeepSeek. It isolates deterministic reasoning behavior so later linguistic and coreference changes can be compared against the same candidates.
-
-## Tests
-
-```bash
-pip install -e ".[dev]"
-pytest
-ruff check .
-mypy src apps services scripts
+```text
+apps/api/                 FastAPI Core
+services/kaggle_asr/      GPU ASR worker
+src/mura/deepseek/        DeepSeek client, prompts, cleaner, extractor
+src/mura/orchestration/   Recording and job orchestration
+src/mura/storage/         SQLAlchemy models and repositories
+src/mura/domain/          Stable Pydantic contracts
+src/mura/evaluation/      Deterministic evaluation tools
+benchmarks/               Versioned evaluation fixtures
+migrations/               Alembic migrations
+tests/                    Unit, integration, and contract tests
 ```
 
-## Safety rules
+## Safety by design
 
-- Raw ASR text is never overwritten.
-- Every extracted object must cite real source segment IDs.
-- New stories default to `private`.
-- LLM confidence is not treated as verification.
-- Invalid isolated model objects are quarantined instead of poisoning the result.
-- Ambiguous entity matches go to review instead of being merged automatically.
-- Application, worker-registration, Kaggle ASR, and DeepSeek credentials are separate.
-- API keys and model weights are never committed.
+- Secrets, model weights, audio, and runtime data are never committed.
+- New stories are private by default.
+- LLM confidence is never treated as human verification.
+- Invalid isolated objects are quarantined instead of poisoning the result.
+- Ambiguous identity matches stay separate and become review items.

@@ -88,6 +88,12 @@ class ExtractionIssueCode(StrEnum):
     DESCRIPTION_ATTRIBUTION_UNSUPPORTED = "description_attribution_unsupported"
     STORY_STATEMENT_UNSUPPORTED = "story_statement_unsupported"
     STORY_SENSITIVITY_UPGRADED = "story_sensitivity_upgraded"
+    LONG_FORM_WINDOW_FAILED = "long_form_window_failed"
+    LONG_FORM_WINDOW_BUDGET_EXHAUSTED = "long_form_window_budget_exhausted"
+    LONG_FORM_WINDOW_TIMEOUT = "long_form_window_timeout"
+    LONG_FORM_PARTIAL_COMPLETION = "long_form_partial_completion"
+    LONG_FORM_MERGE_COLLISION = "long_form_merge_collision"
+    LONG_FORM_CROSS_WINDOW_REFERENCE_INVALID = "long_form_cross_window_reference_invalid"
 
 
 _DETAIL_BY_CODE: dict[ExtractionIssueCode, str] = {
@@ -246,6 +252,24 @@ _DETAIL_BY_CODE: dict[ExtractionIssueCode, str] = {
     ),
     ExtractionIssueCode.STORY_SENSITIVITY_UPGRADED: (
         "Story sensitivity was conservatively upgraded from source evidence."
+    ),
+    ExtractionIssueCode.LONG_FORM_WINDOW_FAILED: (
+        "A bounded long-form window failed without discarding other accepted windows."
+    ),
+    ExtractionIssueCode.LONG_FORM_WINDOW_BUDGET_EXHAUSTED: (
+        "A bounded long-form window was skipped because the typed model budget was exhausted."
+    ),
+    ExtractionIssueCode.LONG_FORM_WINDOW_TIMEOUT: (
+        "A bounded long-form window exceeded the provider processing deadline."
+    ),
+    ExtractionIssueCode.LONG_FORM_PARTIAL_COMPLETION: (
+        "The recording completed with at least one failed or skipped bounded window."
+    ),
+    ExtractionIssueCode.LONG_FORM_MERGE_COLLISION: (
+        "A cross-window identifier collision was retained for deterministic review."
+    ),
+    ExtractionIssueCode.LONG_FORM_CROSS_WINDOW_REFERENCE_INVALID: (
+        "A cross-window reference could not be remapped to a recording-global object."
     ),
 }
 

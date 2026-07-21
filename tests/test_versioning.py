@@ -32,4 +32,9 @@ def test_pipeline_versions_are_explicit_and_copy_safe() -> None:
     assert versions.asr_vad == "silero-vad-6.2.1"
     assert versions.asr_chunker == "silero-smart-v2-exact-overlap"
     assert versions.asr_evaluator == "asr-evaluator-v1-wer-cer-boundary"
+    assert versions.long_form_planner == "long-form-planner-v1"
+    assert versions.long_form_window_policy == "long-form-window-policy-v1"
+    assert versions.long_form_executor == "long-form-executor-v1-single-pass-partial"
+    assert versions.long_form_merge == "long-form-merge-v1"
+    assert versions.long_form_registry == "recording-mention-registry-v1-conservative"
     assert versions is not CURRENT_PIPELINE_VERSIONS

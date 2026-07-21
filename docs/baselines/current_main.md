@@ -20,6 +20,11 @@ Manifest: `benchmarks/manifest.json`
 | extraction_orchestration | `focused-extraction-v1-three-pass` |
 | extractor_prompt | `extractor-v6-focused-passes` |
 | extractor_repair_prompt | `extractor-repair-v4-focused-pass` |
+| long_form_executor | `long-form-executor-v1-single-pass-partial` |
+| long_form_merge | `long-form-merge-v1` |
+| long_form_planner | `long-form-planner-v1` |
+| long_form_registry | `recording-mention-registry-v1-conservative` |
+| long_form_window_policy | `long-form-window-policy-v1` |
 | materializer | `family-materializer-v4-active-state-guard` |
 | narrative_rules | `event-story-grounding-v1` |
 | pipeline | `mura-core-v0.15.0` |
