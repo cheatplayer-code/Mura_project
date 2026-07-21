@@ -65,6 +65,7 @@ def model_info(
     return {
         "model": transcriber.model_id,
         "revision": transcriber.revision,
+        "variant": transcriber.model_variant,
         "device": settings.asr_device,
         "chunker": transcriber.chunker_version,
     }

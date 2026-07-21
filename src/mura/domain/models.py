@@ -248,6 +248,7 @@ class TranscriptEnvelope(StrictModel):
     asr_revision: str
     chunker_version: str
     processing_seconds: float | None = Field(default=None, ge=0)
+    asr_metadata: dict[str, str | int | float | bool] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_unique_segments(self) -> TranscriptEnvelope:

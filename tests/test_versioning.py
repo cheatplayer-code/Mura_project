@@ -4,7 +4,7 @@ from mura.versioning import CURRENT_PIPELINE_VERSIONS, get_pipeline_versions
 def test_pipeline_versions_are_explicit_and_copy_safe() -> None:
     versions = get_pipeline_versions()
 
-    assert versions.pipeline == "mura-core-v0.13.0"
+    assert versions.pipeline == "mura-core-v0.15.0"
     assert versions.domain_schema == "domain-v5-identity-safety"
     assert versions.cleaner_prompt == "cleaner-v3-self-correction-semantics"
     assert versions.extractor_prompt == "extractor-v6-focused-passes"
@@ -23,8 +23,13 @@ def test_pipeline_versions_are_explicit_and_copy_safe() -> None:
         versions.archive_schema == "archive-claim-ledger-v1+conflict-decisions-v1+generic-claims-v1"
     )
     assert versions.materializer == "family-materializer-v4-active-state-guard"
-    assert versions.evaluator == "core-evaluator-v5-identity-safety"
+    assert versions.evaluator == "core-evaluator-v7-offline-e2e-release"
+    assert versions.benchmark_schema == "benchmark-v7-offline-e2e+asr-contract+identity-safety"
     assert (
-        versions.benchmark_schema == "benchmark-v5-identity-safety+entity-resolution-benchmark-v2"
+        versions.asr_model
+        == "gigaam-multilingual-large-ctc@ac7c6db08133f83478451a659f8470ee8ab47a2d"
     )
+    assert versions.asr_vad == "silero-vad-6.2.1"
+    assert versions.asr_chunker == "silero-smart-v2-exact-overlap"
+    assert versions.asr_evaluator == "asr-evaluator-v1-wer-cer-boundary"
     assert versions is not CURRENT_PIPELINE_VERSIONS

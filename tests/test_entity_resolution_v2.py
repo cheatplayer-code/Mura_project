@@ -268,5 +268,5 @@ def test_entity_resolution_release_benchmark_has_zero_false_merges() -> None:
     assert summary.verified_alias_collisions == 1
     assert summary.mention_identity_collisions == 1
     assert summary.inactive_relationships_ignored == 1
-    assert report.pipeline_versions["pipeline"] == "mura-core-v0.13.0"
+    assert report.pipeline_versions["pipeline"] == "mura-core-v0.15.0"
     assert report.pipeline_versions["resolver"] == "mention-resolver-v3-collision-safe"

@@ -54,7 +54,8 @@ _CURRENT_MANIFEST = ReleaseManifest(
     pipeline_versions=get_pipeline_versions().model_dump(mode="json"),
     budgets=ReleaseBudgets(),
     notes=[
-        "Public release gates use fixed synthetic candidates.",
+        "The offline composite gate includes frozen-provider end-to-end orchestration.",
+        "Production promotion still requires a live approved-audio GigaAM and DeepSeek gate.",
         "Live ASR and LLM calls remain external and are not deterministic replay inputs.",
         "Rollback is a desired-release control-plane operation, not an in-process code swap.",
     ],
