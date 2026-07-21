@@ -176,7 +176,7 @@ def test_russian_competing_antecedents_create_ambiguous_link_and_quarantine_clai
     assert set(link.candidate_mention_ids) == {"mention_erlan", "mention_bolat"}
     assert "discourse.ambiguous_competing_antecedents.v1" in link.reason
     issue = next(item for item in issues if item["object_id"] == "relationship_ambiguous")
-    assert "possessive_markers" in issue["detail"]
+    assert issue["code"] == "relationship_grounding_rejected"
 
 
 def test_kazakh_plural_anaphor_resolves_explicit_married_pair() -> None:

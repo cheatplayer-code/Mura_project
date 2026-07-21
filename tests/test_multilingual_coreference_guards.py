@@ -107,7 +107,5 @@ def test_ambiguous_coreference_id_does_not_bypass_possessive_guard() -> None:
 
     assert result.relationship_claims == []
     issue = next(item for item in issues if item["object_id"] == "relationship_parent")
-    analysis = issue["context"]["evidence_analysis"]
-    assert analysis["resolved_coreference_antecedent_ids"] == []
-    assert analysis["role_consistent"] is False
-    assert analysis["third_person_possessive_markers"][0]["surface"] == "Его"
+    assert issue["code"] == "relationship_grounding_rejected"
+    assert "context" not in issue

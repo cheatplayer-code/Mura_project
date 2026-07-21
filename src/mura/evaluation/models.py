@@ -67,6 +67,8 @@ class BenchmarkGold(StrictModel):
     people: list[GoldPerson] = Field(default_factory=list)
     relationships: list[GoldRelationship] = Field(default_factory=list)
     quarantined_relationship_ids: list[str] = Field(default_factory=list)
+    quarantined_object_ids: list[str] = Field(default_factory=list)
+    required_issue_codes: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_unique_keys(self) -> BenchmarkGold:
@@ -78,6 +80,10 @@ class BenchmarkGold(StrictModel):
             raise ValueError("gold relationship keys must be unique")
         if len(self.quarantined_relationship_ids) != len(set(self.quarantined_relationship_ids)):
             raise ValueError("gold quarantined relationship IDs must be unique")
+        if len(self.quarantined_object_ids) != len(set(self.quarantined_object_ids)):
+            raise ValueError("gold quarantined object IDs must be unique")
+        if len(self.required_issue_codes) != len(set(self.required_issue_codes)):
+            raise ValueError("gold required issue codes must be unique")
         return self
 
 
@@ -157,6 +163,7 @@ class CaseEvaluation(StrictModel):
     person_mentions: PrecisionRecallF1
     relationships: PrecisionRecallF1
     quarantined_relationships: PrecisionRecallF1
+    quarantined_objects: PrecisionRecallF1
     relationship_direction_accuracy: RatioMetric
     provenance_completeness: RatioMetric
     unknown_segment_references: int = Field(ge=0)
@@ -165,6 +172,15 @@ class CaseEvaluation(StrictModel):
     quarantined_relationship_ids: list[str] = Field(default_factory=list)
     extraction_issue_count: int = Field(ge=0)
     evidence_closure_relationships: int = Field(ge=0)
+    provenance_violations: int = Field(ge=0)
+    objects_without_evidence: int = Field(ge=0)
+    invalid_evidence_spans: int = Field(ge=0)
+    unsafe_verification_statuses: int = Field(ge=0)
+    unsafe_story_privacy: int = Field(ge=0)
+    unknown_issue_codes: int = Field(ge=0)
+    missing_required_issue_codes: int = Field(ge=0)
+    fatal_contract_failures: int = Field(ge=0)
+    evidence_recovery_counts: dict[str, int] = Field(default_factory=dict)
 
 
 class BenchmarkSummary(StrictModel):
@@ -172,10 +188,19 @@ class BenchmarkSummary(StrictModel):
     person_mentions: PrecisionRecallF1
     relationships: PrecisionRecallF1
     quarantined_relationships: PrecisionRecallF1
+    quarantined_objects: PrecisionRecallF1
     relationship_direction_accuracy: RatioMetric
     provenance_completeness: RatioMetric
     unknown_segment_references: int = Field(ge=0)
     self_relationships: int = Field(ge=0)
+    provenance_violations: int = Field(ge=0)
+    objects_without_evidence: int = Field(ge=0)
+    invalid_evidence_spans: int = Field(ge=0)
+    unsafe_verification_statuses: int = Field(ge=0)
+    unsafe_story_privacy: int = Field(ge=0)
+    unknown_issue_codes: int = Field(ge=0)
+    missing_required_issue_codes: int = Field(ge=0)
+    fatal_contract_failures: int = Field(ge=0)
 
 
 class BenchmarkReport(StrictModel):

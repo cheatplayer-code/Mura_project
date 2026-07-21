@@ -11,19 +11,28 @@ from mura.evaluation.models import BenchmarkReport
 
 
 class ReleaseGateConfig(StrictModel):
-    schema_version: str = "release-gates-v1"
+    schema_version: str = "release-gates-v2"
     minimum_case_count: int = Field(ge=1)
     minimum_adversarial_case_count: int = Field(ge=1)
     minimum_person_f1: float = Field(ge=0, le=1)
     minimum_relationship_precision: float = Field(ge=0, le=1)
     minimum_relationship_recall: float = Field(ge=0, le=1)
     minimum_quarantine_recall: float = Field(ge=0, le=1)
+    minimum_object_quarantine_recall: float = Field(default=1.0, ge=0, le=1)
     minimum_direction_accuracy: float = Field(ge=0, le=1)
     minimum_provenance_completeness: float = Field(ge=0, le=1)
     maximum_unknown_segment_references: int = Field(ge=0)
     maximum_self_relationships: int = Field(ge=0)
     maximum_adversarial_relationship_false_positives: int = Field(ge=0)
     maximum_adversarial_quarantine_false_negatives: int = Field(ge=0)
+    maximum_provenance_violations: int = Field(default=0, ge=0)
+    maximum_objects_without_evidence: int = Field(default=0, ge=0)
+    maximum_invalid_evidence_spans: int = Field(default=0, ge=0)
+    maximum_unsafe_verification_statuses: int = Field(default=0, ge=0)
+    maximum_unsafe_story_privacy: int = Field(default=0, ge=0)
+    maximum_unknown_issue_codes: int = Field(default=0, ge=0)
+    maximum_missing_required_issue_codes: int = Field(default=0, ge=0)
+    maximum_fatal_contract_failures: int = Field(default=0, ge=0)
 
 
 class ReleaseGateResult(StrictModel):
@@ -63,12 +72,21 @@ def evaluate_release_gates(
         "relationship_precision": report.summary.relationships.precision,
         "relationship_recall": report.summary.relationships.recall,
         "quarantine_recall": report.summary.quarantined_relationships.recall,
+        "object_quarantine_recall": report.summary.quarantined_objects.recall,
         "direction_accuracy": report.summary.relationship_direction_accuracy.value,
         "provenance_completeness": report.summary.provenance_completeness.value,
         "unknown_segment_references": report.summary.unknown_segment_references,
         "self_relationships": report.summary.self_relationships,
         "adversarial_relationship_false_positives": adversarial_relationship_false_positives,
         "adversarial_quarantine_false_negatives": adversarial_quarantine_false_negatives,
+        "provenance_violations": report.summary.provenance_violations,
+        "objects_without_evidence": report.summary.objects_without_evidence,
+        "invalid_evidence_spans": report.summary.invalid_evidence_spans,
+        "unsafe_verification_statuses": report.summary.unsafe_verification_statuses,
+        "unsafe_story_privacy": report.summary.unsafe_story_privacy,
+        "unknown_issue_codes": report.summary.unknown_issue_codes,
+        "missing_required_issue_codes": report.summary.missing_required_issue_codes,
+        "fatal_contract_failures": report.summary.fatal_contract_failures,
     }
 
     failures: list[str] = []
@@ -89,6 +107,7 @@ def evaluate_release_gates(
     require_minimum("relationship_precision", config.minimum_relationship_precision)
     require_minimum("relationship_recall", config.minimum_relationship_recall)
     require_minimum("quarantine_recall", config.minimum_quarantine_recall)
+    require_minimum("object_quarantine_recall", config.minimum_object_quarantine_recall)
     require_minimum("direction_accuracy", config.minimum_direction_accuracy)
     require_minimum("provenance_completeness", config.minimum_provenance_completeness)
     require_maximum(
@@ -104,6 +123,20 @@ def evaluate_release_gates(
         "adversarial_quarantine_false_negatives",
         config.maximum_adversarial_quarantine_false_negatives,
     )
+    require_maximum("provenance_violations", config.maximum_provenance_violations)
+    require_maximum("objects_without_evidence", config.maximum_objects_without_evidence)
+    require_maximum("invalid_evidence_spans", config.maximum_invalid_evidence_spans)
+    require_maximum(
+        "unsafe_verification_statuses",
+        config.maximum_unsafe_verification_statuses,
+    )
+    require_maximum("unsafe_story_privacy", config.maximum_unsafe_story_privacy)
+    require_maximum("unknown_issue_codes", config.maximum_unknown_issue_codes)
+    require_maximum(
+        "missing_required_issue_codes",
+        config.maximum_missing_required_issue_codes,
+    )
+    require_maximum("fatal_contract_failures", config.maximum_fatal_contract_failures)
     return ReleaseGateResult(passed=not failures, failures=failures, measurements=measurements)
 
 

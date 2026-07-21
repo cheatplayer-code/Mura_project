@@ -187,7 +187,9 @@ class RecordingJobWorker:
                     self.repository.database,
                     job_id=job.job_id,
                     error_code="asr_temporarily_unavailable",
-                    error_detail=str(exc),
+                    error_detail=(
+                        "ASR worker temporarily unavailable; inspect privacy-safe trace codes"
+                    ),
                     retry_after_seconds=self.asr_retry_seconds,
                     trace_events=trace.events,
                 )
@@ -196,7 +198,7 @@ class RecordingJobWorker:
                     self.repository.database,
                     job_id=job.job_id,
                     error_code="asr_failed",
-                    error_detail=str(exc),
+                    error_detail="ASR transcription failed; inspect privacy-safe trace codes",
                     trace_events=trace.events,
                 )
             return
@@ -288,7 +290,7 @@ class RecordingJobWorker:
                     result=result,
                     trace_events=trace.events,
                 )
-        except Exception as exc:
+        except Exception:
             trace.fail_active_stages(error_code="pipeline_failed")
             trace.instant(
                 stage="job",
@@ -300,7 +302,7 @@ class RecordingJobWorker:
                 self.repository.database,
                 job_id=job.job_id,
                 error_code="pipeline_failed",
-                error_detail=str(exc)[:4000],
+                error_detail="pipeline processing failed; inspect privacy-safe trace codes",
                 trace_events=trace.events,
             )
 

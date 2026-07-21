@@ -15,7 +15,7 @@ from services.kaggle_asr.audio import AudioProcessingError
 from services.kaggle_asr.model import GigaAMTranscriber
 from services.kaggle_asr.security import verify_bearer_token
 
-settings = WorkerSettings()  # type: ignore[call-arg]
+settings = WorkerSettings()
 transcriber = GigaAMTranscriber(device=settings.asr_device, hf_token=settings.hf_token)
 processing_lock = asyncio.Lock()
 

@@ -4,7 +4,14 @@ from collections import Counter
 from collections.abc import Iterable
 from typing import Any
 
-from mura.domain.models import ExtractionResult, RelationshipClaim, RelationshipType
+from mura.domain.models import (
+    EvidenceSourceLayer,
+    ExtractionResult,
+    PersonMention,
+    RelationshipClaim,
+    RelationshipType,
+    VerificationStatus,
+)
 from mura.evaluation.models import (
     BenchmarkCase,
     BenchmarkGold,
@@ -15,6 +22,8 @@ from mura.evaluation.models import (
     PrecisionRecallF1,
     RatioMetric,
 )
+from mura.evidence_recovery import EvidenceOffsetRecoveryMetrics
+from mura.extraction_issues import ExtractionIssueCode
 from mura.relationship_evidence import normalize_evidence
 
 RelationshipSemanticKey = tuple[str, str, str, str, str]
@@ -179,8 +188,8 @@ def _person_metrics(
     return precision_recall_f1(true_positive, false_positive, false_negative)
 
 
-def _provenance_counts(extraction: ExtractionResult) -> tuple[int, int]:
-    objects: list[Any] = [
+def _objects(extraction: ExtractionResult) -> list[Any]:
+    return [
         *extraction.people_mentions,
         *extraction.relationship_claims,
         *extraction.events,
@@ -188,8 +197,123 @@ def _provenance_counts(extraction: ExtractionResult) -> tuple[int, int]:
         *extraction.stories,
         *extraction.unresolved_questions,
     ]
-    complete = sum(bool(getattr(item, "source_segment_ids", [])) for item in objects)
+
+
+def _invalid_evidence_span_count(
+    extraction: ExtractionResult,
+    *,
+    raw_text_by_id: dict[str, str],
+) -> int:
+    activity_ids = {activity.activity_id for activity in extraction.provenance_activities}
+    evidence_ids = {evidence.evidence_id for evidence in extraction.evidence_spans}
+    invalid = 0
+    for evidence in extraction.evidence_spans:
+        source_text = raw_text_by_id.get(evidence.segment_id)
+        if evidence.source_layer is not EvidenceSourceLayer.RAW_TRANSCRIPT:
+            invalid += 1
+            continue
+        if source_text is None:
+            invalid += 1
+            continue
+        if evidence.start_char is None or evidence.end_char is None:
+            invalid += 1
+            continue
+        if source_text[evidence.start_char : evidence.end_char] != evidence.text:
+            invalid += 1
+            continue
+        if evidence.created_by_activity_id not in activity_ids:
+            invalid += 1
+            continue
+        if set(evidence.derived_from_evidence_ids) - evidence_ids:
+            invalid += 1
+    return invalid
+
+
+def _object_has_closed_provenance(
+    item: Any,
+    *,
+    extraction: ExtractionResult,
+    evidence_by_id: dict[str, Any],
+    activity_ids: set[str],
+) -> bool:
+    source_ids = set(getattr(item, "source_segment_ids", []))
+    item_evidence_ids = list(getattr(item, "evidence_ids", []))
+    provenance = getattr(item, "provenance", None)
+    if not source_ids or not item_evidence_ids or provenance is None:
+        return False
+    if set(item_evidence_ids) - set(evidence_by_id):
+        return False
+    if any(
+        evidence_by_id[evidence_id].segment_id not in source_ids
+        for evidence_id in item_evidence_ids
+    ):
+        return False
+    if provenance.evidence_ids != item_evidence_ids:
+        return False
+    if provenance.generated_by_activity_id not in activity_ids:
+        return False
+    if set(provenance.validated_by_activity_ids) - activity_ids:
+        return False
+    if provenance.recording_id != extraction.recording_id:
+        return False
+    if (
+        provenance.speaker_id != extraction.speaker_id
+        or provenance.speaker_name != extraction.speaker_name
+    ):
+        return False
+    if (
+        getattr(item, "verification_status", VerificationStatus.UNREVIEWED)
+        is not VerificationStatus.UNREVIEWED
+    ):
+        return False
+    if isinstance(item, PersonMention):
+        if not item.name_variants:
+            return False
+        if any(set(variant.evidence_ids) - set(evidence_by_id) for variant in item.name_variants):
+            return False
+    return True
+
+
+def _provenance_counts(extraction: ExtractionResult) -> tuple[int, int]:
+    objects = _objects(extraction)
+    evidence_by_id = {evidence.evidence_id: evidence for evidence in extraction.evidence_spans}
+    activity_ids = {activity.activity_id for activity in extraction.provenance_activities}
+    complete = sum(
+        _object_has_closed_provenance(
+            item,
+            extraction=extraction,
+            evidence_by_id=evidence_by_id,
+            activity_ids=activity_ids,
+        )
+        for item in objects
+    )
     return complete, len(objects)
+
+
+def _objects_without_evidence(extraction: ExtractionResult) -> int:
+    evidence_ids = {evidence.evidence_id for evidence in extraction.evidence_spans}
+    return sum(
+        not getattr(item, "evidence_ids", [])
+        or bool(set(getattr(item, "evidence_ids", [])) - evidence_ids)
+        for item in _objects(extraction)
+    )
+
+
+def _unsafe_verification_status_count(extraction: ExtractionResult) -> int:
+    count = sum(
+        getattr(item, "verification_status", VerificationStatus.UNREVIEWED)
+        is not VerificationStatus.UNREVIEWED
+        for item in _objects(extraction)
+    )
+    count += sum(
+        link.verification_status is not VerificationStatus.UNREVIEWED
+        for link in extraction.coreference_links
+    )
+    count += sum(
+        conflict.verification_status is not VerificationStatus.UNREVIEWED
+        for conflict in extraction.conflict_sets
+    )
+    return count
 
 
 def _unknown_segment_reference_count(
@@ -217,6 +341,7 @@ def score_case(
     extraction: ExtractionResult,
     issues: list[dict[str, Any]],
     evidence_closure_relationships: int,
+    evidence_recovery: EvidenceOffsetRecoveryMetrics,
 ) -> CaseEvaluation:
     mention_to_gold = _mention_to_gold_keys(extraction, case.gold)
     actual_relationship_keys = [
@@ -243,6 +368,35 @@ def score_case(
     expected_quarantine = set(case.gold.quarantined_relationship_ids)
     provenance_complete, provenance_total = _provenance_counts(extraction)
     valid_segment_ids = {segment.segment_id for segment in case.transcript.segments}
+    raw_text_by_id = {segment.segment_id: segment.text for segment in case.transcript.segments}
+    accepted_issue_codes = {code.value for code in ExtractionIssueCode}
+    actual_issue_codes = {
+        str(issue.get("code")) for issue in issues if isinstance(issue.get("code"), str)
+    }
+    accepted_object_refs = {
+        *(f"person:{item.mention_id}" for item in extraction.people_mentions),
+        *(f"person_mention:{item.mention_id}" for item in extraction.people_mentions),
+        *(f"relationship:{item.relationship_id}" for item in extraction.relationship_claims),
+        *(f"event:{item.event_id}" for item in extraction.events),
+        *(f"description:{item.description_id}" for item in extraction.descriptions),
+        *(f"story:{item.story_id}" for item in extraction.stories),
+        *(f"question:{item.question_id}" for item in extraction.unresolved_questions),
+        *(f"evidence:{item.evidence_id}" for item in extraction.evidence_spans),
+        *(f"coreference:{item.coreference_id}" for item in extraction.coreference_links),
+        *(f"conflict:{item.conflict_id}" for item in extraction.conflict_sets),
+    }
+    quarantined_objects = {
+        reference
+        for issue in issues
+        if issue.get("severity") in {"error", "fatal"}
+        and issue.get("object_id") is not None
+        and (reference := f"{issue.get('object_type')}:{issue.get('object_id')}")
+        not in accepted_object_refs
+    }
+    expected_quarantined_objects = set(case.gold.quarantined_object_ids).union(
+        f"relationship:{relationship_id}"
+        for relationship_id in case.gold.quarantined_relationship_ids
+    )
 
     return CaseEvaluation(
         case_id=case.case_id,
@@ -255,6 +409,10 @@ def score_case(
         quarantined_relationships=_set_prf(
             quarantined_relationship_ids,
             expected_quarantine,
+        ),
+        quarantined_objects=_set_prf(
+            quarantined_objects,
+            expected_quarantined_objects,
         ),
         relationship_direction_accuracy=ratio_metric(
             direction_numerator,
@@ -275,6 +433,22 @@ def score_case(
         quarantined_relationship_ids=sorted(quarantined_relationship_ids),
         extraction_issue_count=len(issues),
         evidence_closure_relationships=evidence_closure_relationships,
+        provenance_violations=provenance_total - provenance_complete,
+        objects_without_evidence=_objects_without_evidence(extraction),
+        invalid_evidence_spans=_invalid_evidence_span_count(
+            extraction,
+            raw_text_by_id=raw_text_by_id,
+        ),
+        unsafe_verification_statuses=_unsafe_verification_status_count(extraction),
+        unsafe_story_privacy=sum(story.privacy.value != "private" for story in extraction.stories),
+        unknown_issue_codes=len(actual_issue_codes - accepted_issue_codes),
+        missing_required_issue_codes=len(set(case.gold.required_issue_codes) - actual_issue_codes),
+        fatal_contract_failures=sum(
+            issue.get("code") == ExtractionIssueCode.FINAL_CONTRACT_INVALID.value
+            or issue.get("severity") == "fatal"
+            for issue in issues
+        ),
+        evidence_recovery_counts=evidence_recovery.to_dict(),
     )
 
 
@@ -297,6 +471,7 @@ def aggregate_case_metrics(cases: list[CaseEvaluation]) -> BenchmarkSummary:
         person_mentions=aggregate_prf("person_mentions"),
         relationships=aggregate_prf("relationships"),
         quarantined_relationships=aggregate_prf("quarantined_relationships"),
+        quarantined_objects=aggregate_prf("quarantined_objects"),
         relationship_direction_accuracy=ratio_metric(
             direction_numerator,
             direction_denominator,
@@ -307,4 +482,12 @@ def aggregate_case_metrics(cases: list[CaseEvaluation]) -> BenchmarkSummary:
         ),
         unknown_segment_references=sum(case.unknown_segment_references for case in cases),
         self_relationships=sum(case.self_relationships for case in cases),
+        provenance_violations=sum(case.provenance_violations for case in cases),
+        objects_without_evidence=sum(case.objects_without_evidence for case in cases),
+        invalid_evidence_spans=sum(case.invalid_evidence_spans for case in cases),
+        unsafe_verification_statuses=sum(case.unsafe_verification_statuses for case in cases),
+        unsafe_story_privacy=sum(case.unsafe_story_privacy for case in cases),
+        unknown_issue_codes=sum(case.unknown_issue_codes for case in cases),
+        missing_required_issue_codes=sum(case.missing_required_issue_codes for case in cases),
+        fatal_contract_failures=sum(case.fatal_contract_failures for case in cases),
     )

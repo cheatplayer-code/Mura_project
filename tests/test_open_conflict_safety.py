@@ -149,7 +149,8 @@ def test_open_conflict_does_not_authorize_invalid_model_evidence() -> None:
 
     assert "evidence_invented" not in {item.evidence_id for item in result.evidence_spans}
     assert any(
-        item["object_id"] == "evidence_invented" and item["stage"] == "semantic" for item in issues
+        item["object_id"] == "evidence_invented" and item["code"] == "evidence_text_not_in_source"
+        for item in issues
     )
     assert all(
         "evidence_invented" not in relationship.evidence_ids

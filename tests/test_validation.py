@@ -7,6 +7,7 @@ from mura.domain.models import (
     CleanerResult,
     CorrectionKind,
     DetectedCorrection,
+    EvidenceSpan,
     ExtractionResult,
     PersonDescription,
     PersonMention,
@@ -228,16 +229,29 @@ def test_nurgali_is_younger_sibling_of_sapar() -> None:
 def _basketball_extraction(
     description_person_id: str,
 ) -> tuple[TranscriptEnvelope, ExtractionResult]:
-    raw = transcript(("seg_020", "Диас баскетбол ойнағанды жақсы көреді"))
+    raw = transcript(
+        ("seg_019", "Нұрлан келді"),
+        ("seg_020", "Диас баскетбол ойнағанды жақсы көреді"),
+    )
     result = ExtractionResult(
         recording_id="rec_1",
         speaker_id="speaker_1",
         speaker_name="Күләш",
+        evidence_spans=[
+            EvidenceSpan(
+                evidence_id="evidence_description",
+                segment_id="seg_020",
+                text="Диас баскетбол ойнағанды жақсы көреді",
+                start_char=0,
+                end_char=len("Диас баскетбол ойнағанды жақсы көреді"),
+                mention_ids=["mention_dias"],
+            )
+        ],
         people_mentions=[
             PersonMention(
                 mention_id="mention_nurlan",
                 name="Нұрлан",
-                source_segment_ids=["seg_020"],
+                source_segment_ids=["seg_019"],
                 confidence=1,
             ),
             PersonMention(
@@ -254,6 +268,7 @@ def _basketball_extraction(
                 description="баскетбол ойнағанды жақсы көреді",
                 perspective="Күләш",
                 source_segment_ids=["seg_020"],
+                evidence_ids=["evidence_description"],
                 confidence=1,
             )
         ],
@@ -263,7 +278,7 @@ def _basketball_extraction(
 
 def test_description_rejects_dias_trait_assigned_to_nurlan() -> None:
     raw, result = _basketball_extraction("mention_nurlan")
-    with pytest.raises(ContractValidationError, match="not named"):
+    with pytest.raises(ContractValidationError, match="no evidence overlap"):
         validate_extraction_result(raw, result)
 
 

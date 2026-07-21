@@ -89,4 +89,6 @@ def test_cleaner_repairs_removed_uncertain_span_once() -> None:
     assert client.calls == 2
     assert "ичи" in result.readable_segments[0].text
     assert usage["repair_attempted"] is True
-    assert "readable preservation" in usage["initial_validation_error"]
+    assert usage["validation_issue_counts"] == {"cleaner_contract_invalid": 1}
+    assert "initial_validation_error" not in usage
+    assert "ичи" not in repr(usage)

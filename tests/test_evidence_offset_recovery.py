@@ -213,7 +213,7 @@ def test_long_dash_and_punctuation_are_matched_exactly() -> None:
     assert metrics["unique_match_repaired"] == 1
 
 
-def test_duplicate_text_uses_nearest_proposed_start() -> None:
+def test_duplicate_text_never_uses_untrusted_proposed_start() -> None:
     text = "Күләш сказала. Потом Күләш улыбнулась."
     transcript = _transcript(text)
     second_start = text.rindex("Күләш")
@@ -225,9 +225,10 @@ def test_duplicate_text_uses_nearest_proposed_start() -> None:
 
     recovered, metrics = _recover_one(transcript=transcript, candidate=candidate)
 
-    assert recovered["start_char"] == second_start
-    assert recovered["end_char"] == second_start + len("Күләш")
-    assert metrics["nearest_match_repaired"] == 1
+    assert recovered["start_char"] is None
+    assert recovered["end_char"] is None
+    assert metrics["ambiguous"] == 1
+    assert metrics["nearest_match_repaired"] == 0
 
 
 def test_duplicate_text_with_equal_ambiguity_preserves_evidence_without_offsets() -> None:
@@ -259,8 +260,8 @@ def test_text_absent_from_raw_segment_remains_quarantined() -> None:
 
     assert result.evidence_spans == []
     issue = next(item for item in issues if item["object_id"] == "evidence_1")
-    assert issue["stage"] == "semantic"
-    assert "text is not present in the cited raw segment" in issue["detail"]
+    assert issue["stage"] == "evidence_recovery"
+    assert issue["code"] == "evidence_text_not_in_source"
 
 
 def test_unknown_segment_id_remains_quarantined() -> None:
@@ -282,8 +283,8 @@ def test_unknown_segment_id_remains_quarantined() -> None:
 
     assert result.evidence_spans == []
     issue = next(item for item in issues if item["object_id"] == "evidence_1")
-    assert issue["stage"] == "semantic"
-    assert "references an unknown segment" in issue["detail"]
+    assert issue["stage"] == "evidence_recovery"
+    assert issue["code"] == "evidence_unknown_segment"
 
 
 def test_repaired_evidence_preserves_downstream_person_reference() -> None:

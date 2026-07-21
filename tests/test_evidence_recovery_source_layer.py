@@ -51,10 +51,12 @@ def _recover_one(
     *,
     transcript: TranscriptEnvelope,
     candidate: dict[str, Any],
+    cleaned: CleanerResult | None = None,
 ) -> tuple[dict[str, Any], dict[str, int]]:
     recovered, metrics = recover_evidence_offsets(
         raw={"evidence_spans": [candidate]},
         transcript=transcript,
+        cleaned=cleaned,
     )
     recovered_candidate = recovered["evidence_spans"][0]
     assert isinstance(recovered_candidate, dict)
@@ -71,53 +73,71 @@ def _assert_raw_recovery_counters_are_zero(metrics: dict[str, int]) -> None:
     assert metrics["unknown_segment_quarantined"] == 0
 
 
-def test_readable_candidate_remains_unchanged() -> None:
+def test_readable_candidate_recovers_only_against_readable_segment() -> None:
     transcript = _transcript("Исходный текст сегмента")
+    readable_text = "Исправленный текст"
+    cleaned = CleanerResult(
+        readable_segments=[ReadableSegment(segment_id="seg_001", text=readable_text)],
+        full_readable_text=readable_text,
+    )
     candidate = _candidate(
-        text="Исправленный текст",
+        text=readable_text,
         start_char=3,
-        end_char=3 + len("Исправленный текст"),
+        end_char=3 + len(readable_text),
     )
 
-    recovered, metrics = _recover_one(transcript=transcript, candidate=candidate)
+    recovered, metrics = _recover_one(transcript=transcript, candidate=candidate, cleaned=cleaned)
 
-    assert recovered == candidate
-    _assert_raw_recovery_counters_are_zero(metrics)
-    assert metrics["non_raw_evidence_skipped"] == 1
+    assert recovered["start_char"] == 0
+    assert recovered["end_char"] == len(readable_text)
+    assert metrics["recovered"] == 1
+    assert metrics["wrong_source_layer"] == 0
+    assert metrics["non_raw_evidence_skipped"] == 0
 
 
 def test_readable_candidate_is_not_repositioned_using_raw_match() -> None:
-    text = "Префикс Күләш суффикс"
-    transcript = _transcript(text)
-    raw_position = text.index("Күләш")
+    raw_text = "Префикс Күләш суффикс"
+    readable_text = "Күләш в начале"
+    transcript = _transcript(raw_text)
+    cleaned = CleanerResult(
+        readable_segments=[ReadableSegment(segment_id="seg_001", text=readable_text)],
+        full_readable_text=readable_text,
+    )
+    raw_position = raw_text.index("Күләш")
     candidate = _candidate(
         text="Күләш",
         start_char=0,
         end_char=len("Күләш"),
     )
 
-    recovered, metrics = _recover_one(transcript=transcript, candidate=candidate)
+    recovered, metrics = _recover_one(transcript=transcript, candidate=candidate, cleaned=cleaned)
 
     assert raw_position != candidate["start_char"]
     assert recovered == candidate
-    assert recovered["start_char"] == 0
-    _assert_raw_recovery_counters_are_zero(metrics)
-    assert metrics["non_raw_evidence_skipped"] == 1
+    assert metrics["already_valid"] == 1
+    assert metrics["recovered"] == 0
+    assert metrics["wrong_source_layer"] == 0
 
 
-def test_readable_text_absent_from_raw_does_not_count_as_missing_raw_text() -> None:
+def test_readable_text_absent_from_raw_is_valid_when_present_in_readable_layer() -> None:
     transcript = _transcript("Сырой текст")
+    readable_text = "Читаемый текст"
+    cleaned = CleanerResult(
+        readable_segments=[ReadableSegment(segment_id="seg_001", text=readable_text)],
+        full_readable_text=readable_text,
+    )
     candidate = _candidate(
-        text="Читаемый текст",
+        text=readable_text,
         start_char=0,
-        end_char=len("Читаемый текст"),
+        end_char=len(readable_text),
     )
 
-    recovered, metrics = _recover_one(transcript=transcript, candidate=candidate)
+    recovered, metrics = _recover_one(transcript=transcript, candidate=candidate, cleaned=cleaned)
 
     assert recovered == candidate
-    assert metrics["missing_text_quarantined"] == 0
-    assert metrics["non_raw_evidence_skipped"] == 1
+    assert metrics["already_valid"] == 1
+    assert metrics["missing"] == 0
+    assert metrics["wrong_source_layer"] == 0
 
 
 def test_missing_source_layer_uses_raw_transcript_default() -> None:
@@ -160,6 +180,11 @@ def test_explicit_raw_off_by_one_recovery_is_unchanged() -> None:
 
 def test_readable_recovery_is_idempotent_and_side_effect_free() -> None:
     transcript = _transcript("Префикс Күләш суффикс")
+    readable_text = "Күләш в начале"
+    cleaned = CleanerResult(
+        readable_segments=[ReadableSegment(segment_id="seg_001", text=readable_text)],
+        full_readable_text=readable_text,
+    )
     candidate = _candidate(
         text="Күләш",
         start_char=0,
@@ -168,13 +193,15 @@ def test_readable_recovery_is_idempotent_and_side_effect_free() -> None:
     raw = {"evidence_spans": [candidate]}
     original = deepcopy(raw)
 
-    first, first_metrics = recover_evidence_offsets(raw=raw, transcript=transcript)
-    second, second_metrics = recover_evidence_offsets(raw=first, transcript=transcript)
+    first, first_metrics = recover_evidence_offsets(raw=raw, transcript=transcript, cleaned=cleaned)
+    second, second_metrics = recover_evidence_offsets(
+        raw=first, transcript=transcript, cleaned=cleaned
+    )
 
     assert raw == original
     assert first == second == original
     assert first_metrics.to_dict() == second_metrics.to_dict()
-    assert first_metrics.non_raw_evidence_skipped == 1
+    assert first_metrics.already_valid == 1
     assert first_metrics.repaired_evidence_offsets == 0
 
 
@@ -241,7 +268,9 @@ def test_extractor_usage_counts_non_raw_skip_once_without_sensitive_text() -> No
 
     recovery_usage = usage["evidence_offset_recovery"]
     assert client.calls == 1
-    assert recovery_usage["non_raw_evidence_skipped"] == 1
+    assert recovery_usage["non_raw_evidence_skipped"] == 0
+    assert recovery_usage["already_valid"] == 1
+    assert recovery_usage["wrong_source_layer"] == 0
     assert recovery_usage["missing_text_quarantined"] == 0
     assert recovery_usage["repaired_evidence_offsets"] == 0
     assert all(type(value) is int for value in recovery_usage.values())

@@ -153,11 +153,5 @@ def test_reversed_kazakh_sibling_direction_is_quarantined() -> None:
     relationship_issue = next(
         issue for issue in issues if issue["object_id"] == "relationship_reversed"
     )
-    assert "contradicts deterministic multilingual kinship evidence" in relationship_issue["detail"]
-    analysis = relationship_issue["context"]["evidence_analysis"]
-    assert analysis["role_consistent"] is False
-    assert analysis["linguistic_rule_ids"] == [
-        "kk.name.exact.v1",
-        "kk.name.known_case_suffix.v1",
-        "kk.relationship.named_genitive_kinship.v1",
-    ]
+    assert relationship_issue["code"] == "relationship_grounding_rejected"
+    assert "context" not in relationship_issue

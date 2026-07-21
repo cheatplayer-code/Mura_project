@@ -1,55 +1,15 @@
 from __future__ import annotations
 
-from typing import Any
+import importlib
 
-from mura.deepseek.grounding_metrics import install_relationship_telemetry
+import mura.deepseek as deepseek_package
+from mura.deepseek.grounding_metrics import relationship_grounding_counters
+from mura.deepseek.service import DeepSeekPipelineService
 from mura.domain.models import ExtractionResult, RawSegment, TranscriptEnvelope
 
 
-class DummyService:
-    calls = 0
-
-    def extract(
-        self,
-        *,
-        transcript: TranscriptEnvelope,
-        cleaned: Any,
-        speaker_id: str,
-        speaker_name: str,
-        known_people: Any = None,
-    ) -> tuple[ExtractionResult, dict[str, Any]]:
-        del cleaned, known_people
-        type(self).calls += 1
-        issue = {
-            "object_type": "relationship",
-            "object_id": "relationship_rejected",
-            "context": {
-                "evidence_analysis": {"grounding_decision": "insufficient_deterministic_signal"}
-            },
-        }
-        return (
-            ExtractionResult(
-                recording_id=transcript.recording_id,
-                speaker_id=speaker_id,
-                speaker_name=speaker_name,
-            ),
-            {
-                "relationship_metrics": {
-                    "candidates": 1,
-                    "accepted": 0,
-                    "quarantined": 2,
-                    "acceptance_rate": 0.0,
-                },
-                "extraction_issues": [issue, issue],
-            },
-        )
-
-
-def test_relationship_telemetry_is_idempotent_and_counts_unique_rejections() -> None:
-    DummyService.calls = 0
-    install_relationship_telemetry(DummyService)
-    install_relationship_telemetry(DummyService)
-    transcript = TranscriptEnvelope(
+def _transcript() -> TranscriptEnvelope:
+    return TranscriptEnvelope(
         recording_id="rec_metrics",
         duration_seconds=1,
         full_text="Alex",
@@ -59,21 +19,46 @@ def test_relationship_telemetry_is_idempotent_and_counts_unique_rejections() -> 
         chunker_version="v1",
     )
 
-    _, usage = DummyService().extract(
-        transcript=transcript,
-        cleaned=None,
+
+def test_relationship_telemetry_is_pure_and_counts_unique_rejections() -> None:
+    issue = {
+        "stage": "relationship_grounding",
+        "object_type": "relationship",
+        "object_id": "relationship_rejected",
+        "code": "relationship_grounding_rejected",
+        "severity": "error",
+        "recoverable": False,
+        "detail_safe": "candidate relationship was not supported by local evidence",
+        "related_ids": [],
+    }
+    result = ExtractionResult(
+        recording_id="rec_metrics",
         speaker_id="speaker_1",
         speaker_name="Narrator",
     )
 
-    assert DummyService.calls == 1
-    assert usage["relationship_metrics"] == {
-        "candidates": 1,
-        "accepted": 0,
-        "quarantined": 1,
-        "acceptance_rate": 0.0,
-    }
-    counters = usage["relationship_grounding_metrics"]
-    assert counters["ambiguous_grounding_rejected"] == 1
-    assert all(isinstance(value, int) for value in counters.values())
-    assert "Alex" not in repr(counters)
+    first = relationship_grounding_counters(
+        result=result,
+        transcript=_transcript(),
+        extraction_issues=[issue, issue],
+    )
+    second = relationship_grounding_counters(
+        result=result,
+        transcript=_transcript(),
+        extraction_issues=[issue, issue],
+    )
+
+    assert first == second
+    assert first["ambiguous_grounding_rejected"] == 1
+    assert all(isinstance(value, int) and not isinstance(value, bool) for value in first.values())
+    assert "Alex" not in repr(first)
+
+
+def test_repeated_package_import_does_not_replace_extract_method() -> None:
+    original = DeepSeekPipelineService.__dict__["extract"]
+
+    importlib.reload(deepseek_package)
+    importlib.reload(deepseek_package)
+
+    assert DeepSeekPipelineService.__dict__["extract"] is original
+    assert not hasattr(DeepSeekPipelineService.extract, "_relationship_telemetry_installed")

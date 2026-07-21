@@ -100,8 +100,11 @@ def test_extractor_quarantines_self_relationship_without_second_llm_call() -> No
     assert result.relationship_claims == []
     assert usage["repair_attempted"] is False
     assert usage["quarantined_items"] == 1
-    assert usage["extraction_issues"][0]["object_id"] == "relationship_005"
-    assert "different mentions" in usage["extraction_issues"][0]["detail"]
+    issue = usage["extraction_issues"][0]
+    assert issue["code"] == "object_schema_invalid"
+    assert issue["object_id"] != "relationship_005"
+    assert "relationship_005" not in repr(usage)
+    assert "detail" not in issue
     assert usage["relationship_metrics"] == {
         "candidates": 1,
         "accepted": 0,
