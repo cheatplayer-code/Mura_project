@@ -265,5 +265,5 @@ def test_entity_resolution_release_benchmark_has_zero_false_merges() -> None:
     assert summary.false_merges == 0
     assert summary.false_splits == 0
     assert summary.cross_family_merges == 0
-    assert report.pipeline_versions["pipeline"] == "mura-core-v0.11.0"
+    assert report.pipeline_versions["pipeline"] == "mura-core-v0.12.0"
     assert report.pipeline_versions["resolver"] == "mention-resolver-v2-cross-recording"

@@ -7,16 +7,18 @@ Manifest: `benchmarks/manifest.json`
 | Component | Version |
 |---|---|
 | archive_schema | `archive-claim-ledger-v1+conflict-decisions-v1+generic-claims-v1` |
-| benchmark_schema | `benchmark-v3-claim-semantics+entity-resolution-benchmark-v1` |
+| benchmark_schema | `benchmark-v4-events-stories+entity-resolution-benchmark-v1` |
 | claim_semantics | `claim-semantics-v1` |
 | cleaner_prompt | `cleaner-v3-self-correction-semantics` |
-| domain_schema | `domain-v3-claim-semantics` |
-| evaluator | `core-evaluator-v3-claim-semantics+entity-resolution-v1` |
-| evidence_rules | `claim-evidence-v3-layered-provenance+bounded-coreference-v2` |
-| extractor_prompt | `extractor-v5-claim-semantics` |
-| extractor_repair_prompt | `extractor-repair-v3-semantic-preservation` |
+| domain_schema | `domain-v4-focused-narratives` |
+| evaluator | `core-evaluator-v4-events-stories+entity-resolution-v1` |
+| evidence_rules | `claim-evidence-v4-ordered-factual-support+bounded-coreference-v2` |
+| extraction_orchestration | `focused-extraction-v1-three-pass` |
+| extractor_prompt | `extractor-v6-focused-passes` |
+| extractor_repair_prompt | `extractor-repair-v4-focused-pass` |
 | materializer | `family-materializer-v4-active-state-guard` |
-| pipeline | `mura-core-v0.11.0` |
+| narrative_rules | `event-story-grounding-v1` |
+| pipeline | `mura-core-v0.12.0` |
 | relationship_state_rules | `relationship-state-v1` |
 | resolver | `mention-resolver-v2-cross-recording` |
 | temporal_rules | `temporal-normalizer-v1` |
@@ -30,6 +32,17 @@ Manifest: `benchmarks/manifest.json`
 - Expected object quarantine: P=1.000, R=1.000, F1=1.000 (TP=1, FP=0, FN=0)
 - Relationship direction accuracy: 1.000 (6/6)
 - Provenance completeness: 1.000 (20/20)
+- Events: P=1.000, R=1.000, F1=1.000 (TP=0, FP=0, FN=0)
+- Descriptions: P=1.000, R=1.000, F1=1.000 (TP=0, FP=0, FN=0)
+- Stories: P=1.000, R=1.000, F1=1.000 (TP=0, FP=0, FN=0)
+- Event participant accuracy: 1.000 (0/0)
+- Narrative factual support: 1.000 (0/0)
+- Sensitive story recall: 1.000 (0/0)
+- Unsupported event statements: **0**
+- Unsupported story statements: **0**
+- Sensitivity underclassifications: **0**
+- Duplicate semantic events: **0**
+- Duplicate semantic stories: **0**
 - Unknown segment references: **0**
 - Self relationships: **0**
 - Provenance violations: **0**

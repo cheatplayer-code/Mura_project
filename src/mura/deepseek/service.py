@@ -8,10 +8,24 @@ from pydantic import BaseModel, ValidationError
 from mura.deepseek.anchor_prompts import (
     ANCHOR_CONSTRAINED_EXTRACTION_REPAIR_SYSTEM_PROMPT,
     ANCHOR_CONSTRAINED_EXTRACTOR_SYSTEM_PROMPT,
+    FOCUSED_CORE_EXTRACTOR_SYSTEM_PROMPT,
+    FOCUSED_CORE_REPAIR_SYSTEM_PROMPT,
+    FOCUSED_EVENT_EXTRACTOR_SYSTEM_PROMPT,
+    FOCUSED_EVENT_REPAIR_SYSTEM_PROMPT,
+    FOCUSED_STORY_EXTRACTOR_SYSTEM_PROMPT,
+    FOCUSED_STORY_REPAIR_SYSTEM_PROMPT,
 )
 from mura.deepseek.anchors import ExtractionAnchorBundle, build_extraction_anchor_bundle
 from mura.deepseek.client import DeepSeekClient, DeepSeekError, DeepSeekUsage
 from mura.deepseek.extraction_telemetry import build_extraction_telemetry
+from mura.deepseek.focused_extraction import (
+    FocusedExtractionPass,
+    accepted_context,
+    empty_extraction_raw,
+    merge_focused_pass,
+    pass_output_schema,
+    validate_pass_identity,
+)
 from mura.deepseek.prompts import CLEANER_REPAIR_SYSTEM_PROMPT, CLEANER_SYSTEM_PROMPT
 from mura.domain.models import (
     CleanerResult,
@@ -20,7 +34,13 @@ from mura.domain.models import (
     ReadableSegment,
     TranscriptEnvelope,
 )
-from mura.extraction_issues import safe_issue_counts
+from mura.extraction_issues import (
+    ExtractionIssue,
+    ExtractionIssueCode,
+    IssueSeverity,
+    IssueStage,
+    safe_issue_counts,
+)
 from mura.extraction_sanitizer import (
     ExtractionSanitizationOutcome,
     process_extraction_candidate,
@@ -41,8 +61,9 @@ _FATAL_EXTRACTION_COLLECTIONS = frozenset(
 
 
 class DeepSeekPipelineService:
-    def __init__(self, client: DeepSeekClient) -> None:
+    def __init__(self, client: DeepSeekClient, *, focused_extraction: bool = False) -> None:
         self.client = client
+        self.focused_extraction = focused_extraction
 
     def clean(
         self,
@@ -150,6 +171,31 @@ class DeepSeekPipelineService:
         speaker_name: str,
         known_people: list[KnownPerson] | None = None,
     ) -> tuple[ExtractionResult, dict[str, Any]]:
+        if self.focused_extraction:
+            return self._extract_focused(
+                transcript=transcript,
+                cleaned=cleaned,
+                speaker_id=speaker_id,
+                speaker_name=speaker_name,
+                known_people=known_people,
+            )
+        return self._extract_single(
+            transcript=transcript,
+            cleaned=cleaned,
+            speaker_id=speaker_id,
+            speaker_name=speaker_name,
+            known_people=known_people,
+        )
+
+    def _extract_single(
+        self,
+        *,
+        transcript: TranscriptEnvelope,
+        cleaned: CleanerResult,
+        speaker_id: str,
+        speaker_name: str,
+        known_people: list[KnownPerson] | None = None,
+    ) -> tuple[ExtractionResult, dict[str, Any]]:
         resolved_known_people = known_people or []
         anchors = build_extraction_anchor_bundle(
             transcript=transcript,
@@ -243,6 +289,426 @@ class DeepSeekPipelineService:
                     initial_outcome.issues
                 )
         return outcome.result, telemetry
+
+    def _extract_focused(
+        self,
+        *,
+        transcript: TranscriptEnvelope,
+        cleaned: CleanerResult,
+        speaker_id: str,
+        speaker_name: str,
+        known_people: list[KnownPerson] | None = None,
+    ) -> tuple[ExtractionResult, dict[str, Any]]:
+        resolved_known_people = known_people or []
+        anchors = build_extraction_anchor_bundle(
+            transcript=transcript,
+            cleaned=cleaned,
+            speaker_name=speaker_name,
+            known_people=resolved_known_people,
+        )
+        empty_raw = empty_extraction_raw(
+            recording_id=transcript.recording_id,
+            speaker_id=speaker_id,
+            speaker_name=speaker_name,
+        )
+        current_outcome = self._process_extraction_candidate(
+            raw=empty_raw,
+            transcript=transcript,
+            cleaned=cleaned,
+            speaker_id=speaker_id,
+            speaker_name=speaker_name,
+        )
+        current_raw = current_outcome.result.model_dump(mode="json")
+        usages: list[DeepSeekUsage] = []
+        pass_reports: list[dict[str, Any]] = []
+        collected_issues: list[dict[str, Any]] = []
+
+        for pass_name in (
+            FocusedExtractionPass.CORE,
+            FocusedExtractionPass.EVENTS,
+            FocusedExtractionPass.STORIES,
+        ):
+            current_outcome, current_raw, pass_usages, report = self._run_focused_pass(
+                pass_name=pass_name,
+                base_outcome=current_outcome,
+                base_raw=current_raw,
+                transcript=transcript,
+                cleaned=cleaned,
+                speaker_id=speaker_id,
+                speaker_name=speaker_name,
+                known_people=resolved_known_people,
+                anchors=anchors,
+            )
+            usages.extend(pass_usages)
+            pass_reports.append(report)
+            collected_issues.extend(report.get("issues", []))
+
+        all_issues = self._deduplicate_issue_payloads([*collected_issues, *current_outcome.issues])
+        aggregate_usage = self._aggregate_usage(usages)
+        repair_reports = [report for report in pass_reports if report["repair_attempted"]]
+        telemetry = build_extraction_telemetry(
+            raw=current_raw,
+            usage=aggregate_usage,
+            result=current_outcome.result,
+            extraction_issues=all_issues,
+            evidence_closure_count=current_outcome.evidence_closure_count,
+            evidence_recovery=current_outcome.evidence_recovery,
+            transcript=transcript,
+            anchor_schema_version=anchors.schema_version,
+            allowed_segment_count=len(anchors.allowed_segment_ids),
+            mention_anchor_count=len(anchors.mention_anchors),
+            lexical_annotation_count=len(anchors.lexical_annotations),
+            repair_attempted=bool(repair_reports),
+            repair_succeeded=bool(repair_reports)
+            and all(report["repair_succeeded"] for report in repair_reports),
+        ).model_dump(mode="json")
+        telemetry.update(
+            {
+                "extraction_mode": "focused",
+                "focused_passes": [
+                    {key: value for key, value in report.items() if key != "issues"}
+                    for report in pass_reports
+                ],
+                "focused_primary_calls": 3,
+                "focused_repair_calls": len(repair_reports),
+                "focused_call_budget": 6,
+                "focused_partial_failures": sum(
+                    report["status"] == "failed" for report in pass_reports
+                ),
+                "repaired_evidence_offsets": (
+                    current_outcome.evidence_recovery.repaired_evidence_offsets
+                ),
+            }
+        )
+        return current_outcome.result, telemetry
+
+    def _run_focused_pass(
+        self,
+        *,
+        pass_name: FocusedExtractionPass,
+        base_outcome: ExtractionSanitizationOutcome,
+        base_raw: dict[str, Any],
+        transcript: TranscriptEnvelope,
+        cleaned: CleanerResult,
+        speaker_id: str,
+        speaker_name: str,
+        known_people: list[KnownPerson],
+        anchors: ExtractionAnchorBundle,
+    ) -> tuple[
+        ExtractionSanitizationOutcome,
+        dict[str, Any],
+        list[DeepSeekUsage],
+        dict[str, Any],
+    ]:
+        payload = self._focused_pass_payload(
+            pass_name=pass_name,
+            transcript=transcript,
+            cleaned=cleaned,
+            speaker_id=speaker_id,
+            speaker_name=speaker_name,
+            known_people=known_people,
+            anchors=anchors,
+            accepted_result=base_outcome.result,
+        )
+        usages: list[DeepSeekUsage] = []
+        issues: list[dict[str, Any]] = []
+        repair_attempted = False
+        repair_succeeded = False
+        merge_metrics: dict[str, int] = {}
+        primary_raw: dict[str, Any] | None = None
+
+        try:
+            primary_raw, primary_usage = self.client.request_json(
+                system_prompt=self._focused_prompt(pass_name, repair=False),
+                payload=payload,
+                max_tokens=self._focused_max_tokens(pass_name),
+            )
+            usages.append(primary_usage)
+            outcome, _merged_raw, merge_metrics = self._process_focused_pass_candidate(
+                pass_name=pass_name,
+                pass_raw=primary_raw,
+                base_raw=base_raw,
+                transcript=transcript,
+                cleaned=cleaned,
+                speaker_id=speaker_id,
+                speaker_name=speaker_name,
+            )
+        except (DeepSeekError, ValidationError, ContractValidationError, ValueError):
+            repair_attempted = primary_raw is not None
+            if primary_raw is None:
+                issue = self._focused_pass_issue(pass_name, repair=False)
+                issues.append(issue)
+                return (
+                    base_outcome,
+                    base_raw,
+                    usages,
+                    self._focused_pass_report(
+                        pass_name=pass_name,
+                        status="failed",
+                        usages=usages,
+                        repair_attempted=False,
+                        repair_succeeded=False,
+                        merge_metrics={},
+                        outcome=base_outcome,
+                        issues=issues,
+                    ),
+                )
+            repair_payload = {
+                **payload,
+                "validation_failures": [
+                    {
+                        "code": ExtractionIssueCode.FOCUSED_PASS_CONTRACT_INVALID.value,
+                        "stage": IssueStage.SCHEMA.value,
+                        "object_type": f"focused_{pass_name.value}_pass",
+                    }
+                ],
+                "previous_untrusted_output": primary_raw,
+            }
+            try:
+                repaired_raw, repair_usage = self.client.request_json(
+                    system_prompt=self._focused_prompt(pass_name, repair=True),
+                    payload=repair_payload,
+                    max_tokens=self._focused_max_tokens(pass_name),
+                    attempts=2,
+                )
+                usages.append(repair_usage)
+                outcome, _merged_raw, merge_metrics = self._process_focused_pass_candidate(
+                    pass_name=pass_name,
+                    pass_raw=repaired_raw,
+                    base_raw=base_raw,
+                    transcript=transcript,
+                    cleaned=cleaned,
+                    speaker_id=speaker_id,
+                    speaker_name=speaker_name,
+                )
+                repair_succeeded = True
+            except (DeepSeekError, ValidationError, ContractValidationError, ValueError):
+                issue = self._focused_pass_issue(pass_name, repair=True)
+                issues.append(issue)
+                return (
+                    base_outcome,
+                    base_raw,
+                    usages,
+                    self._focused_pass_report(
+                        pass_name=pass_name,
+                        status="failed",
+                        usages=usages,
+                        repair_attempted=True,
+                        repair_succeeded=False,
+                        merge_metrics={},
+                        outcome=base_outcome,
+                        issues=issues,
+                    ),
+                )
+
+        if any(value > 0 for value in merge_metrics.values()):
+            issues.append(
+                ExtractionIssue.create(
+                    stage=IssueStage.SEMANTIC,
+                    object_type=f"focused_{pass_name.value}_pass",
+                    object_id=pass_name.value,
+                    code=ExtractionIssueCode.DUPLICATE_SEMANTIC_OBJECT,
+                    severity=IssueSeverity.WARNING,
+                    recoverable=True,
+                    related_ids=[key for key, value in merge_metrics.items() if value > 0],
+                ).to_dict()
+            )
+        issues.extend(outcome.issues)
+        return (
+            outcome,
+            outcome.result.model_dump(mode="json"),
+            usages,
+            self._focused_pass_report(
+                pass_name=pass_name,
+                status="completed",
+                usages=usages,
+                repair_attempted=repair_attempted,
+                repair_succeeded=repair_succeeded,
+                merge_metrics=merge_metrics,
+                outcome=outcome,
+                issues=issues,
+            ),
+        )
+
+    def _process_focused_pass_candidate(
+        self,
+        *,
+        pass_name: FocusedExtractionPass,
+        pass_raw: dict[str, Any],
+        base_raw: dict[str, Any],
+        transcript: TranscriptEnvelope,
+        cleaned: CleanerResult,
+        speaker_id: str,
+        speaker_name: str,
+    ) -> tuple[ExtractionSanitizationOutcome, dict[str, Any], dict[str, int]]:
+        validate_pass_identity(
+            pass_name,
+            pass_raw,
+            recording_id=transcript.recording_id,
+            speaker_id=speaker_id,
+            speaker_name=speaker_name,
+        )
+        merged_raw, merge_metrics = merge_focused_pass(base_raw, pass_name, pass_raw)
+        outcome = self._process_extraction_candidate(
+            raw=merged_raw,
+            transcript=transcript,
+            cleaned=cleaned,
+            speaker_id=speaker_id,
+            speaker_name=speaker_name,
+        )
+        return outcome, merged_raw, merge_metrics.to_dict()
+
+    def _focused_pass_payload(
+        self,
+        *,
+        pass_name: FocusedExtractionPass,
+        transcript: TranscriptEnvelope,
+        cleaned: CleanerResult,
+        speaker_id: str,
+        speaker_name: str,
+        known_people: list[KnownPerson],
+        anchors: ExtractionAnchorBundle,
+        accepted_result: ExtractionResult,
+    ) -> dict[str, Any]:
+        payload = self._extraction_payload(
+            transcript=transcript,
+            cleaned=cleaned,
+            speaker_id=speaker_id,
+            speaker_name=speaker_name,
+            known_people=known_people,
+            anchors=anchors,
+        )
+        payload["output_schema"] = pass_output_schema(pass_name)
+        payload["focused_pass"] = {
+            "name": pass_name.value,
+            "primary_pass_limit": 3,
+            "repair_limit_per_pass": 1,
+            "evidence_namespace": f"{pass_name.value}__",
+        }
+        if pass_name is not FocusedExtractionPass.CORE:
+            payload.update(accepted_context(accepted_result, pass_name))
+        return payload
+
+    @staticmethod
+    def _focused_prompt(pass_name: FocusedExtractionPass, *, repair: bool) -> str:
+        prompts = {
+            (FocusedExtractionPass.CORE, False): FOCUSED_CORE_EXTRACTOR_SYSTEM_PROMPT,
+            (FocusedExtractionPass.CORE, True): FOCUSED_CORE_REPAIR_SYSTEM_PROMPT,
+            (FocusedExtractionPass.EVENTS, False): FOCUSED_EVENT_EXTRACTOR_SYSTEM_PROMPT,
+            (FocusedExtractionPass.EVENTS, True): FOCUSED_EVENT_REPAIR_SYSTEM_PROMPT,
+            (FocusedExtractionPass.STORIES, False): FOCUSED_STORY_EXTRACTOR_SYSTEM_PROMPT,
+            (FocusedExtractionPass.STORIES, True): FOCUSED_STORY_REPAIR_SYSTEM_PROMPT,
+        }
+        return prompts[(pass_name, repair)]
+
+    @staticmethod
+    def _focused_max_tokens(pass_name: FocusedExtractionPass) -> int:
+        return {
+            FocusedExtractionPass.CORE: 10_000,
+            FocusedExtractionPass.EVENTS: 8_000,
+            FocusedExtractionPass.STORIES: 7_000,
+        }[pass_name]
+
+    @staticmethod
+    def _focused_pass_issue(
+        pass_name: FocusedExtractionPass,
+        *,
+        repair: bool,
+    ) -> dict[str, Any]:
+        return ExtractionIssue.create(
+            stage=IssueStage.REPAIR if repair else IssueStage.SCHEMA,
+            object_type=f"focused_{pass_name.value}_pass",
+            object_id=None,
+            code=ExtractionIssueCode.FOCUSED_PASS_FAILED,
+            severity=IssueSeverity.ERROR,
+            recoverable=True,
+        ).to_dict()
+
+    @staticmethod
+    def _focused_pass_report(
+        *,
+        pass_name: FocusedExtractionPass,
+        status: str,
+        usages: list[DeepSeekUsage],
+        repair_attempted: bool,
+        repair_succeeded: bool,
+        merge_metrics: dict[str, int],
+        outcome: ExtractionSanitizationOutcome,
+        issues: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        collections = {
+            FocusedExtractionPass.CORE: (
+                len(outcome.result.people_mentions),
+                len(outcome.result.relationship_claims),
+            ),
+            FocusedExtractionPass.EVENTS: (
+                len(outcome.result.events),
+                len(outcome.result.descriptions),
+            ),
+            FocusedExtractionPass.STORIES: (
+                len(outcome.result.stories),
+                len(outcome.result.unresolved_questions),
+            ),
+        }[pass_name]
+        return {
+            "pass": pass_name.value,
+            "status": status,
+            "request_count": len(usages),
+            "repair_attempted": repair_attempted,
+            "repair_succeeded": repair_succeeded,
+            "accepted_primary_objects": collections[0],
+            "accepted_secondary_objects": collections[1],
+            "request_seconds": round(sum(item.request_seconds for item in usages), 3),
+            "prompt_tokens": DeepSeekPipelineService._sum_usage(usages, "prompt_tokens"),
+            "completion_tokens": DeepSeekPipelineService._sum_usage(usages, "completion_tokens"),
+            "total_tokens": DeepSeekPipelineService._sum_usage(usages, "total_tokens"),
+            "issue_counts": safe_issue_counts(issues),
+            "merge_metrics": merge_metrics,
+            "issues": issues,
+        }
+
+    @staticmethod
+    def _sum_usage(usages: list[DeepSeekUsage], field_name: str) -> int | None:
+        values = [getattr(item, field_name) for item in usages]
+        present = [value for value in values if isinstance(value, int)]
+        return sum(present) if present else None
+
+    @classmethod
+    def _aggregate_usage(cls, usages: list[DeepSeekUsage]) -> DeepSeekUsage:
+        if not usages:
+            return DeepSeekUsage(
+                model="focused-no-provider-result",
+                finish_reason=None,
+                request_seconds=0.0,
+            )
+        return DeepSeekUsage(
+            model=usages[-1].model,
+            finish_reason=usages[-1].finish_reason,
+            request_seconds=round(sum(item.request_seconds for item in usages), 3),
+            prompt_tokens=cls._sum_usage(usages, "prompt_tokens"),
+            completion_tokens=cls._sum_usage(usages, "completion_tokens"),
+            total_tokens=cls._sum_usage(usages, "total_tokens"),
+            prompt_cache_hit_tokens=cls._sum_usage(usages, "prompt_cache_hit_tokens"),
+            prompt_cache_miss_tokens=cls._sum_usage(usages, "prompt_cache_miss_tokens"),
+        )
+
+    @staticmethod
+    def _deduplicate_issue_payloads(issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        accepted: list[dict[str, Any]] = []
+        seen: set[tuple[Any, ...]] = set()
+        for issue in issues:
+            key = (
+                issue.get("stage"),
+                issue.get("object_type"),
+                issue.get("object_id"),
+                issue.get("code"),
+                tuple(issue.get("related_ids", [])),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            accepted.append(issue)
+        return accepted
 
     @staticmethod
     def _process_extraction_candidate(

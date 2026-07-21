@@ -80,6 +80,14 @@ class ExtractionIssueCode(StrEnum):
     FINAL_CONTRACT_INVALID = "final_contract_invalid"
     REPAIR_REQUIRED = "repair_required"
     REPAIR_FAILED = "repair_failed"
+    FOCUSED_PASS_CONTRACT_INVALID = "focused_pass_contract_invalid"
+    FOCUSED_PASS_FAILED = "focused_pass_failed"
+    DUPLICATE_SEMANTIC_OBJECT = "duplicate_semantic_object"
+    EVENT_STATEMENT_UNSUPPORTED = "event_statement_unsupported"
+    EVENT_PARTICIPANT_ATTRIBUTION_UNSUPPORTED = "event_participant_attribution_unsupported"
+    DESCRIPTION_ATTRIBUTION_UNSUPPORTED = "description_attribution_unsupported"
+    STORY_STATEMENT_UNSUPPORTED = "story_statement_unsupported"
+    STORY_SENSITIVITY_UPGRADED = "story_sensitivity_upgraded"
 
 
 _DETAIL_BY_CODE: dict[ExtractionIssueCode, str] = {
@@ -215,6 +223,30 @@ _DETAIL_BY_CODE: dict[ExtractionIssueCode, str] = {
         "A fatal top-level extraction contract error required one repair attempt."
     ),
     ExtractionIssueCode.REPAIR_FAILED: "The extraction repair response remained unusable.",
+    ExtractionIssueCode.FOCUSED_PASS_CONTRACT_INVALID: (
+        "A focused extraction pass returned a payload outside its bounded contract."
+    ),
+    ExtractionIssueCode.FOCUSED_PASS_FAILED: (
+        "A focused extraction pass failed safely without removing earlier accepted objects."
+    ),
+    ExtractionIssueCode.DUPLICATE_SEMANTIC_OBJECT: (
+        "A semantically duplicate focused-pass object was removed deterministically."
+    ),
+    ExtractionIssueCode.EVENT_STATEMENT_UNSUPPORTED: (
+        "An event statement changed source order, polarity, causality, or factual content."
+    ),
+    ExtractionIssueCode.EVENT_PARTICIPANT_ATTRIBUTION_UNSUPPORTED: (
+        "An event participant was not supported by the event statement."
+    ),
+    ExtractionIssueCode.DESCRIPTION_ATTRIBUTION_UNSUPPORTED: (
+        "A person description was not safely attributable to its target."
+    ),
+    ExtractionIssueCode.STORY_STATEMENT_UNSUPPORTED: (
+        "A story summary statement was not supported by episode evidence."
+    ),
+    ExtractionIssueCode.STORY_SENSITIVITY_UPGRADED: (
+        "Story sensitivity was conservatively upgraded from source evidence."
+    ),
 }
 
 

@@ -18,6 +18,13 @@ class Privacy(StrEnum):
     PUBLIC = "public"
 
 
+class StorySensitivity(StrEnum):
+    NORMAL = "normal"
+    PERSONAL = "personal"
+    SENSITIVE = "sensitive"
+    HIGHLY_SENSITIVE = "highly_sensitive"
+
+
 class VerificationStatus(StrEnum):
     UNREVIEWED = "unreviewed"
     CONFIRMED = "confirmed"
@@ -585,7 +592,8 @@ class Story(EvidenceBackedObject):
     person_mention_ids: list[str] = Field(default_factory=list)
     event_ids: list[str] = Field(default_factory=list)
     privacy: Privacy = Privacy.PRIVATE
-    sensitivity: str = "normal"
+    sensitivity: StorySensitivity = StorySensitivity.NORMAL
+    sensitivity_reasons: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def force_private_by_default(self) -> Story:

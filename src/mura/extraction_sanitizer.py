@@ -20,6 +20,7 @@ from mura.domain.models import (
     ProvenanceActivity,
     RelationshipClaim,
     Story,
+    StorySensitivity,
     TranscriptEnvelope,
     UnresolvedQuestion,
     VerificationStatus,
@@ -32,6 +33,7 @@ from mura.extraction_issues import (
     IssueSeverity,
     IssueStage,
 )
+from mura.factual_support import sensitivity_level
 from mura.validation import ContractValidationError, validate_extraction_result
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -215,6 +217,27 @@ def _base_result(
 
 
 def _semantic_code(object_type: str, message: str) -> ExtractionIssueCode:
+    if object_type == "event" and "participant attribution" in message:
+        return ExtractionIssueCode.EVENT_PARTICIPANT_ATTRIBUTION_UNSUPPORTED
+    if object_type == "event" and any(
+        token in message for token in ("unsupported description text", "unsupported title label")
+    ):
+        return ExtractionIssueCode.EVENT_STATEMENT_UNSUPPORTED
+    if object_type == "description" and any(
+        token in message
+        for token in (
+            "unsupported description text",
+            "assigned to a person",
+            "names a different person",
+            "no evidence overlap",
+            "unsupported perspective",
+        )
+    ):
+        return ExtractionIssueCode.DESCRIPTION_ATTRIBUTION_UNSUPPORTED
+    if object_type == "story" and any(
+        token in message for token in ("unsupported summary text", "unsupported title label")
+    ):
+        return ExtractionIssueCode.STORY_STATEMENT_UNSUPPORTED
     if object_type == "relationship" and any(
         token in message
         for token in (
@@ -224,7 +247,10 @@ def _semantic_code(object_type: str, message: str) -> ExtractionIssueCode:
         )
     ):
         return ExtractionIssueCode.RELATIONSHIP_GROUNDING_REJECTED
-    if any(token in message for token in ("unknown", "broken references", "references")):
+    if any(
+        token in message
+        for token in ("unknown", "broken references", "references", "outside story evidence")
+    ):
         return ExtractionIssueCode.OBJECT_REFERENCE_INVALID
     return ExtractionIssueCode.OBJECT_SEMANTIC_UNSUPPORTED
 
@@ -424,6 +450,40 @@ def process_extraction_candidate(
     descriptions = list(semantic_seed.descriptions)
     stories = list(semantic_seed.stories)
     questions = list(semantic_seed.unresolved_questions)
+
+    evidence_by_id = {item.evidence_id: item for item in evidence}
+    sensitivity_rank = {
+        StorySensitivity.NORMAL.value: 0,
+        StorySensitivity.PERSONAL.value: 1,
+        StorySensitivity.SENSITIVE.value: 2,
+        StorySensitivity.HIGHLY_SENSITIVE.value: 3,
+    }
+    hardened_stories: list[Story] = []
+    for story in stories:
+        cited_text = " ".join(
+            evidence_by_id[evidence_id].text
+            for evidence_id in story.evidence_ids
+            if evidence_id in evidence_by_id
+        )
+        inferred_level, reasons = sensitivity_level(cited_text)
+        if sensitivity_rank[story.sensitivity.value] < sensitivity_rank[inferred_level]:
+            _issue(
+                issues,
+                object_type="story",
+                object_id=story.story_id,
+                stage=IssueStage.PRIVACY,
+                code=ExtractionIssueCode.STORY_SENSITIVITY_UPGRADED,
+                severity=IssueSeverity.WARNING,
+                recoverable=True,
+            )
+            story = story.model_copy(
+                update={
+                    "sensitivity": StorySensitivity(inferred_level),
+                    "sensitivity_reasons": list(dict.fromkeys(reasons)),
+                }
+            )
+        hardened_stories.append(story)
+    stories = hardened_stories
 
     def build_result(
         *,

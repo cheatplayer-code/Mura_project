@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable, Mapping
+from collections.abc import Hashable, Iterable, Mapping
 from typing import Any
 
 from mura.claim_semantics import (
@@ -18,6 +18,7 @@ from mura.domain.models import (
     RelationshipClaim,
     RelationshipState,
     RelationshipType,
+    StorySensitivity,
     TemporalKind,
     VerificationStatus,
 )
@@ -27,12 +28,16 @@ from mura.evaluation.models import (
     BenchmarkSummary,
     CaseEvaluation,
     DatasetSplit,
+    GoldDescription,
+    GoldEvent,
     GoldRelationship,
+    GoldStory,
     PrecisionRecallF1,
     RatioMetric,
 )
 from mura.evidence_recovery import EvidenceOffsetRecoveryMetrics
 from mura.extraction_issues import ExtractionIssueCode
+from mura.factual_support import evaluate_factual_support, split_factual_statements
 from mura.relationship_evidence import normalize_evidence
 
 RelationshipSemanticKey = tuple[str, str, str, str, str]
@@ -160,8 +165,8 @@ def _base_relationship_key(key: RelationshipSemanticKey) -> RelationshipBaseKey:
 
 
 def _multiset_prf(
-    actual: Iterable[RelationshipSemanticKey],
-    expected: Iterable[RelationshipSemanticKey],
+    actual: Iterable[Hashable],
+    expected: Iterable[Hashable],
 ) -> PrecisionRecallF1:
     actual_counter = Counter(actual)
     expected_counter = Counter(expected)
@@ -367,6 +372,176 @@ def _ratio_for_mapping(actual: Mapping[str, str], expected: Mapping[str, object]
     return ratio_metric(numerator, len(expected))
 
 
+EventSemanticKey = tuple[str, tuple[str, ...], tuple[str, ...]]
+EventIdentityKey = tuple[str, tuple[str, ...]]
+DescriptionSemanticKey = tuple[str, tuple[str, ...]]
+StorySemanticKey = tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]
+
+
+def _normalize_label(value: str) -> str:
+    return normalize_evidence(value)
+
+
+def _mapped_person_key(mention_id: str, mention_to_gold: Mapping[str, str | None]) -> str:
+    return mention_to_gold.get(mention_id) or f"__unmatched__:{mention_id}"
+
+
+def _actual_event_key(
+    event: Any,
+    mention_to_gold: Mapping[str, str | None],
+) -> EventSemanticKey:
+    return (
+        _normalize_label(event.event_type),
+        tuple(
+            sorted(
+                _mapped_person_key(item, mention_to_gold) for item in event.participant_mention_ids
+            )
+        ),
+        tuple(sorted(event.source_segment_ids)),
+    )
+
+
+def _gold_event_key(event: GoldEvent) -> EventSemanticKey:
+    return (
+        _normalize_label(event.event_type),
+        tuple(sorted(event.participant_person_keys)),
+        tuple(sorted(event.source_segment_ids)),
+    )
+
+
+def _event_identity(key: EventSemanticKey) -> EventIdentityKey:
+    event_type, _, segments = key
+    return event_type, segments
+
+
+def _actual_description_key(
+    description: Any,
+    mention_to_gold: Mapping[str, str | None],
+) -> DescriptionSemanticKey:
+    return (
+        _mapped_person_key(description.person_mention_id, mention_to_gold),
+        tuple(sorted(description.source_segment_ids)),
+    )
+
+
+def _gold_description_key(description: GoldDescription) -> DescriptionSemanticKey:
+    return description.person_key, tuple(sorted(description.source_segment_ids))
+
+
+def _unique_actual_event_to_gold_key(
+    extraction: ExtractionResult,
+    gold: BenchmarkGold,
+    mention_to_gold: Mapping[str, str | None],
+) -> dict[str, str]:
+    gold_by_semantic: dict[EventSemanticKey, list[str]] = {}
+    for gold_event in gold.events:
+        gold_by_semantic.setdefault(_gold_event_key(gold_event), []).append(gold_event.event_key)
+    result: dict[str, str] = {}
+    for actual_event in extraction.events:
+        candidates = gold_by_semantic.get(_actual_event_key(actual_event, mention_to_gold), [])
+        if len(candidates) == 1:
+            result[actual_event.event_id] = candidates[0]
+    return result
+
+
+def _actual_story_key(
+    story: Any,
+    mention_to_gold: Mapping[str, str | None],
+    event_to_gold: Mapping[str, str],
+) -> StorySemanticKey:
+    return (
+        tuple(
+            sorted(_mapped_person_key(item, mention_to_gold) for item in story.person_mention_ids)
+        ),
+        tuple(
+            sorted(
+                event_to_gold.get(item, f"__unmatched_event__:{item}") for item in story.event_ids
+            )
+        ),
+        tuple(sorted(story.source_segment_ids)),
+    )
+
+
+def _gold_story_key(story: GoldStory) -> StorySemanticKey:
+    return (
+        tuple(sorted(story.person_keys)),
+        tuple(sorted(story.event_keys)),
+        tuple(sorted(story.source_segment_ids)),
+    )
+
+
+def _evidence_text_for_object(item: Any, extraction: ExtractionResult) -> str:
+    evidence_by_id = {evidence.evidence_id: evidence for evidence in extraction.evidence_spans}
+    return " ".join(
+        evidence_by_id[evidence_id].text
+        for evidence_id in getattr(item, "evidence_ids", [])
+        if evidence_id in evidence_by_id
+    )
+
+
+def _statement_support_counts(extraction: ExtractionResult) -> tuple[int, int, int, int]:
+    supported = 0
+    total = 0
+    unsupported_events = 0
+    unsupported_stories = 0
+    for event in extraction.events:
+        evidence_text = _evidence_text_for_object(event, extraction)
+        for statement in split_factual_statements(event.description):
+            total += 1
+            is_supported = evaluate_factual_support(statement, evidence_text).supported
+            supported += is_supported
+            unsupported_events += not is_supported
+    for story in extraction.stories:
+        evidence_text = _evidence_text_for_object(story, extraction)
+        for statement in split_factual_statements(story.summary):
+            total += 1
+            is_supported = evaluate_factual_support(statement, evidence_text).supported
+            supported += is_supported
+            unsupported_stories += not is_supported
+    return supported, total, unsupported_events, unsupported_stories
+
+
+_SENSITIVITY_RANK = {
+    StorySensitivity.NORMAL: 0,
+    StorySensitivity.PERSONAL: 1,
+    StorySensitivity.SENSITIVE: 2,
+    StorySensitivity.HIGHLY_SENSITIVE: 3,
+}
+
+
+def _sensitive_story_counts(
+    extraction: ExtractionResult,
+    gold: BenchmarkGold,
+    mention_to_gold: Mapping[str, str | None],
+    event_to_gold: Mapping[str, str],
+) -> tuple[int, int, int]:
+    actual_by_key: dict[StorySemanticKey, list[Any]] = {}
+    for item in extraction.stories:
+        key = _actual_story_key(item, mention_to_gold, event_to_gold)
+        actual_by_key.setdefault(key, []).append(item)
+    numerator = 0
+    denominator = 0
+    underclassified = 0
+    for gold_story in gold.stories:
+        minimum_rank = _SENSITIVITY_RANK[gold_story.minimum_sensitivity]
+        if minimum_rank <= _SENSITIVITY_RANK[StorySensitivity.NORMAL]:
+            continue
+        denominator += 1
+        candidates = actual_by_key.get(_gold_story_key(gold_story), [])
+        if any(
+            _SENSITIVITY_RANK[item.sensitivity] >= _SENSITIVITY_RANK[gold_story.minimum_sensitivity]
+            for item in candidates
+        ):
+            numerator += 1
+        elif candidates:
+            underclassified += 1
+    return numerator, denominator, underclassified
+
+
+def _duplicate_count(values: Iterable[Hashable]) -> int:
+    return sum(max(0, count - 1) for count in Counter(values).values())
+
+
 def score_case(
     *,
     case: BenchmarkCase,
@@ -460,6 +635,47 @@ def score_case(
         )
         for item in extraction.relationship_claims
     }
+    actual_event_keys = (
+        [_actual_event_key(item, mention_to_gold) for item in extraction.events]
+        if case.gold.score_events
+        else []
+    )
+    gold_event_keys = (
+        [_gold_event_key(item) for item in case.gold.events] if case.gold.score_events else []
+    )
+    actual_event_by_identity: dict[EventIdentityKey, list[EventSemanticKey]] = {}
+    for event_key in actual_event_keys:
+        actual_event_by_identity.setdefault(_event_identity(event_key), []).append(event_key)
+    event_participant_denominator = len(gold_event_keys)
+    event_participant_numerator = sum(
+        expected in actual_event_by_identity.get(_event_identity(expected), [])
+        for expected in gold_event_keys
+    )
+    actual_description_keys = (
+        [_actual_description_key(item, mention_to_gold) for item in extraction.descriptions]
+        if case.gold.score_descriptions
+        else []
+    )
+    gold_description_keys = (
+        [_gold_description_key(item) for item in case.gold.descriptions]
+        if case.gold.score_descriptions
+        else []
+    )
+    event_to_gold = _unique_actual_event_to_gold_key(extraction, case.gold, mention_to_gold)
+    actual_story_keys = (
+        [_actual_story_key(item, mention_to_gold, event_to_gold) for item in extraction.stories]
+        if case.gold.score_stories
+        else []
+    )
+    gold_story_keys = (
+        [_gold_story_key(item) for item in case.gold.stories] if case.gold.score_stories else []
+    )
+    narrative_supported, narrative_total, unsupported_events, unsupported_stories = (
+        _statement_support_counts(extraction)
+    )
+    sensitive_numerator, sensitive_denominator, sensitivity_underclassifications = (
+        _sensitive_story_counts(extraction, case.gold, mention_to_gold, event_to_gold)
+    )
 
     return CaseEvaluation(
         case_id=case.case_id,
@@ -518,6 +734,20 @@ def score_case(
             relationship_state_actual,
             case.gold.relationship_states,
         ),
+        events=_multiset_prf(actual_event_keys, gold_event_keys),
+        descriptions=_multiset_prf(actual_description_keys, gold_description_keys),
+        stories=_multiset_prf(actual_story_keys, gold_story_keys),
+        event_participant_accuracy=ratio_metric(
+            event_participant_numerator,
+            event_participant_denominator,
+        ),
+        narrative_factual_support=ratio_metric(narrative_supported, narrative_total),
+        sensitive_story_recall=ratio_metric(sensitive_numerator, sensitive_denominator),
+        unsupported_event_statements=unsupported_events,
+        unsupported_story_statements=unsupported_stories,
+        sensitivity_underclassifications=sensitivity_underclassifications,
+        duplicate_semantic_events=_duplicate_count(actual_event_keys),
+        duplicate_semantic_stories=_duplicate_count(actual_story_keys),
         approximate_dates_exactified=sum(
             date_is_silently_exactified(event.date) for event in extraction.events
         ),
@@ -573,6 +803,12 @@ def aggregate_case_metrics(cases: list[CaseEvaluation]) -> BenchmarkSummary:
     temporal_denominator = sum(case.temporal_kind_accuracy.denominator for case in cases)
     state_numerator = sum(case.relationship_state_accuracy.numerator for case in cases)
     state_denominator = sum(case.relationship_state_accuracy.denominator for case in cases)
+    participant_numerator = sum(case.event_participant_accuracy.numerator for case in cases)
+    participant_denominator = sum(case.event_participant_accuracy.denominator for case in cases)
+    factual_numerator = sum(case.narrative_factual_support.numerator for case in cases)
+    factual_denominator = sum(case.narrative_factual_support.denominator for case in cases)
+    sensitivity_numerator = sum(case.sensitive_story_recall.numerator for case in cases)
+    sensitivity_denominator = sum(case.sensitive_story_recall.denominator for case in cases)
 
     return BenchmarkSummary(
         case_count=len(cases),
@@ -601,6 +837,19 @@ def aggregate_case_metrics(cases: list[CaseEvaluation]) -> BenchmarkSummary:
         uncertainty_scope_accuracy=ratio_metric(uncertainty_numerator, uncertainty_denominator),
         temporal_kind_accuracy=ratio_metric(temporal_numerator, temporal_denominator),
         relationship_state_accuracy=ratio_metric(state_numerator, state_denominator),
+        events=aggregate_prf("events"),
+        descriptions=aggregate_prf("descriptions"),
+        stories=aggregate_prf("stories"),
+        event_participant_accuracy=ratio_metric(participant_numerator, participant_denominator),
+        narrative_factual_support=ratio_metric(factual_numerator, factual_denominator),
+        sensitive_story_recall=ratio_metric(sensitivity_numerator, sensitivity_denominator),
+        unsupported_event_statements=sum(case.unsupported_event_statements for case in cases),
+        unsupported_story_statements=sum(case.unsupported_story_statements for case in cases),
+        sensitivity_underclassifications=sum(
+            case.sensitivity_underclassifications for case in cases
+        ),
+        duplicate_semantic_events=sum(case.duplicate_semantic_events for case in cases),
+        duplicate_semantic_stories=sum(case.duplicate_semantic_stories for case in cases),
         approximate_dates_exactified=sum(case.approximate_dates_exactified for case in cases),
         invalid_calendar_dates_accepted=sum(case.invalid_calendar_dates_accepted for case in cases),
         unresolved_relative_dates_absolutized=sum(

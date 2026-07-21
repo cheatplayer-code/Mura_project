@@ -104,7 +104,7 @@ def _build_pipeline(settings: CoreSettings) -> MuraPipeline:
         primary_model=settings.deepseek_model,
         fallback_model=settings.deepseek_fallback_model,
     )
-    return MuraPipeline(DeepSeekPipelineService(client))
+    return MuraPipeline(DeepSeekPipelineService(client, focused_extraction=True))
 
 
 def get_runtime(

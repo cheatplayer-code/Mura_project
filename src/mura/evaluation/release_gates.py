@@ -11,7 +11,7 @@ from mura.evaluation.models import BenchmarkReport
 
 
 class ReleaseGateConfig(StrictModel):
-    schema_version: str = "release-gates-v2"
+    schema_version: str = "release-gates-v4"
     minimum_case_count: int = Field(ge=1)
     minimum_adversarial_case_count: int = Field(ge=1)
     minimum_person_f1: float = Field(ge=0, le=1)
@@ -36,6 +36,20 @@ class ReleaseGateConfig(StrictModel):
     minimum_uncertainty_scope_accuracy: float = Field(default=1.0, ge=0, le=1)
     minimum_temporal_kind_accuracy: float = Field(default=1.0, ge=0, le=1)
     minimum_relationship_state_accuracy: float = Field(default=1.0, ge=0, le=1)
+    minimum_event_precision: float = Field(default=1.0, ge=0, le=1)
+    minimum_event_recall: float = Field(default=1.0, ge=0, le=1)
+    minimum_description_precision: float = Field(default=1.0, ge=0, le=1)
+    minimum_description_recall: float = Field(default=1.0, ge=0, le=1)
+    minimum_story_precision: float = Field(default=1.0, ge=0, le=1)
+    minimum_story_recall: float = Field(default=1.0, ge=0, le=1)
+    minimum_event_participant_accuracy: float = Field(default=1.0, ge=0, le=1)
+    minimum_narrative_factual_support: float = Field(default=1.0, ge=0, le=1)
+    minimum_sensitive_story_recall: float = Field(default=1.0, ge=0, le=1)
+    maximum_unsupported_event_statements: int = Field(default=0, ge=0)
+    maximum_unsupported_story_statements: int = Field(default=0, ge=0)
+    maximum_sensitivity_underclassifications: int = Field(default=0, ge=0)
+    maximum_duplicate_semantic_events: int = Field(default=0, ge=0)
+    maximum_duplicate_semantic_stories: int = Field(default=0, ge=0)
     maximum_approximate_dates_exactified: int = Field(default=0, ge=0)
     maximum_invalid_calendar_dates_accepted: int = Field(default=0, ge=0)
     maximum_unresolved_relative_dates_absolutized: int = Field(default=0, ge=0)
@@ -100,6 +114,20 @@ def evaluate_release_gates(
         "uncertainty_scope_accuracy": report.summary.uncertainty_scope_accuracy.value,
         "temporal_kind_accuracy": report.summary.temporal_kind_accuracy.value,
         "relationship_state_accuracy": report.summary.relationship_state_accuracy.value,
+        "event_precision": report.summary.events.precision,
+        "event_recall": report.summary.events.recall,
+        "description_precision": report.summary.descriptions.precision,
+        "description_recall": report.summary.descriptions.recall,
+        "story_precision": report.summary.stories.precision,
+        "story_recall": report.summary.stories.recall,
+        "event_participant_accuracy": report.summary.event_participant_accuracy.value,
+        "narrative_factual_support": report.summary.narrative_factual_support.value,
+        "sensitive_story_recall": report.summary.sensitive_story_recall.value,
+        "unsupported_event_statements": report.summary.unsupported_event_statements,
+        "unsupported_story_statements": report.summary.unsupported_story_statements,
+        "sensitivity_underclassifications": report.summary.sensitivity_underclassifications,
+        "duplicate_semantic_events": report.summary.duplicate_semantic_events,
+        "duplicate_semantic_stories": report.summary.duplicate_semantic_stories,
         "approximate_dates_exactified": report.summary.approximate_dates_exactified,
         "invalid_calendar_dates_accepted": report.summary.invalid_calendar_dates_accepted,
         "unresolved_relative_dates_absolutized": (
@@ -164,6 +192,22 @@ def evaluate_release_gates(
     require_minimum("uncertainty_scope_accuracy", config.minimum_uncertainty_scope_accuracy)
     require_minimum("temporal_kind_accuracy", config.minimum_temporal_kind_accuracy)
     require_minimum("relationship_state_accuracy", config.minimum_relationship_state_accuracy)
+    require_minimum("event_precision", config.minimum_event_precision)
+    require_minimum("event_recall", config.minimum_event_recall)
+    require_minimum("description_precision", config.minimum_description_precision)
+    require_minimum("description_recall", config.minimum_description_recall)
+    require_minimum("story_precision", config.minimum_story_precision)
+    require_minimum("story_recall", config.minimum_story_recall)
+    require_minimum("event_participant_accuracy", config.minimum_event_participant_accuracy)
+    require_minimum("narrative_factual_support", config.minimum_narrative_factual_support)
+    require_minimum("sensitive_story_recall", config.minimum_sensitive_story_recall)
+    require_maximum("unsupported_event_statements", config.maximum_unsupported_event_statements)
+    require_maximum("unsupported_story_statements", config.maximum_unsupported_story_statements)
+    require_maximum(
+        "sensitivity_underclassifications", config.maximum_sensitivity_underclassifications
+    )
+    require_maximum("duplicate_semantic_events", config.maximum_duplicate_semantic_events)
+    require_maximum("duplicate_semantic_stories", config.maximum_duplicate_semantic_stories)
     require_maximum(
         "approximate_dates_exactified",
         config.maximum_approximate_dates_exactified,
