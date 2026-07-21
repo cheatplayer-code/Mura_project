@@ -1,0 +1,29 @@
+name: Export audit source
+
+on:
+  push:
+    branches:
+      - feat/mura-core-completion
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create repository bundle
+        run: git bundle create /tmp/mura-repository.bundle --all
+      - name: Upload repository bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: mura-repository-bundle
+          path: /tmp/mura-repository.bundle
+          retention-days: 1
