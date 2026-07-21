@@ -8,12 +8,12 @@ from typing import Any
 
 import pytest
 
+from services.kaggle_asr import artifacts as asr_artifacts
 from services.kaggle_asr import audio, tunnel
 from services.kaggle_asr.artifacts import (
     GIGAAM_MODEL_COMMIT,
     GIGAAM_MODEL_VARIANT,
     SILERO_VAD_VERSION,
-    download_pinned_snapshot,
     safe_model_metadata,
     snapshot_artifacts,
     validate_artifact_pins,
@@ -73,9 +73,9 @@ def test_snapshot_download_uses_exact_immutable_revision(
         captured.update(kwargs)
         return str(tmp_path)
 
-    monkeypatch.setattr("huggingface_hub.snapshot_download", fake_snapshot_download)
+    monkeypatch.setattr(asr_artifacts, "_snapshot_download", fake_snapshot_download)
 
-    artifacts = download_pinned_snapshot(token="token")
+    artifacts = asr_artifacts.download_pinned_snapshot(token="token")
 
     assert artifacts.snapshot_path == tmp_path
     assert captured == {
