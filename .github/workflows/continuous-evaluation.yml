@@ -39,12 +39,11 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p artifacts
-          mura-evaluate-core \
-            --manifest benchmarks/release_manifest.json \
-            --release-gates benchmarks/release_gates.json \
-            --json-output artifacts/benchmark-report.json \
-            --markdown-output artifacts/benchmark-report.md \
-            2>&1 | tee artifacts/release-gate-output.txt
+          mura-evaluate-ml-release \
+            --manifest benchmarks/release/ml_release_manifest.json \
+            --json-output artifacts/ml-release-report.json \
+            --markdown-output artifacts/ml-release-report.md \
+            2>&1 | tee artifacts/ml-release-output.txt
           {
             echo "# Continuous Mura evaluation"
             echo
@@ -52,7 +51,7 @@ jobs:
             echo "- Run: \`${GITHUB_RUN_ID}\`"
             echo "- Trigger: \`${GITHUB_EVENT_NAME}\`"
             echo
-            cat artifacts/benchmark-report.md
+            cat artifacts/ml-release-report.md
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Write evaluation metadata
@@ -70,8 +69,8 @@ jobs:
               "run_id": os.environ["GITHUB_RUN_ID"],
               "event_name": os.environ["GITHUB_EVENT_NAME"],
               "created_at": datetime.now(UTC).isoformat(),
-              "manifest": "benchmarks/release_manifest.json",
-              "release_gates": "benchmarks/release_gates.json",
+              "manifest": "benchmarks/release/ml_release_manifest.json",
+              "release_gates": "composite-offline-ml-release",
           }
           Path("artifacts/evaluation-metadata.json").write_text(
               json.dumps(payload, indent=2) + "\n",

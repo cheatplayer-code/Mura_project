@@ -191,5 +191,14 @@ jobs:
             --json-output asr-report.json \
             --markdown-output asr-report.md 2>&1 | tee asr-gate-output.txt
 
+      - name: Enforce full offline ML release gate
+        shell: bash
+        run: |
+          set -o pipefail
+          mura-evaluate-ml-release \
+            --manifest benchmarks/release/ml_release_manifest.json \
+            --json-output ml-release-report.json \
+            --markdown-output ml-release-report.md 2>&1 | tee ml-release-output.txt
+
       - name: Static security scan
         run: bandit -q -r src apps services -ll

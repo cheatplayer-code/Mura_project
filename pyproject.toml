@@ -27,6 +27,9 @@ mura-evaluate-core = "mura.evaluation.cli:main"
 mura-evaluate-identity = "mura.evaluation.identity_cli:main"
 mura-evaluate-asr = "mura.evaluation.asr_cli:main"
 mura-evaluate-asr-live = "mura.evaluation.asr_live_cli:main"
+mura-evaluate-e2e = "mura.evaluation.e2e_cli:main"
+mura-evaluate-e2e-live = "mura.evaluation.e2e_live_cli:main"
+mura-evaluate-ml-release = "mura.evaluation.ml_release_cli:main"
 mura-release-smoke = "mura.smoke:main"
 
 [project.optional-dependencies]

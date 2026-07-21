@@ -4,7 +4,7 @@ from mura.versioning import CURRENT_PIPELINE_VERSIONS, get_pipeline_versions
 def test_pipeline_versions_are_explicit_and_copy_safe() -> None:
     versions = get_pipeline_versions()
 
-    assert versions.pipeline == "mura-core-v0.14.0"
+    assert versions.pipeline == "mura-core-v0.15.0"
     assert versions.domain_schema == "domain-v5-identity-safety"
     assert versions.cleaner_prompt == "cleaner-v3-self-correction-semantics"
     assert versions.extractor_prompt == "extractor-v6-focused-passes"
@@ -23,11 +23,8 @@ def test_pipeline_versions_are_explicit_and_copy_safe() -> None:
         versions.archive_schema == "archive-claim-ledger-v1+conflict-decisions-v1+generic-claims-v1"
     )
     assert versions.materializer == "family-materializer-v4-active-state-guard"
-    assert versions.evaluator == "core-evaluator-v6-asr-contract"
-    assert (
-        versions.benchmark_schema
-        == "benchmark-v6-asr-contract+identity-safety+entity-resolution-benchmark-v2"
-    )
+    assert versions.evaluator == "core-evaluator-v7-offline-e2e-release"
+    assert versions.benchmark_schema == "benchmark-v7-offline-e2e+asr-contract+identity-safety"
     assert (
         versions.asr_model
         == "gigaam-multilingual-large-ctc@ac7c6db08133f83478451a659f8470ee8ab47a2d"
