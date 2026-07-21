@@ -68,7 +68,9 @@ def snapshot_artifacts(snapshot_path: Path) -> SnapshotArtifacts:
     return SnapshotArtifacts(snapshot_path=snapshot_path, file_sha256=digests)
 
 
-def _snapshot_download(**kwargs: Any) -> str:
+def _snapshot_download(
+    *, repo_id: str, revision: str, token: str | None = None
+) -> str:
     """Load the optional Hugging Face client only in the live ASR environment."""
     try:
         from huggingface_hub import snapshot_download
@@ -76,7 +78,13 @@ def _snapshot_download(**kwargs: Any) -> str:
         raise RuntimeError(
             "huggingface-hub is required for ASR model download; install the kaggle extra"
         ) from exc
-    return str(snapshot_download(**kwargs))
+    return str(
+        snapshot_download(
+            repo_id=repo_id,
+            revision=revision,
+            token=token,
+        )
+    )
 
 
 def download_pinned_snapshot(*, token: str | None = None) -> SnapshotArtifacts:
